@@ -74,8 +74,25 @@ export class ZhilianCrawler {
             return;
           }
 
-          const cityCode = city ? ZHILIAN_CITY_CODES[city] : '';
-          console.log(`[ZhilianCrawler] 开始爬取组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
+          // 🔧 修复: 安全获取城市代码,避免undefined
+          const cityCode = city ? (ZHILIAN_CITY_CODES[city] || '') : '';
+          
+          // 如果城市代码为空,记录警告但不中断任务
+          if (city && !cityCode) {
+            console.warn(`[ZhilianCrawler] ⚠️ 城市"${city}"未在映射表中找到,将使用全国搜索`);
+            
+            // 发送警告日志到前端
+            const taskId = this.getTaskId();
+            if (io && taskId) {
+              io.to(`task:${taskId}`).emit('task:log', {
+                taskId,
+                level: 'warning',
+                message: `城市"${city}"未找到对应代码,将搜索全国范围`
+              });
+            }
+          }
+          
+          console.log(`[ZhilianCrawler] 开始爬取组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city || '不限'}", 城市代码="${cityCode || '无(全国)'}"`);
 
           // 发送日志到前端
           const taskId = this.getTaskId();
