@@ -603,3 +603,4 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   font-size: 13px;
   padding: 12px 0;
 }
+</style>
