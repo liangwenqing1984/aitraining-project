@@ -236,7 +236,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
       </template>
 
       <el-table :data="crawlerStore.tasks" stripe>
-        <el-table-column prop="name" label="任务名称" min-width="200" />
+        <el-table-column prop="name" label="任务名称" min-width="150" />
         <el-table-column prop="source" label="数据来源" width="120">
           <template #default="{ row }">
             <el-tag>{{ row.source === 'zhilian' ? '智联招聘' : row.source === '51job' ? '前程无忧' : '全部' }}</el-tag>
@@ -244,7 +244,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
         </el-table-column>
         
         <!-- 🔧 新增：关键词详情列 -->
-        <el-table-column label="关键词详情" min-width="200" show-overflow-tooltip>
+        <el-table-column label="关键词详情" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <el-popover
               placement="top"
