@@ -1,3 +1,24 @@
+// CSV字段定义
+export const CSV_FIELDS = [
+  'jobId',
+  'jobName',
+  'jobTags',
+  'jobDescription',
+  'salaryRange',
+  'workCity',
+  'workExperience',
+  'workAddress',
+  'education',
+  'companyCode',
+  'companyNature',
+  'businessScope',
+  'companyScale',
+  'recruitmentCount',
+  'updateDate',
+  'workType',
+  'dataSource'
+];
+
 // 智联招聘城市代码映射表（基于已知规律推测，黑龙江省已验证）
 export const ZHILIAN_CITY_CODES: Record<string, string> = {
   // ===== 直辖市 =====

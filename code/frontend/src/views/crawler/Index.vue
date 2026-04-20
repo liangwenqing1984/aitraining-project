@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { fileApi } from '@/api/file'
 import { Plus, Loading, Document, VideoPlay, CircleCheck, DataAnalysis } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import type { Task } from '@/api/task'
 
 const router = useRouter()
 const crawlerStore = useCrawlerStore()
@@ -135,6 +136,38 @@ function formatDateTime(dateStr: string | null | undefined): string {
     return '-'
   }
 }
+
+// 🔧 新增：解析任务配置并生成关键词详情
+interface KeywordDetailInfo {
+  keywords: string[]
+  cities: string[]
+  companies: string[]
+  displayText: string
+}
+
+function getKeywordDetails(task: Task): KeywordDetailInfo {
+  try {
+    // config可能是字符串或对象
+    const config = typeof task.config === 'string' ? JSON.parse(task.config) : task.config
+    
+    const keywords = config.keywords || (config.keyword ? [config.keyword] : [])
+    const cities = config.cities || (config.city ? [config.city] : [])
+    const companies = config.companies || (config.company ? [config.company] : [])
+    
+    // 生成缩略显示文本
+    const parts = []
+    if (keywords.length > 0) parts.push(`职位:${keywords.join(',')}`)
+    if (cities.length > 0) parts.push(`城市:${cities.join(',')}`)
+    if (companies.length > 0) parts.push(`企业:${companies.join(',')}`)
+    
+    const displayText = parts.length > 0 ? parts.join(' | ') : '-'
+    
+    return { keywords, cities, companies, displayText }
+  } catch (error) {
+    console.error('[KeywordDetails] Error parsing config:', error)
+    return { keywords: [], cities: [], companies: [], displayText: '-' }
+  }
+}
 </script>
 
 <template>
@@ -209,6 +242,77 @@ function formatDateTime(dateStr: string | null | undefined): string {
             <el-tag>{{ row.source === 'zhilian' ? '智联招聘' : row.source === '51job' ? '前程无忧' : '全部' }}</el-tag>
           </template>
         </el-table-column>
+        
+        <!-- 🔧 新增：关键词详情列 -->
+        <el-table-column label="关键词详情" min-width="200" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-popover
+              placement="top"
+              :width="400"
+              trigger="hover"
+            >
+              <template #reference>
+                <div class="keyword-summary">
+                  {{ getKeywordDetails(row).displayText }}
+                </div>
+              </template>
+              
+              <!-- 悬浮详情内容 -->
+              <div class="keyword-detail-popover">
+                <template v-if="getKeywordDetails(row).keywords.length > 0 || getKeywordDetails(row).cities.length > 0 || getKeywordDetails(row).companies.length > 0">
+                  <div v-if="getKeywordDetails(row).keywords.length > 0" class="detail-section">
+                    <div class="detail-label">职位关键词：</div>
+                    <div class="detail-tags">
+                      <el-tag 
+                        v-for="(kw, index) in getKeywordDetails(row).keywords" 
+                        :key="'kw-' + index" 
+                        size="small" 
+                        style="margin: 2px"
+                      >
+                        {{ kw }}
+                      </el-tag>
+                    </div>
+                  </div>
+                  
+                  <div v-if="getKeywordDetails(row).cities.length > 0" class="detail-section">
+                    <div class="detail-label">城市：</div>
+                    <div class="detail-tags">
+                      <el-tag 
+                        v-for="(city, index) in getKeywordDetails(row).cities" 
+                        :key="'city-' + index" 
+                        size="small" 
+                        type="success"
+                        style="margin: 2px"
+                      >
+                        {{ city }}
+                      </el-tag>
+                    </div>
+                  </div>
+                  
+                  <div v-if="getKeywordDetails(row).companies.length > 0" class="detail-section">
+                    <div class="detail-label">企业名称：</div>
+                    <div class="detail-tags">
+                      <el-tag 
+                        v-for="(comp, index) in getKeywordDetails(row).companies" 
+                        :key="'comp-' + index" 
+                        size="small" 
+                        type="warning"
+                        style="margin: 2px"
+                      >
+                        {{ comp }}
+                      </el-tag>
+                    </div>
+                  </div>
+                </template>
+                
+                <div v-else class="detail-empty">
+                  暂无配置信息
+                </div>
+              </div>
+            </el-popover>
+          </template>
+        </el-table-column>
+        
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">{{ getStatusName(row.status) }}</el-tag>
@@ -452,4 +556,50 @@ function formatDateTime(dateStr: string | null | undefined): string {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
-</style>
+
+/* 🔧 关键词详情样式 */
+.keyword-summary {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.keyword-summary:hover {
+  background-color: #f5f7fa;
+}
+
+.keyword-detail-popover {
+  padding: 8px 0;
+}
+
+.detail-section {
+  margin-bottom: 12px;
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 6px;
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.detail-empty {
+  text-align: center;
+  color: #909399;
+  font-size: 13px;
+  padding: 12px 0;
+}
