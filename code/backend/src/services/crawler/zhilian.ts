@@ -308,10 +308,10 @@ export class ZhilianCrawler {
                                         line.includes('算法') || line.includes('架构') || line.includes('测试') ||
                                         line.includes('经理') || line.includes('主管') || line.includes('总监');
                   
-                  // 排除条件
+                  // 排除条件 - 🔧 优化：放宽过滤条件，减少误过滤
                   const shouldExclude = 
-                    // 排除太短或太长的文本
-                    line.length < 4 || line.length > 60 ||
+                    // 排除太短或太长的文本（放宽上限从60到80）
+                    line.length < 4 || line.length > 80 ||
                     // 排除包含特定关键词的行
                     line.includes('不限') || line.includes('薪资要求') || line.includes('学历要求') ||
                     line.includes('公司行业') || line.includes('行政区') || line.includes('地铁沿线') ||
@@ -326,23 +326,19 @@ export class ZhilianCrawler {
                     line.includes('「') || line.includes('」') ||
                     // 排除纯城市信息（以城市开头）
                     /^(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津)[·\s]/.test(line) ||
-                    // 排除纯技术关键词堆砌
+                    // 排除纯技术关键词堆砌（放宽：必须有工程师/开发/经理等词才不过滤）
                     (/^[A-Za-z0-9+]+$/.test(line.replace(/[\s·\-\/]/g, '')) && !line.includes('工程师') && !line.includes('开发') && !line.includes('经理')) ||
-                    // 排除技术栈列表（包含4个以上技术关键词连在一起）
-                    (line.match(/[A-Z][a-z]+/g) && line.match(/[A-Z][a-z]+/g)!.length >= 4 && !line.includes('工程师')) ||
-                    // 排除行业分类
-                    /^(房地产|互联网|金融|教育|医疗|制造)[\u4e00-\u9fa5]{0,10}$/.test(line) ||
-                    // 排除以"北京"开头的非标准职位名
-                    /^北京[市区县]/.test(line) ||
-                    // 排除包含"月薪"的标题（通常是薪资信息混入）
-                    line.includes('月薪') ||
-                    // 排除包含"外包"的标题
-                    line.includes('外包') ||
-                    // 排除包含括号且括号内有详细描述的（通常是副标题）
-                    /\(.{10,}\)/.test(line) ||
-                    // 排除技术关键词过多（超过3个技术词）
+                    // 排除技术栈列表（放宽：从4个增加到5个，且必须不包含职位词）
+                    (line.match(/[A-Z][a-z]+/g) && line.match(/[A-Z][a-z]+/g)!.length >= 5 && !line.includes('工程师') && !line.includes('开发') && !line.includes('经理')) ||
+                    // 排除行业分类（放宽：允许更长的描述）
+                    /^(房地产|互联网|金融|教育|医疗|制造)[\u4e00-\u9fa5]{0,15}$/.test(line) ||
+                    // 排除以"北京"开头的非标准职位名（保留区县信息）
+                    /^北京[市区县]$/.test(line) ||
+                    // 排除包含括号且括号内有超长描述的（放宽：从10字符增加到20字符）
+                    /\(.{20,}\)/.test(line) ||
+                    // 排除技术关键词过多（放宽：从3个增加到5个）
                     (line.match(/(?:Spring|Cloud|Boot|Java|JavaScript|Python|C\+\+|MySQL|Oracle|Linux|Git)/gi) && 
-                     line.match(/(?:Spring|Cloud|Boot|Java|JavaScript|Python|C\+\+|MySQL|Oracle|Linux|Git)/gi)!.length >= 3);
+                     line.match(/(?:Spring|Cloud|Boot|Java|JavaScript|Python|C\+\+|MySQL|Oracle|Linux|Git)/gi)!.length >= 5);
                   
                   if (hasJobKeyword && !shouldExclude) {
                     // 进一步清理：移除城市信息
