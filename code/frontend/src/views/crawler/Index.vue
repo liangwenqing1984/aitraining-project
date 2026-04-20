@@ -333,7 +333,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="350" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <!-- 任务控制按钮 -->
             <el-button v-if="row.status === 'pending'" type="success" link @click="crawlerStore.startTask(row.id)">开始</el-button>
