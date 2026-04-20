@@ -1,0 +1,224 @@
+import { Request, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import { db } from '../config/database';
+import { TaskConfig, Task, ApiResponse } from '../types';
+import { TaskService } from '../services/taskService';
+import { REGIONS } from '../config/constants';
+
+const taskService = new TaskService();
+
+// 创建任务
+export async function createTask(req: Request, res: Response) {
+  try {
+    const config: TaskConfig = req.body;
+    const taskId = uuidv4();
+
+    // 创建任务记录
+    const stmt = db.prepare(`
+      INSERT INTO tasks (id, name, source, config, status, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'pending', datetime('now'), datetime('now'))
+    `);
+
+    const source = config.sites.length > 1 ? 'all' : config.sites[0];
+    const taskName = generateTaskName(config);
+
+    stmt.run(taskId, taskName, source, JSON.stringify(config));
+
+    // 启动爬虫任务（异步）
+    taskService.startTask(taskId, config);
+
+    res.json({
+      success: true,
+      data: { taskId, name: taskName }
+    } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 获取任务列表
+export async function getTasks(req: Request, res: Response) {
+  try {
+    const { status, page = 1, pageSize = 10 } = req.query;
+    const offset = (Number(page) - 1) * Number(pageSize);
+
+    let sql = 'SELECT * FROM tasks';
+    const params: any[] = [];
+
+    if (status) {
+      sql += ' WHERE status = ?';
+      params.push(status);
+    }
+
+    sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(Number(pageSize), offset);
+
+    const tasks = db.prepare(sql).all(...params);
+
+    // 获取总数
+    let countSql = 'SELECT COUNT(*) as total FROM tasks';
+    if (status) {
+      countSql += ' WHERE status = ?';
+    }
+    const total = db.prepare(countSql).get(...(status ? [status] : [])) as { total: number };
+
+    res.json({
+      success: true,
+      data: {
+        list: tasks,
+        total: total.total,
+        page: Number(page),
+        pageSize: Number(pageSize)
+      }
+    } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 获取任务详情
+export async function getTask(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found'
+      } as ApiResponse);
+    }
+
+    res.json({
+      success: true,
+      data: task
+    } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 停止任务
+export async function stopTask(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found'
+      } as ApiResponse);
+    }
+
+    taskService.stopTask(id);
+
+    res.json({
+      success: true,
+      data: { message: 'Task stopped' }
+    } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 暂停任务
+export async function pauseTask(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+
+    db.prepare(`
+      UPDATE tasks SET status = 'paused', updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    res.json({
+      success: true,
+      data: { message: 'Task paused' }
+    } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 恢复任务
+export async function resumeTask(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+
+    db.prepare(`
+      UPDATE tasks SET status = 'running', updated_at = datetime('now')
+      WHERE id = ?
+    `).run(id);
+
+    res.json({
+      success: true,
+      data: { message: 'Task resumed' }
+    } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 删除任务
+export async function deleteTask(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(id);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        error: 'Task not found'
+      } as ApiResponse);
+    }
+
+    taskService.deleteTask(id);
+
+    res.json({
+      success: true,
+      data: { message: 'Task deleted' }
+    } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 获取省市列表
+export async function getRegions(req: Request, res: Response) {
+  res.json({
+    success: true,
+    data: REGIONS
+  } as ApiResponse);
+}
+
+// 生成任务名称
+function generateTaskName(config: TaskConfig): string {
+  const sites = config.sites.map(site => site === 'zhilian' ? '智联' : '前程无忧').join('、');
+  const keyword = config.keyword || '';
+  const company = config.company ? ` - ${config.company}` : '';
+  const location = config.city ? ` - ${config.city}` : '';
+
+  return `${sites} - "${keyword}"${company}${location}`;
+}

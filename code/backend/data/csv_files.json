@@ -1,0 +1,112 @@
+[
+  {
+    "id": "ba290f94-5d5e-430b-968c-39009fbb95df",
+    "task_id": "6b4581df-f9e5-4e75-9dfe-ebd9c2b010c3",
+    "filename": "job_data_6b4581df-f9e5-4e75-9dfe-ebd9c2b010c3.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_6b4581df-f9e5-4e75-9dfe-ebd9c2b010c3.csv",
+    "file_size": 8633,
+    "record_count": 20,
+    "source": "zhilian",
+    "created_at": "2026-04-18T03:54:18.027Z"
+  },
+  {
+    "id": "00fa8684-c9d0-4c5f-8fce-7aa0b4526c22",
+    "task_id": "a9fca936-9cc3-44b9-adff-14da9aad4531",
+    "filename": "job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "file_size": 5916,
+    "record_count": 14,
+    "source": "zhilian",
+    "created_at": "2026-04-18T04:24:55.097Z"
+  },
+  {
+    "id": "27d0ae2f-0364-4ba9-9d81-5adbf130d34a",
+    "task_id": "a9fca936-9cc3-44b9-adff-14da9aad4531",
+    "filename": "job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "file_size": 5876,
+    "record_count": 14,
+    "source": "zhilian",
+    "created_at": "2026-04-18T04:27:32.691Z"
+  },
+  {
+    "id": "0e41c10b-dcf2-45d9-9284-9a2f4be5748e",
+    "task_id": "a9fca936-9cc3-44b9-adff-14da9aad4531",
+    "filename": "job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "file_size": 5959,
+    "record_count": 14,
+    "source": "zhilian",
+    "created_at": "2026-04-18T04:28:51.828Z"
+  },
+  {
+    "id": "ad0de307-287a-4a86-99fa-a918df0b51a4",
+    "task_id": "a9fca936-9cc3-44b9-adff-14da9aad4531",
+    "filename": "job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "file_size": 5562,
+    "record_count": 13,
+    "source": "zhilian",
+    "created_at": "2026-04-18T04:37:57.234Z"
+  },
+  {
+    "id": "ffb49009-1fc8-4e34-a596-05bd999f2f87",
+    "task_id": "a9fca936-9cc3-44b9-adff-14da9aad4531",
+    "filename": "job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_a9fca936-9cc3-44b9-adff-14da9aad4531.csv",
+    "file_size": 30289,
+    "record_count": 72,
+    "source": "zhilian",
+    "created_at": "2026-04-18T05:52:11.600Z"
+  },
+  {
+    "id": "d51bfb62-da39-4c17-a6ff-d26c3c71e4e4",
+    "task_id": "5d2eea29-aa69-4821-abc5-4cbac449d79e",
+    "filename": "job_data_5d2eea29-aa69-4821-abc5-4cbac449d79e.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_5d2eea29-aa69-4821-abc5-4cbac449d79e.csv",
+    "file_size": 32593,
+    "record_count": 80,
+    "source": "zhilian",
+    "created_at": "2026-04-18T06:04:11.216Z"
+  },
+  {
+    "id": "0a243f47-8d3f-4c0f-b099-1f4abc00c400",
+    "task_id": "fbc3c4d6-af73-4abf-9b76-0ef097e50313",
+    "filename": "job_data_fbc3c4d6-af73-4abf-9b76-0ef097e50313.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_fbc3c4d6-af73-4abf-9b76-0ef097e50313.csv",
+    "file_size": 31175,
+    "record_count": 74,
+    "source": "zhilian",
+    "created_at": "2026-04-18T06:22:55.587Z"
+  },
+  {
+    "id": "5bd0b344-5347-488a-8a8f-b4263ee27703",
+    "task_id": "8d0747df-ea94-4f70-88dd-e1cfd9f30871",
+    "filename": "job_data_8d0747df-ea94-4f70-88dd-e1cfd9f30871.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_8d0747df-ea94-4f70-88dd-e1cfd9f30871.csv",
+    "file_size": 29883,
+    "record_count": 71,
+    "source": "zhilian",
+    "created_at": "2026-04-18T06:37:27.484Z"
+  },
+  {
+    "id": "681f0403-0701-4318-995f-3ddb4364936c",
+    "task_id": "3e66d96a-9d50-4285-ba9a-06e3979d2e7d",
+    "filename": "job_data_3e66d96a-9d50-4285-ba9a-06e3979d2e7d.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_3e66d96a-9d50-4285-ba9a-06e3979d2e7d.csv",
+    "file_size": 223,
+    "record_count": 0,
+    "source": "zhilian",
+    "created_at": "2026-04-18T06:53:38.914Z"
+  },
+  {
+    "id": "51a89a7b-fb17-4002-a189-6b1f97b0ff82",
+    "task_id": "4c0c1837-71b2-4cb5-a4fb-2540f92bf41f",
+    "filename": "job_data_4c0c1837-71b2-4cb5-a4fb-2540f92bf41f.csv",
+    "filepath": "D:\\AICODEING\\aitraining\\code\\backend\\data\\csv\\job_data_4c0c1837-71b2-4cb5-a4fb-2540f92bf41f.csv",
+    "file_size": 46176,
+    "record_count": 108,
+    "source": "zhilian",
+    "created_at": "2026-04-18T07:21:19.896Z"
+  }
+]
