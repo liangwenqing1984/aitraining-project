@@ -347,12 +347,10 @@ export class ZhilianCrawler {
                     // 清理开头的技术标签
                     line = line.replace(/^[A-Z][a-zA-Z+]{5,}\s*/, '').trim();
                     
-                    // 再次检查长度和质量
-                    if (line.length >= 4 && line.length <= 50 && 
-                        // 确保包含职位特征词
-                        (line.includes('工程师') || line.includes('开发') || line.includes('经理') || 
-                         line.includes('主管') || line.includes('专员') || line.includes('助理') ||
-                         line.includes('设计师') || line.includes('架构师'))) {
+                    // 🔧 关键修复：移除过于严格的二次过滤
+                    // 之前的条件要求必须包含特定职位词，导致大量合法职位被过滤
+                    // 现在只要通过了初步的hasJobKeyword检查且长度合理就保留
+                    if (line.length >= 4 && line.length <= 80) {
                       jobTitleLines.push(line);
                     }
                   }
