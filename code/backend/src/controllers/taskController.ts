@@ -353,10 +353,7 @@ function generateTaskName(config: TaskConfig): string {
     parts.push(siteNames.join('+'));
   }
 
-  if (config.keyword) {
-    parts.push(`"${config.keyword}"`);
-  }
-
+  // 🔧 修改：去掉职位关键词，只保留城市信息
   if (config.city) {
     parts.push(config.city);
   } else if (config.province) {
