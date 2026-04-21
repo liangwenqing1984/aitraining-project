@@ -312,6 +312,47 @@ export class ZhilianCrawler {
                                         lineLower.includes('经理') || lineLower.includes('主管') || lineLower.includes('总监') ||
                                         lineLower.includes('程序员') || lineLower.includes('专家') || lineLower.includes('顾问');
                   
+                  // 🔧 调试日志：记录前5个被过滤的行及其原因
+                  if (hasJobKeyword && jobTitleLines.length < 10) {
+                    console.log(`[DEBUG] 候选行 ${jobTitleLines.length + 1}: "${line.substring(0, 60)}"`);
+                    console.log(`  - 长度: ${line.length}`);
+                    
+                    // 检查每个排除条件
+                    const excludeReasons = [];
+                    if (line.length < 4) excludeReasons.push('太短(<4)');
+                    if (line.length > 100) excludeReasons.push('太长(>100)');
+                    if (line.includes('不限')) excludeReasons.push('包含"不限"');
+                    if (line.includes('薪资要求')) excludeReasons.push('包含"薪资要求"');
+                    if (line.includes('学历要求')) excludeReasons.push('包含"学历要求"');
+                    if (line.includes('公司行业')) excludeReasons.push('包含"公司行业"');
+                    if (line.includes('行政区')) excludeReasons.push('包含"行政区"');
+                    if (line.includes('地铁沿线')) excludeReasons.push('包含"地铁沿线"');
+                    if (line.includes('公司规模')) excludeReasons.push('包含"公司规模"');
+                    if (line.includes('公司性质')) excludeReasons.push('包含"公司性质"');
+                    if (line.includes('有限公司')) excludeReasons.push('包含"有限公司"');
+                    if (line.includes('责任公司')) excludeReasons.push('包含"责任公司"');
+                    if (line.includes('分公司')) excludeReasons.push('包含"分公司"');
+                    if (line.includes('交流中心')) excludeReasons.push('包含"交流中心"');
+                    if (line.includes('研究中心')) excludeReasons.push('包含"研究中心"');
+                    if (line.includes('研究院')) excludeReasons.push('包含"研究院"');
+                    if (line.includes('开发中心')) excludeReasons.push('包含"开发中心"');
+                    if (line.includes('服务中心')) excludeReasons.push('包含"服务中心"');
+                    if (line.includes('"title"')) excludeReasons.push('包含"title"');
+                    if (line.includes('meta')) excludeReasons.push('包含"meta"');
+                    if (line.includes('charset')) excludeReasons.push('包含"charset"');
+                    if (line.includes('「')) excludeReasons.push('包含"「"');
+                    if (line.includes('」')) excludeReasons.push('包含"」"');
+                    if (/^(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津)[·\s]/.test(line)) excludeReasons.push('以城市开头');
+                    if (/^(房地产|互联网|金融|教育|医疗|制造)[\u4e00-\u9fa5]{0,20}$/.test(line)) excludeReasons.push('行业分类');
+                    if (/^北京[市区县]$/.test(line)) excludeReasons.push('北京区县');
+                    
+                    if (excludeReasons.length > 0) {
+                      console.log(`  - ❌ 被过滤原因: ${excludeReasons.join(', ')}`);
+                    } else {
+                      console.log(`  - ✅ 通过初步筛选`);
+                    }
+                  }
+                  
                   // 排除条件 - 🔧 进一步优化：极大放宽过滤条件
                   const shouldExclude = 
                     // 排除太短或太长的文本（进一步放宽上限从80到100）
@@ -320,8 +361,8 @@ export class ZhilianCrawler {
                     line.includes('不限') || line.includes('薪资要求') || line.includes('学历要求') ||
                     line.includes('公司行业') || line.includes('行政区') || line.includes('地铁沿线') ||
                     line.includes('公司规模') || line.includes('公司性质') ||
-                    // 排除企业名称（包含"公司"、"有限公司"等）
-                    line.includes('有限公司') || line.includes('责任公司') || line.includes('分公司') ||
+                    // 🔧 关键修复：移除企业名称过滤！企业名称是正常数据，不应排除
+                    // line.includes('有限公司') || line.includes('责任公司') || line.includes('分公司') ||
                     // 排除机构名称（包含"中心"、"研究院"等）
                     line.includes('交流中心') || line.includes('研究中心') || line.includes('研究院') ||
                     line.includes('开发中心') || line.includes('服务中心') ||
