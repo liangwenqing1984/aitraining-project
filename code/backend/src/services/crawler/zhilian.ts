@@ -302,11 +302,15 @@ export class ZhilianCrawler {
                              .replace(/投递\s*/g, '')
                              .trim();
                   
+                  // 🔧 关键修复：使用toLowerCase()进行不区分大小写的检查
+                  const lineLower = line.toLowerCase();
+                  
                   // 检查是否是职位标题（包含技术关键词且长度适中）
-                  const hasJobKeyword = line.includes('开发') || line.includes('工程师') || line.includes('Java') || 
-                                        line.includes('Python') || line.includes('前端') || line.includes('后端') ||
-                                        line.includes('算法') || line.includes('架构') || line.includes('测试') ||
-                                        line.includes('经理') || line.includes('主管') || line.includes('总监');
+                  const hasJobKeyword = lineLower.includes('开发') || lineLower.includes('工程师') || lineLower.includes('java') || 
+                                        lineLower.includes('python') || lineLower.includes('前端') || lineLower.includes('后端') ||
+                                        lineLower.includes('算法') || lineLower.includes('架构') || lineLower.includes('测试') ||
+                                        lineLower.includes('经理') || lineLower.includes('主管') || lineLower.includes('总监') ||
+                                        lineLower.includes('程序员') || lineLower.includes('专家') || lineLower.includes('顾问');
                   
                   // 排除条件 - 🔧 进一步优化：极大放宽过滤条件
                   const shouldExclude = 
