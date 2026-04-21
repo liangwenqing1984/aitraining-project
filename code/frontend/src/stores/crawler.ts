@@ -14,9 +14,17 @@ export const useCrawlerStore = defineStore('crawler', () => {
   const taskLogs = ref<Map<string, Array<{ time: string; level: string; message: string }>>>(new Map())
   
   // 兼容旧代码: 提供一个计算属性返回当前任务的日志
+  // 🔧 关键修复: 直接返回Map中的数组引用，而不是创建新数组
   const logs = computed(() => {
     if (!currentTask.value?.id) return []
-    return taskLogs.value.get(currentTask.value.id) || []
+    const taskLogList = taskLogs.value.get(currentTask.value.id)
+    // 如果不存在，初始化一个空数组并放入Map
+    if (!taskLogList) {
+      const newLogs: Array<{ time: string; level: string; message: string }> = []
+      taskLogs.value.set(currentTask.value.id, newLogs)
+      return newLogs
+    }
+    return taskLogList
   })
 
   // 计算属性

@@ -52,11 +52,16 @@ onMounted(async () => {
     ? crawlerStore.tasks.find(t => t.id === taskId) || null 
     : null
   
+  console.log('[TaskMonitor] onMounted - 找到的任务对象:', task)
+  console.log('[TaskMonitor] onMounted - taskLogs Map大小:', crawlerStore.taskLogs.size)
+  console.log('[TaskMonitor] onMounted - taskLogs Map keys:', Array.from(crawlerStore.taskLogs.keys()))
+  
   // 🔧 修复: 使用setCurrentTask方法,确保日志数组被初始化
   crawlerStore.setCurrentTask(task)
   
-  console.log('[TaskMonitor] 当前任务:', crawlerStore.currentTask)
-  console.log('[TaskMonitor] 当前任务日志数量:', crawlerStore.logs.length)
+  console.log('[TaskMonitor] onMounted - 设置后的currentTask:', crawlerStore.currentTask?.id)
+  console.log('[TaskMonitor] onMounted - 当前任务日志数量:', crawlerStore.logs.length)
+  console.log('[TaskMonitor] onMounted - logs数组引用:', crawlerStore.logs)
   
   // 加载任务配置
   if (crawlerStore.currentTask) {

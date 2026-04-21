@@ -19,6 +19,15 @@ const routes: RouteRecordRaw[] = [
     meta: { title: '登录回调', requiresAuth: false }
   },
   
+  // 后端API路径占位路由（防止Vue Router报"No match found"警告）
+  // 这些路径会被Vite代理转发到后端，不会真正渲染组件
+  {
+    path: '/api/:pathMatch(.*)*',
+    name: 'ApiPlaceholder',
+    component: { template: '<div></div>' },  // 空组件，仅用于占位
+    meta: { requiresAuth: false }
+  },
+  
   // 主应用路由（需要认证）
   {
     path: '/',
