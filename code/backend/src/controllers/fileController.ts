@@ -163,10 +163,24 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       } as ApiResponse);
     }
     
-    const content = fs.readFileSync(filePath, 'utf-8');
-    const lines = content.split('\n').filter(line => line.trim());
+    // 🔧 使用csv-parser正确解析CSV
+    const records: any[] = [];
+    let headers: string[] = [];
     
-    if (lines.length < 2) {
+    await new Promise((resolve, reject) => {
+      fs.createReadStream(filePath, { encoding: 'utf-8' })
+        .pipe(csv())
+        .on('headers', (headerList) => {
+          headers = headerList;
+        })
+        .on('data', (row) => {
+          records.push(row);
+        })
+        .on('end', resolve)
+        .on('error', reject);
+    });
+    
+    if (records.length === 0) {
       return res.json({
         success: true,
         data: {
@@ -176,39 +190,12 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       } as ApiResponse);
     }
     
-    // 3. 解析CSV头部和数据
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
-    const records = lines.slice(1).map(line => {
-      // 简单CSV解析（处理引号）
-      const values: string[] = [];
-      let current = '';
-      let inQuotes = false;
-      
-      for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-          inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-          values.push(current.trim().replace(/^"|"$/g, ''));
-          current = '';
-        } else {
-          current += char;
-        }
-      }
-      values.push(current.trim().replace(/^"|"$/g, ''));
-      
-      const record: any = {};
-      headers.forEach((header, index) => {
-        record[header] = values[index] || '';
-      });
-      return record;
-    });
-    
-    // 4. 统计分析
+    // 3. 深度统计分析
     const analysis: any = {
       totalRecords: records.length,
       headers: headers,
-      fieldStats: {} as any
+      fieldStats: {} as any,
+      insights: [] as any[] // 智能洞察
     };
     
     // 对每个字段进行统计
@@ -220,20 +207,31 @@ export async function analyzeCsvFile(req: Request, res: Response) {
         totalCount: values.length,
         emptyCount: records.length - values.length,
         uniqueCount: uniqueValues.size,
-        sampleValues: Array.from(uniqueValues).slice(0, 10) // 前10个唯一值作为示例
+        sampleValues: Array.from(uniqueValues).slice(0, 10)
       };
       
-      // 如果是数值型字段，计算统计信息
+      // 数值型字段统计（薪资）
       const numericValues = values.map(v => parseFloat(v)).filter(v => !isNaN(v));
       if (numericValues.length > 0) {
         numericValues.sort((a, b) => a - b);
         analysis.fieldStats[header].min = numericValues[0];
         analysis.fieldStats[header].max = numericValues[numericValues.length - 1];
         analysis.fieldStats[header].avg = numericValues.reduce((a, b) => a + b, 0) / numericValues.length;
+        
+        // 计算中位数
+        const mid = Math.floor(numericValues.length / 2);
+        analysis.fieldStats[header].median = numericValues.length % 2 === 0
+          ? (numericValues[mid - 1] + numericValues[mid]) / 2
+          : numericValues[mid];
+        
+        // 计算标准差
+        const mean = analysis.fieldStats[header].avg;
+        const variance = numericValues.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / numericValues.length;
+        analysis.fieldStats[header].stdDev = Math.sqrt(variance);
       }
       
-      // 如果是分类字段（如城市、职位），计算频率分布
-      if (uniqueValues.size <= 50 && uniqueValues.size > 1) {
+      // 分类字段频率分布（城市、职位、公司性质等）
+      if (uniqueValues.size <= 100 && uniqueValues.size > 1) {
         const frequency: any = {};
         values.forEach(v => {
           frequency[v] = (frequency[v] || 0) + 1;
@@ -246,10 +244,113 @@ export async function analyzeCsvFile(req: Request, res: Response) {
         
         analysis.fieldStats[header].topValues = sorted.map(([value, count]) => ({
           value,
-          count
+          count,
+          percentage: ((count as number) / values.length * 100).toFixed(1)
         }));
       }
     });
+    
+    // 4. 特殊字段深度分析
+    
+    // 4.1 薪资分析（如果有薪资范围字段）
+    const salaryField = headers.find(h => h.includes('薪资'));
+    if (salaryField) {
+      const salaryData = parseSalaryDistribution(records, salaryField);
+      analysis.salaryAnalysis = salaryData;
+      
+      // 生成薪资洞察
+      if (salaryData.avgSalary > 0) {
+        analysis.insights.push({
+          type: 'salary',
+          icon: '💰',
+          title: '平均薪资水平',
+          content: `当前市场平均薪资为 ${salaryData.avgSalary.toFixed(0)} 元/月`,
+          level: 'info'
+        });
+        
+        if (salaryData.medianSalary > 0) {
+          const diff = ((salaryData.avgSalary - salaryData.medianSalary) / salaryData.medianSalary * 100).toFixed(1);
+          if (Math.abs(parseFloat(diff)) > 10) {
+            analysis.insights.push({
+              type: 'warning',
+              icon: '⚠️',
+              title: '薪资分布偏斜',
+              content: `平均薪资比中位数${parseFloat(diff) > 0 ? '高' : '低'}${Math.abs(parseFloat(diff))}%，可能存在极端值`,
+              level: 'warning'
+            });
+          }
+        }
+      }
+    }
+    
+    // 4.2 城市分布分析
+    const cityField = headers.find(h => h.includes('城市'));
+    if (cityField && analysis.fieldStats[cityField]?.topValues) {
+      const topCities = analysis.fieldStats[cityField].topValues.slice(0, 5);
+      const totalCityJobs = topCities.reduce((sum: number, c: any) => sum + c.count, 0);
+      const concentrationRate = (totalCityJobs / records.length * 100).toFixed(1);
+      
+      analysis.insights.push({
+        type: 'city',
+        icon: '🌆',
+        title: '城市集中度',
+        content: `TOP5城市集中了${concentrationRate}%的岗位，就业机会主要集中在这些地区`,
+        level: 'info'
+      });
+    }
+    
+    // 4.3 经验要求分析
+    const expField = headers.find(h => h.includes('经验'));
+    if (expField && analysis.fieldStats[expField]?.topValues) {
+      const expData = analysis.fieldStats[expField].topValues;
+      const entryLevelJobs = expData.filter((e: any) => 
+        e.value.includes('应届') || e.value.includes('无经验') || e.value.includes('1年')
+      ).reduce((sum: number, e: any) => sum + e.count, 0);
+      const entryLevelRate = (entryLevelJobs / records.length * 100).toFixed(1);
+      
+      analysis.insights.push({
+        type: 'experience',
+        icon: '📊',
+        title: '入门友好度',
+        content: `${entryLevelRate}%的岗位适合应届生或初级从业者`,
+        level: parseFloat(entryLevelRate) > 30 ? 'success' : 'info'
+      });
+    }
+    
+    // 4.4 学历要求分析
+    const eduField = headers.find(h => h.includes('学历'));
+    if (eduField && analysis.fieldStats[eduField]?.topValues) {
+      const eduData = analysis.fieldStats[eduField].topValues;
+      const bachelorOrAbove = eduData.filter((e: any) => 
+        e.value.includes('本科') || e.value.includes('硕士') || e.value.includes('博士')
+      ).reduce((sum: number, e: any) => sum + e.count, 0);
+      const highEduRate = (bachelorOrAbove / records.length * 100).toFixed(1);
+      
+      analysis.insights.push({
+        type: 'education',
+        icon: '🎓',
+        title: '学历门槛',
+        content: `${highEduRate}%的岗位要求本科及以上学历`,
+        level: parseFloat(highEduRate) > 70 ? 'warning' : 'info'
+      });
+    }
+    
+    // 4.5 企业性质分析
+    const natureField = headers.find(h => h.includes('性质'));
+    if (natureField && analysis.fieldStats[natureField]?.topValues) {
+      const natureData = analysis.fieldStats[natureField].topValues;
+      analysis.companyNatureAnalysis = natureData;
+    }
+    
+    // 4.6 公司规模分析
+    const scaleField = headers.find(h => h.includes('规模'));
+    if (scaleField && analysis.fieldStats[scaleField]?.topValues) {
+      const scaleData = analysis.fieldStats[scaleField].topValues;
+      analysis.companyScaleAnalysis = scaleData;
+    }
+    
+    // 5. 综合评分
+    analysis.overallScore = calculateOverallScore(analysis);
     
     res.json({
       success: true,
@@ -262,6 +363,150 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       error: error.message
     } as ApiResponse);
   }
+}
+
+// 辅助函数：解析薪资分布
+function parseSalaryDistribution(records: any[], salaryField: string) {
+  const salaries: number[] = [];
+  
+  records.forEach(record => {
+    const salaryText = record[salaryField];
+    if (!salaryText) return;
+    
+    // 尝试解析各种薪资格式
+    const parsed = parseSalary(salaryText);
+    if (parsed > 0) {
+      salaries.push(parsed);
+    }
+  });
+  
+  if (salaries.length === 0) {
+    return { avgSalary: 0, medianSalary: 0, distribution: [] };
+  }
+  
+  salaries.sort((a, b) => a - b);
+  
+  // 计算平均值和中位数
+  const avgSalary = salaries.reduce((a, b) => a + b, 0) / salaries.length;
+  const mid = Math.floor(salaries.length / 2);
+  const medianSalary = salaries.length % 2 === 0
+    ? (salaries[mid - 1] + salaries[mid]) / 2
+    : salaries[mid];
+  
+  // 生成分布区间
+  const ranges = [
+    { label: '5K以下', min: 0, max: 5000, count: 0 },
+    { label: '5K-10K', min: 5000, max: 10000, count: 0 },
+    { label: '10K-15K', min: 10000, max: 15000, count: 0 },
+    { label: '15K-20K', min: 15000, max: 20000, count: 0 },
+    { label: '20K-30K', min: 20000, max: 30000, count: 0 },
+    { label: '30K以上', min: 30000, max: Infinity, count: 0 }
+  ];
+  
+  salaries.forEach(salary => {
+    const range = ranges.find(r => salary >= r.min && salary < r.max);
+    if (range) range.count++;
+  });
+  
+  return {
+    avgSalary,
+    medianSalary,
+    distribution: ranges.map(r => ({
+      ...r,
+      percentage: ((r.count / salaries.length) * 100).toFixed(1)
+    }))
+  };
+}
+
+// 辅助函数：解析单个薪资金额
+function parseSalary(salaryText: string): number {
+  if (!salaryText) return 0;
+  
+  // 匹配 "10K-15K"、"10000-15000"、"10-15K" 等格式
+  const match = salaryText.match(/(\d+\.?\d*)\s*[Kk万]?[-~至到]\s*(\d+\.?\d*)\s*[Kk万]?/);
+  if (match) {
+    let min = parseFloat(match[1]);
+    let max = parseFloat(match[2]);
+    
+    // 处理单位
+    if (salaryText.includes('K') || salaryText.includes('k')) {
+      min *= 1000;
+      max *= 1000;
+    } else if (salaryText.includes('万')) {
+      min *= 10000;
+      max *= 10000;
+    }
+    
+    return (min + max) / 2; // 返回平均值
+  }
+  
+  // 匹配单个数字
+  const singleMatch = salaryText.match(/(\d+\.?\d*)\s*[Kk万]?/);
+  if (singleMatch) {
+    let value = parseFloat(singleMatch[1]);
+    if (salaryText.includes('K') || salaryText.includes('k')) {
+      value *= 1000;
+    } else if (salaryText.includes('万')) {
+      value *= 10000;
+    }
+    return value;
+  }
+  
+  return 0;
+}
+
+// 辅助函数：计算综合评分
+function calculateOverallScore(analysis: any): number {
+  let score = 0;
+  let factors = 0;
+  
+  // 数据完整性（20分）
+  const totalFields = analysis.headers.length;
+  const nonEmptyFields = Object.values(analysis.fieldStats).filter((f: any) => f.totalCount > 0).length;
+  score += (nonEmptyFields / totalFields) * 20;
+  factors += 20;
+  
+  // 薪资数据质量（20分）
+  if (analysis.salaryAnalysis?.avgSalary > 0) {
+    score += 20;
+  }
+  factors += 20;
+  
+  // 数据量（20分）
+  if (analysis.totalRecords > 1000) {
+    score += 20;
+  } else if (analysis.totalRecords > 500) {
+    score += 15;
+  } else if (analysis.totalRecords > 100) {
+    score += 10;
+  } else {
+    score += 5;
+  }
+  factors += 20;
+  
+  // 城市多样性（20分）
+  const cityField = analysis.headers.find((h: string) => h.includes('城市'));
+  if (cityField && analysis.fieldStats[cityField]?.uniqueCount > 10) {
+    score += 20;
+  } else if (cityField && analysis.fieldStats[cityField]?.uniqueCount > 5) {
+    score += 15;
+  } else if (cityField) {
+    score += 10;
+  }
+  factors += 20;
+  
+  // 职位多样性（20分）
+  const jobField = analysis.headers.find((h: string) => h.includes('职位'));
+  if (jobField && analysis.fieldStats[jobField]?.uniqueCount > 50) {
+    score += 20;
+  } else if (jobField && analysis.fieldStats[jobField]?.uniqueCount > 20) {
+    score += 15;
+  } else if (jobField) {
+    score += 10;
+  }
+  factors += 20;
+  
+  return Math.round((score / factors) * 100);
 }
 
 // 下载文件

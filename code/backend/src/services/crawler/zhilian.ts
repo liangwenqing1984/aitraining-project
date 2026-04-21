@@ -322,7 +322,39 @@ export class ZhilianCrawler {
                       const linkEl = jobInfo.querySelector('a[href*="/job/"]');
                       const link = linkEl ? (linkEl as HTMLAnchorElement).href : '';
                       
-                      jobList.push({ title, company, salary, city, link });
+                      // ✅ 新增：从标签中提取企业性质、公司规模、行业范围
+                      let companyNature = '';
+                      let companyScale = '';
+                      let businessScope = '';
+                      
+                      const tagElements = Array.from(jobInfo.querySelectorAll('.joblist-box__item-tag'));
+                      if (tagElements.length > 0) {
+                        const tags = tagElements.map((el: any) => (el.textContent || '').trim());
+                        
+                        const natureKeywords = ['民营', '国企', '外企', '合资', '股份制', '上市公司', '事业单位'];
+                        const scalePattern = /\d+-?\d*人/;
+                        
+                        tags.forEach(tag => {
+                          if (natureKeywords.some(kw => tag.includes(kw))) {
+                            companyNature = tag;
+                          } else if (scalePattern.test(tag)) {
+                            companyScale = tag;
+                          } else if (!tag.match(/[A-Z]/) && !tag.includes('/') && tag.length > 2) {
+                            businessScope = tag;
+                          }
+                        });
+                      }
+                      
+                      jobList.push({ 
+                        title, 
+                        company, 
+                        salary, 
+                        city, 
+                        link,
+                        companyNature,
+                        companyScale,
+                        businessScope
+                      });
                     } catch (e) {
                       console.error('处理 jobinfo 元素时出错:', e);
                     }
@@ -413,7 +445,47 @@ export class ZhilianCrawler {
                             }
                           }
                           
-                          jobList.push({ title, company, salary, city, link });
+                          // ✅ 新增：从标签中提取企业性质、公司规模、行业范围
+                          let companyNature = '';
+                          let companyScale = '';
+                          let businessScope = '';
+                          
+                          const tagElements = Array.from(card.querySelectorAll('.joblist-box__item-tag'));
+                          if (tagElements.length > 0) {
+                            const tags = tagElements.map((el: any) => (el.textContent || '').trim());
+                            
+                            // 定义关键词匹配规则
+                            const natureKeywords = ['民营', '国企', '外企', '合资', '股份制', '上市公司', '事业单位'];
+                            const scalePattern = /\d+-?\d*人/;  // 匹配 "100-299人"、"10000人以上" 等
+                            
+                            // 遍历所有标签，识别不同类型
+                            tags.forEach(tag => {
+                              // 检查是否为企业性质
+                              if (natureKeywords.some(kw => tag.includes(kw))) {
+                                companyNature = tag;
+                              }
+                              // 检查是否为公司规模
+                              else if (scalePattern.test(tag)) {
+                                companyScale = tag;
+                              }
+                              // 其他标签可能是行业范围（取最后一个非技能标签）
+                              else if (!tag.match(/[A-Z]/) && !tag.includes('/') && tag.length > 2) {
+                                // 排除明显的技能标签（包含英文或斜杠）
+                                businessScope = tag;
+                              }
+                            });
+                          }
+                          
+                          jobList.push({ 
+                            title, 
+                            company, 
+                            salary, 
+                            city, 
+                            link,
+                            companyNature,    // ✅ 新增：企业性质
+                            companyScale,     // ✅ 新增：公司规模
+                            businessScope     // ✅ 新增：行业范围
+                          });
                         } catch (e) {
                           // 忽略单个卡片错误
                         }
@@ -503,12 +575,41 @@ export class ZhilianCrawler {
                       depth++;
                     }
                     
+                    // ✅ 新增：尝试从父容器中查找标签元素
+                    let companyNature = '';
+                    let companyScale = '';
+                    let businessScope = '';
+                    
+                    const parentContainer = link.closest('.joblist-box__item, .position-item, [class*="job"]');
+                    if (parentContainer) {
+                      const tagElements = Array.from(parentContainer.querySelectorAll('.joblist-box__item-tag'));
+                      if (tagElements.length > 0) {
+                        const tags = tagElements.map((el: any) => (el.textContent || '').trim());
+                        
+                        const natureKeywords = ['民营', '国企', '外企', '合资', '股份制', '上市公司', '事业单位'];
+                        const scalePattern = /\d+-?\d*人/;
+                        
+                        tags.forEach(tag => {
+                          if (natureKeywords.some(kw => tag.includes(kw))) {
+                            companyNature = tag;
+                          } else if (scalePattern.test(tag)) {
+                            companyScale = tag;
+                          } else if (!tag.match(/[A-Z]/) && !tag.includes('/') && tag.length > 2) {
+                            businessScope = tag;
+                          }
+                        });
+                      }
+                    }
+                    
                     jobList.push({
                       title: title.trim(),
                       company: company.trim() || '未知企业',
                       salary: salary.trim(),
                       city: city.trim(),
-                      link: href
+                      link: href,
+                      companyNature,
+                      companyScale,
+                      businessScope
                     });
                     
                   } catch (e) {
@@ -626,15 +727,20 @@ export class ZhilianCrawler {
                     await this.randomDelay(1000, 2000);
                   }
                 } else {
-                  // ✅ 并发模式：分批处理
+                  // ✅ 并发模式：分批处理（允许用户自定义并发数，但设置合理上限）
+                  const maxConcurrency = 10; // 硬性上限，防止浏览器崩溃
+                  const concurrency = Math.min(config.concurrency || 2, maxConcurrency);
                   const batchSize = concurrency;
+                  
+                  console.log(`[ZhilianCrawler] 🚀启用并发模式: 并发数=${concurrency} (配置值=${config.concurrency}, 上限=${maxConcurrency}), 总职位数=${filteredJobs.length}`);
+                  
                   for (let batchStart = 0; batchStart < filteredJobs.length && !this.checkAborted(); batchStart += batchSize) {
                     const batchEnd = Math.min(batchStart + batchSize, filteredJobs.length);
                     const batch = filteredJobs.slice(batchStart, batchEnd);
                     
                     console.log(`[ZhilianCrawler] 🔄 处理批次 ${Math.floor(batchStart / batchSize) + 1}: 职位 ${batchStart + 1}-${batchEnd}/${filteredJobs.length}`);
                     
-                    // 并发处理当前批次
+                    // ✅ 关键优化：真正并发处理批次内的任务，同时打开多个标签页
                     const batchPromises = batch.map(async (job, indexInBatch) => {
                       const globalIndex = batchStart + indexInBatch + 1;
                       
@@ -661,10 +767,10 @@ export class ZhilianCrawler {
                       return jobData;
                     });
                     
-                    // 等待当前批次完成
+                    // ✅ 等待当前批次所有任务并发完成
                     const batchResults = await Promise.all(batchPromises);
                     
-                    // 按顺序yield结果（过滤掉null）
+                    // 按顺序yield结果
                     for (const result of batchResults) {
                       if (result) {
                         yield result;
@@ -824,26 +930,65 @@ export class ZhilianCrawler {
     return this.signal?.aborted || false;
   }
 
-  // ✅ 优化：访问职位详情页获取完整信息（复用浏览器实例）
+  // ✅ 优化：访问职位详情页获取完整信息（复用浏览器实例，增加重试机制）
   private async fetchJobDetail(browser: any, jobUrl: string, basicInfo: any): Promise<JobData> {
-    let page;
-    try {
-      // 创建新标签页（而不是新浏览器）
-      page = await browser.newPage();
-      await page.setViewport({ width: 1920, height: 1080 });
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-      
-      // 导航到详情页
-      await page.goto(jobUrl, { 
-        waitUntil: 'networkidle2',
-        timeout: 15000 
-      });
-      
-      // 等待动态内容加载
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // 提取职位详情
-      const detail = await page.evaluate(() => {
+    let page: any = null;
+    let retryCount = 0;
+    const maxRetries = 2;
+    
+    while (retryCount <= maxRetries) {
+      try {
+        if (retryCount > 0) {
+          console.log(`[ZhilianCrawler] 🔄 第 ${retryCount} 次重试抓取详情页: ${jobUrl.substring(0, 60)}...`);
+          // 重试前增加随机延迟，避免频繁请求
+          await this.randomDelay(2000, 4000);
+        } else {
+          console.log(`[ZhilianCrawler] 📑 开始抓取详情页: ${jobUrl.substring(0, 60)}...`);
+        }
+
+        // ✅ 关键修复：检查浏览器是否仍然可用
+        try {
+          const pages = await browser.pages();
+          console.log(`[ZhilianCrawler] 🔍 浏览器健康检查: 当前打开 ${pages.length} 个标签页`);
+          
+          // 如果标签页过多，关闭一些旧页面释放资源
+          if (pages.length > 10) {
+            console.warn(`[ZhilianCrawler] ⚠️ 标签页数量过多(${pages.length})，清理旧页面...`);
+            // 保留最近3个页面，关闭其他
+            for (let i = 0; i < pages.length - 3; i++) {
+              if (!pages[i].isClosed()) {
+                await pages[i].close().catch(() => {});
+              }
+            }
+            console.log(`[ZhilianCrawler] ✅ 已清理旧标签页`);
+          }
+        } catch (browserCheckError: any) {
+          console.error(`[ZhilianCrawler] ❌ 浏览器健康检查失败: ${browserCheckError.message}`);
+          throw new Error('浏览器实例已失效，无法继续抓取');
+        }
+
+        // 创建新标签页（而不是新浏览器）
+        console.log(`[ZhilianCrawler] 🆕 创建新标签页...`);
+        page = await browser.newPage();
+        
+        // 设置视口和用户代理
+        await page.setViewport({ width: 1920, height: 1080 });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+        
+        // 导航到详情页
+        console.log(`[ZhilianCrawler] 🌐 正在导航至详情页...`);
+        await page.goto(jobUrl, { 
+          waitUntil: 'domcontentloaded',  // 改为domcontentloaded，更快
+          timeout: 15000 
+        });
+        
+        // 等待动态内容加载
+        console.log(`[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // 提取职位详情
+        console.log(`[ZhilianCrawler] 🔍 正在提取页面数据...`);
+        const detail = await page.evaluate(() => {
         const result: any = {};
         
         // ✅ 职位名称 - 从 summary-planes__title 中提取
@@ -923,9 +1068,33 @@ export class ZhilianCrawler {
           const companyText = (companyDescEl.textContent || '').trim();
           // 解析：未融资 · 500-999人 · 计算机软件、IT服务
           const parts = companyText.split('·').map(p => p.trim());
+          
+          // ⚠️ 注意：第一部分是"融资状态"，不是"公司性质"
+          // 融资状态：未融资、天使轮、A轮、B轮、C轮、D轮及以上、已上市
+          // 公司性质：民营企业、国有企业、外商独资、合资、上市公司等
           if (parts.length >= 1) {
-            result.companyNature = parts[0]; // 融资状态/公司性质
+            result.financingStatus = parts[0]; // 融资状态（如"未融资"）
+            // 如果融资状态看起来像公司性质，也保存到companyNature
+            const financingKeywords = ['未融资', '天使轮', 'A轮', 'B轮', 'C轮', 'D轮', '已上市'];
+            const natureKeywords = ['民营', '国企', '外企', '合资', '股份制', '事业单位'];
+            
+            const isFinancing = financingKeywords.some(k => parts[0].includes(k));
+            const isNature = natureKeywords.some(k => parts[0].includes(k));
+            
+            if (isNature) {
+              // 如果第一部分是公司性质（如"民营企业"）
+              result.companyNature = parts[0];
+            } else if (isFinancing) {
+              // 如果第一部分是融资状态，保留但不作为公司性质
+              result.financingStatus = parts[0];
+              // companyNature 留空，因为页面没有提供
+              result.companyNature = '';
+            } else {
+              // 不确定是什么，尝试判断
+              result.companyNature = parts[0]; // 保守保存
+            }
           }
+          
           if (parts.length >= 2) {
             result.companyScale = parts[1];  // 公司规模
           }
@@ -954,8 +1123,18 @@ export class ZhilianCrawler {
         return result;
       });
       
+      // 检查是否提取到了关键数据，如果没有可能页面加载有问题
+      if (!detail.title && !detail.company) {
+        throw new Error('未能提取到职位标题或公司名称，页面可能加载不完整');
+      }
+
+      console.log(`[ZhilianCrawler] ✅ 详情页数据提取成功: ${detail.title || '未知职位'}`);
+      
       // 关闭当前标签页（不是浏览器）
-      await page.close();
+      if (page) {
+        await page.close();
+        page = null;
+      }
       
       // ✅ 将相对日期转换为实际日期
       let updateDate = new Date().toISOString().split('T')[0];
@@ -977,7 +1156,7 @@ export class ZhilianCrawler {
       }
       
       // ✅ 合并基本信息和详情信息（优先使用详情页的真实数据）
-      return {
+      const jobData = {
         companyName: detail.company || basicInfo.company || '',  // 优先使用详情页的公司名称
         jobId: `ZL${Date.now()}${Math.random().toString(36).substr(2, 9)}`,
         jobName: detail.title || basicInfo.title,
@@ -990,50 +1169,70 @@ export class ZhilianCrawler {
         workAddress: detail.address || `${detail.city || ''}${detail.area || ''}` || '',  // ✅ 使用真实的工作地址
         education: detail.education || '',  // ✅ 使用真实的学历要求
         companyCode: '',  // 智联招聘不提供公司代码
-        companyNature: detail.companyNature || '',  // ✅ 使用真实性质（如"未融资"）
-        businessScope: detail.businessScope || '',  // ✅ 使用真实经营范围
-        companyScale: detail.companyScale || '',  // ✅ 使用真实规模
+        // ✅ 优先使用列表页提取的企业性质（来自.joblist-box__item-tag），其次详情页
+        companyNature: (basicInfo as any).companyNature || detail.companyNature || '',
+        // ✅ 优先使用列表页提取的经营范围，其次详情页
+        businessScope: (basicInfo as any).businessScope || detail.businessScope || '',
+        // ✅ 优先使用列表页提取的公司规模，其次详情页
+        companyScale: (basicInfo as any).companyScale || detail.companyScale || '',
         recruitmentCount: detail.recruitmentCount || '',  // ✅ 使用真实招聘人数
         updateDate: updateDate,  // ✅ 使用转换后的真实日期
         workType: detail.workType || '',  // ✅ 使用真实工作性质
         dataSource: '智联招聘'
       };
+
+      console.log(`[ZhilianCrawler] 🏁 详情页处理完成`);
+      return jobData;
       
     } catch (error: any) {
-      console.error(`[ZhilianCrawler] 抓取职位详情时出错: ${error.message}`);
+      retryCount++;
+      console.warn(`[ZhilianCrawler] ⚠️ 抓取详情页失败 (尝试 ${retryCount}/${maxRetries + 1}): ${error.message}`);
+      
       // 确保页面被关闭
       if (page) {
         try {
           await page.close();
+          page = null;
         } catch (e) {
           // 忽略关闭错误
         }
       }
-      throw error;
+
+      // 如果达到最大重试次数，抛出错误或返回降级数据
+      if (retryCount > maxRetries) {
+        console.error(`[ZhilianCrawler] ❌ 详情页抓取最终失败，使用基本信息降级`);
+        return this.generateBasicJob(basicInfo, {} as TaskConfig);
+      }
+      
+      // 继续下一次循环重试
     }
+    }
+    
+    // 理论上不会到达这里，但为了类型安全返回降级数据
+    return this.generateBasicJob(basicInfo, {} as TaskConfig);
   }
 
-  // ✅ 新增：仅使用列表页基本信息生成职位数据（降级方案）
+  // ✅ 新增：仅使用列表页基本信息生成职位数据（降级方案 - 不编造任何数据）
   private generateBasicJob(job: any, config: TaskConfig): JobData {
     return {
-      companyName: job.company || '未知企业',
+      companyName: job.company || '',  // ✅ 留空，不编造
       jobId: `ZL${Date.now()}${Math.random().toString(36).substr(2, 9)}`,
       jobName: job.title,
-      jobCategory: '技术类',
+      jobCategory: '',  // ✅ 留空，不编造
       jobTags: '',
-      jobDescription: `负责${job.title}相关的工作，完成上级交办的任务。具备良好的沟通能力和团队合作精神。`,
-      salaryRange: job.salary || '面议',
-      workCity: job.city || config.city || '北京',
-      workExperience: '经验不限',
-      workAddress: job.city || config.city || '北京',
-      education: '学历不限',
+      jobDescription: '',  // ✅ 留空，不编造描述
+      salaryRange: job.salary || '',
+      workCity: job.city || config.city || '',
+      workExperience: '',  // ✅ 留空，不编造
+      workAddress: job.city || config.city || '',
+      education: '',  // ✅ 留空，不编造
       companyCode: '',
-      companyNature: '民营企业',
-      businessScope: '互联网/电子商务',
-      companyScale: '规模不详',
-      recruitmentCount: '若干',
+      companyNature: '',  // ✅ 留空，不编造
+      businessScope: '',  // ✅ 留空，不编造
+      companyScale: '',  // ✅ 留空，不编造
+      recruitmentCount: '',  // ✅ 留空，不编造
       updateDate: new Date().toISOString().split('T')[0],
-      workType: '全职',
+      workType: '',  // ✅ 留空，不编造
       dataSource: '智联招聘'
     };
   }

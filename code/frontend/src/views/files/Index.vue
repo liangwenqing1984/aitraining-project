@@ -44,21 +44,38 @@ function formatDateTime(dateStr: string | null | undefined): string {
   }
 }
 
-// 计算预览表格列
+// 计算预览表格列 - 美化版
 const previewColumns = computed(() => {
   if (previewData.value.length === 0) return []
 
-  const columns = Object.keys(previewData.value[0]).map(key => ({
-    prop: key,
-    label: key,
-    width: 120
-  }))
-
-  // 添加常用列的固定宽度
-  const fixedWidthColumns = ['职位名称', '公司名称', '薪资', '工作地点', '发布时间']
-  columns.forEach(column => {
-    if (fixedWidthColumns.includes(column.label)) {
-      column.width = 150
+  const firstRow = previewData.value[0]
+  const columns = Object.keys(firstRow).map(key => {
+    // 定义常用列的宽度配置
+    const columnConfig: Record<string, { label: string; width?: number; minWidth?: number }> = {
+      '企业名称': { label: '企业名称', minWidth: 180 },
+      '职位名称': { label: '职位名称', minWidth: 200 },
+      '薪资范围': { label: '薪资范围', width: 120 },
+      '工作城市': { label: '工作城市', width: 100 },
+      '工作经验': { label: '工作经验', width: 100 },
+      '学历': { label: '学历', width: 80 },
+      '公司性质': { label: '公司性质', width: 100 },
+      '公司规模': { label: '公司规模', width: 120 },
+      '经营范围': { label: '经营范围', minWidth: 200 },
+      '职位描述': { label: '职位描述', minWidth: 300 },
+      '职位标签': { label: '职位标签', minWidth: 150 },
+      '工作地址': { label: '工作地址', minWidth: 200 },
+      '岗位招聘人数': { label: '招聘人数', width: 100 },
+      '岗位更新日期': { label: '更新日期', width: 110 },
+      '工作性质': { label: '工作性质', width: 90 },
+      '数据来源': { label: '数据来源', width: 90 }
+    }
+    
+    const config = columnConfig[key] || { label: key, minWidth: 120 }
+    return {
+      prop: key,
+      label: config.label,
+      width: config.width,
+      minWidth: config.minWidth
     }
   })
 
@@ -314,14 +331,26 @@ function handleSizeChange(size: number) {
     <el-dialog
       v-model="previewVisible"
       title="文件预览"
-      width="80%"
+      width="90%"
       :before-close="() => previewVisible = false"
     >
+      <div class="preview-info" v-if="previewFile">
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="文件名">{{ previewFile.filename }}</el-descriptions-item>
+          <el-descriptions-item label="数据来源">{{ getSourceName(previewFile.source) }}</el-descriptions-item>
+          <el-descriptions-item label="记录数">{{ previewFile.recordCount }} 条</el-descriptions-item>
+        </el-descriptions>
+      </div>
+      
       <el-table
         v-if="previewData.length > 0"
         :data="previewData"
         stripe
-        style="width: 100%"
+        border
+        style="width: 100%; margin-top: 16px"
+        max-height="500"
+        :cell-style="{ fontSize: '12px' }"
+        :header-cell-style="{ background: '#f5f7fa', color: '#606266', fontWeight: 'bold' }"
       >
         <el-table-column
           v-for="column in previewColumns"
@@ -329,10 +358,17 @@ function handleSizeChange(size: number) {
           :prop="column.prop"
           :label="column.label"
           :width="column.width"
-        />
+          :min-width="column.minWidth"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            <span v-if="row[column.prop]" class="cell-content">{{ row[column.prop] }}</span>
+            <span v-else class="empty-value">-</span>
+          </template>
+        </el-table-column>
       </el-table>
       <div v-else class="preview-empty">
-        暂无数据
+        <el-empty description="暂无数据" />
       </div>
     </el-dialog>
   </div>
@@ -347,9 +383,34 @@ function handleSizeChange(size: number) {
   margin-bottom: 16px;
 }
 
+.preview-info {
+  margin-bottom: 12px;
+}
+
+.cell-content {
+  color: #303133;
+  font-size: 12px;
+}
+
+.empty-value {
+  color: #c0c4cc;
+  font-style: italic;
+}
+
 .preview-empty {
   text-align: center;
   color: #999;
   padding: 40px 0;
+}
+
+/* 美化表格行悬停效果 */
+:deep(.el-table__row:hover) {
+  background-color: #f5f7fa !important;
+}
+
+/* 优化表格边框 */
+:deep(.el-table--border) {
+  border-radius: 4px;
+  overflow: hidden;
 }
 </style>

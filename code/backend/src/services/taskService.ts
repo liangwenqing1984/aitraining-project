@@ -376,7 +376,9 @@ class TaskService {
   private async createCsvFile(filepath: string) {
     const { CSV_FIELDS } = await import('../config/constants');
     const header = CSV_FIELDS.join(',') + '\n';
-    fs.writeFileSync(filepath, header, 'utf-8');
+    // ✅ 添加UTF-8 BOM头，确保Excel正确显示中文
+    const bom = '\uFEFF';
+    fs.writeFileSync(filepath, bom + header, 'utf-8');
   }
 
   // 追加CSV行
