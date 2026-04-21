@@ -1,23 +1,46 @@
-// CSV字段定义
+// CSV字段定义（按顺序）
 export const CSV_FIELDS = [
-  'jobId',
-  'jobName',
-  'jobTags',
-  'jobDescription',
-  'salaryRange',
-  'workCity',
-  'workExperience',
-  'workAddress',
-  'education',
-  'companyCode',
-  'companyNature',
-  'businessScope',
-  'companyScale',
-  'recruitmentCount',
-  'updateDate',
-  'workType',
-  'dataSource'
+  '企业名称',
+  '职位ID',
+  '职位名称',
+  '职位分类',
+  '职位描述',
+  '薪资范围',
+  '工作城市',
+  '工作经验',
+  '工作地址',
+  '学历',
+  '公司代码',
+  '公司性质',
+  '经营范围',
+  '公司规模',
+  '岗位招聘人数',
+  '岗位更新日期',
+  '工作性质',
+  '数据来源'
 ];
+
+// CSV字段映射（英文->中文）
+export const CSV_FIELD_MAP: Record<string, string> = {
+  companyName: '企业名称',
+  jobId: '职位ID',
+  jobName: '职位名称',
+  jobCategory: '职位分类',
+  jobDescription: '职位描述',
+  salaryRange: '薪资范围',
+  workCity: '工作城市',
+  workExperience: '工作经验',
+  workAddress: '工作地址',
+  education: '学历',
+  companyCode: '公司代码',
+  companyNature: '公司性质',
+  businessScope: '经营范围',
+  companyScale: '公司规模',
+  recruitmentCount: '岗位招聘人数',
+  updateDate: '岗位更新日期',
+  workType: '工作性质',
+  dataSource: '数据来源'
+};
 
 // 智联招聘城市代码映射表（基于已知规律推测，黑龙江省已验证）
 export const ZHILIAN_CITY_CODES: Record<string, string> = {

@@ -39,23 +39,25 @@ export interface Task {
 
 // 职位数据
 export interface JobData {
-  jobId: string;
-  jobName: string;
-  jobTags: string;
-  jobDescription: string;
-  salaryRange: string;
-  workCity: string;
-  workExperience: string;
-  workAddress: string;
-  education: string;
-  companyCode: string;
-  companyNature: string;
-  businessScope: string;
-  companyScale: string;
-  recruitmentCount: string;
-  updateDate: string;
-  workType: string;
-  dataSource: string;
+  companyName: string;      // 企业名称
+  jobId: string;            // 职位ID
+  jobName: string;          // 职位名称
+  jobCategory: string;      // 职位分类
+  jobTags: string;          // 职位标签
+  jobDescription: string;   // 职位描述
+  salaryRange: string;      // 薪资范围
+  workCity: string;         // 工作城市
+  workExperience: string;   // 工作经验
+  workAddress: string;      // 工作地址
+  education: string;        // 学历
+  companyCode: string;      // 公司代码
+  companyNature: string;    // 公司性质
+  businessScope: string;    // 经营范围
+  companyScale: string;     // 公司规模
+  recruitmentCount: string; // 岗位招聘人数
+  updateDate: string;       // 岗位更新日期
+  workType: string;         // 工作性质
+  dataSource: string;       // 数据来源
 }
 
 // CSV文件记录

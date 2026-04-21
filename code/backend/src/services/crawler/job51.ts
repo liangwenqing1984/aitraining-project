@@ -514,23 +514,25 @@ export class Job51Crawler {
   // 生成模拟职位数据
   private generateMockJob(job: any, config: TaskConfig): JobData {
     return {
-      jobId: `51${Date.now()}${Math.random().toString(36).substr(2, 9)}`,
-      jobName: job.title,
-      jobTags: '五险一金,周末双休,带薪年假',
-      jobDescription: `负责${job.title}相关工作，参与项目开发和维护。要求具备相关技术能力和团队协作经验。`,
-      salaryRange: job.salary || '面议',
-      workCity: job.city || config.city || '上海',
-      workExperience: '3-5年',
-      workAddress: `${job.city || config.city || '上海'}新区`,
-      education: '本科',
-      companyCode: job.company,
-      companyNature: '外资企业',
-      businessScope: '软件开发',
-      companyScale: '500-999人',
-      recruitmentCount: '3人',
-      updateDate: new Date().toISOString().split('T')[0],
-      workType: '全职',
-      dataSource: '前程无忧'
+      companyName: job.company || '未知企业',     // 企业名称
+      jobId: `51${Date.now()}${Math.random().toString(36).substr(2, 9)}`,  // 职位ID
+      jobName: job.title,                         // 职位名称
+      jobCategory: '技术类',                      // 职位分类（默认值）
+      jobTags: '五险一金,周末双休,带薪年假',      // 职位标签
+      jobDescription: `负责${job.title}相关工作，参与项目开发和维护。要求具备相关技术能力和团队协作经验。`,  // 职位描述
+      salaryRange: job.salary || '面议',          // 薪资范围
+      workCity: job.city || config.city || '上海',  // 工作城市
+      workExperience: '3-5年',                    // 工作经验
+      workAddress: `${job.city || config.city || '上海'}新区`,  // 工作地址
+      education: '本科',                          // 学历
+      companyCode: '',                            // 公司代码
+      companyNature: '外资企业',                  // 公司性质
+      businessScope: '软件开发',                  // 经营范围
+      companyScale: '500-999人',                  // 公司规模
+      recruitmentCount: '3人',                    // 岗位招聘人数
+      updateDate: new Date().toISOString().split('T')[0],  // 岗位更新日期
+      workType: '全职',                           // 工作性质
+      dataSource: '前程无忧'                      // 数据来源
     };
   }
 }

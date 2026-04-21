@@ -382,23 +382,25 @@ class TaskService {
   // 追加CSV行
   private async appendCsvRow(filepath: string, job: JobData) {
     const row = [
-      this.escapeCsv(job.jobId),
-      this.escapeCsv(job.jobName),
-      this.escapeCsv(job.jobTags),
-      this.escapeCsv(job.jobDescription),
-      this.escapeCsv(job.salaryRange),
-      this.escapeCsv(job.workCity),
-      this.escapeCsv(job.workExperience),
-      this.escapeCsv(job.workAddress),
-      this.escapeCsv(job.education),
-      this.escapeCsv(job.companyCode),
-      this.escapeCsv(job.companyNature),
-      this.escapeCsv(job.businessScope),
-      this.escapeCsv(job.companyScale),
-      this.escapeCsv(job.recruitmentCount),
-      this.escapeCsv(job.updateDate),
-      this.escapeCsv(job.workType),
-      this.escapeCsv(job.dataSource)
+      this.escapeCsv(job.companyName),       // 企业名称
+      this.escapeCsv(job.jobId),             // 职位ID
+      this.escapeCsv(job.jobName),           // 职位名称
+      this.escapeCsv(job.jobCategory),       // 职位分类
+      this.escapeCsv(job.jobTags),           // 职位标签
+      this.escapeCsv(job.jobDescription),    // 职位描述
+      this.escapeCsv(job.salaryRange),       // 薪资范围
+      this.escapeCsv(job.workCity),          // 工作城市
+      this.escapeCsv(job.workExperience),    // 工作经验
+      this.escapeCsv(job.workAddress),       // 工作地址
+      this.escapeCsv(job.education),         // 学历
+      this.escapeCsv(job.companyCode),       // 公司代码
+      this.escapeCsv(job.companyNature),     // 公司性质
+      this.escapeCsv(job.businessScope),     // 经营范围
+      this.escapeCsv(job.companyScale),      // 公司规模
+      this.escapeCsv(job.recruitmentCount),  // 岗位招聘人数
+      this.escapeCsv(job.updateDate),        // 岗位更新日期
+      this.escapeCsv(job.workType),          // 工作性质
+      this.escapeCsv(job.dataSource)         // 数据来源
     ].join(',') + '\n';
 
     fs.appendFileSync(filepath, row, 'utf-8');

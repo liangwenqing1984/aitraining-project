@@ -274,8 +274,8 @@ export class ZhilianCrawler {
                 console.log(`[ZhilianCrawler] 滚动后最终检查:`, finalCheck);
               }
 
-              // 🔧 关键改进：改用基于DOM结构的解析方式
-              console.log('[ZhilianCrawler] 开始使用DOM结构解析职位数据...');
+              // 🔧 关键改进：基于 jobinfo 标签解析职位数据
+              console.log('[ZhilianCrawler] 开始使用 jobinfo 标签解析职位数据...');
               
               // @ts-ignore - 此代码在浏览器环境中运行
               const jobs = await page.evaluate(() => {
@@ -289,20 +289,91 @@ export class ZhilianCrawler {
                   return [];
                 }
                 
-                // 策略1: 查找所有职位链接（最可靠的方式）
-                console.log('策略1: 查找职位链接...');
+                // 策略1: 从 jobinfo 标签中提取职位信息（主策略）
+                console.log('策略1: 查找 jobinfo 标签...');
+                const jobInfoElements = Array.from(document.querySelectorAll('jobinfo'));
+                console.log(`找到 ${jobInfoElements.length} 个 jobinfo 标签`);
+                
+                // 去重集合
+                const seenTitles = new Set<string>();
+                let duplicateCount = 0;
+                
+                jobInfoElements.forEach((jobInfo: any) => {
+                  try {
+                    // 提取职位名称
+                    const titleEl = jobInfo.querySelector('.jobname a, .job-name, [class*="jobname"] a, a[href*="/job/"]');
+                    const title = titleEl ? (titleEl.textContent || '').trim() : '';
+                    
+                    // 过滤无效标题
+                    if (!title || title.length < 4 || title.length > 100) return;
+                    if (title.includes('立即沟通') || title.includes('立即投递') || 
+                        title.includes('收藏') || title.includes('分享')) return;
+                    
+                    // 去重检查
+                    if (seenTitles.has(title)) {
+                      duplicateCount++;
+                      return;
+                    }
+                    seenTitles.add(title);
+                    
+                    // 提取企业名称
+                    const companyEl = jobInfo.querySelector('.company a, .company-name, [class*="company"] a');
+                    const company = companyEl ? (companyEl.textContent || '').trim() : '未知企业';
+                    
+                    // 提取薪资信息
+                    const salaryEl = jobInfo.querySelector('.salary, [class*="salary"], .zp-salary');
+                    const salary = salaryEl ? (salaryEl.textContent || '').trim() : '面议';
+                    
+                    // 提取城市信息
+                    const cityEl = jobInfo.querySelector('.city a, .work-city, [class*="city"]');
+                    const cityText = cityEl ? (cityEl.textContent || '').trim() : '';
+                    const cityMatch = cityText.match(/(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波)/);
+                    const city = cityMatch ? cityMatch[1] : '';
+                    
+                    // 提取职位链接
+                    const linkEl = jobInfo.querySelector('a[href*="/job/"]');
+                    const link = linkEl ? (linkEl as HTMLAnchorElement).href : '';
+                    
+                    jobList.push({
+                      title: title,
+                      company: company || '未知企业',
+                      salary: salary || '面议',
+                      city: city,
+                      link: link
+                    });
+                    
+                  } catch (e) {
+                    console.error('处理 jobinfo 元素时出错:', e);
+                  }
+                });
+                
+                console.log(`通过 jobinfo 标签提取到 ${jobList.length} 个职位（去重${duplicateCount}个重复项）`);
+                
+                // 🔧 调试日志：输出前5个职位的详细信息
+                if (jobList.length > 0) {
+                  console.log('前5个职位详情:');
+                  jobList.slice(0, 5).forEach((job, idx) => {
+                    console.log(`  ${idx + 1}. ${job.title.substring(0, 40)} | ${job.company.substring(0, 20)} | ${job.salary}`);
+                  });
+                }
+                
+                // 如果通过 jobinfo 提取到足够的职位，直接返回
+                if (jobList.length >= 15) {
+                  console.log(`✓ DOM结构解析成功，找到 ${jobList.length} 个职位`);
+                  return jobList;
+                }
+                
+                // 策略2: 备用方案 - 查找所有职位链接
+                console.log('策略2: 备用方案 - 查找职位链接...');
                 const jobLinks = Array.from(document.querySelectorAll('a[href*="/job/"]'));
                 console.log(`找到 ${jobLinks.length} 个职位链接`);
                 
-                // 🔧 增强去重：同时基于href和职位标题去重
                 const seenHrefs = new Set<string>();
-                const seenTitles = new Set<string>();
-                let duplicateCount = 0;
                 
                 jobLinks.forEach((link: any) => {
                   try {
                     const href = link.href || '';
-                    if (!href) return;
+                    if (!href || seenHrefs.has(href)) return;
                     
                     const title = link.textContent?.trim() || '';
                     
@@ -311,14 +382,7 @@ export class ZhilianCrawler {
                     if (title.includes('立即沟通') || title.includes('立即投递') || 
                         title.includes('收藏') || title.includes('分享')) return;
                     
-                    // 🔧 检查是否重复
-                    if (seenHrefs.has(href) || seenTitles.has(title)) {
-                      duplicateCount++;
-                      return;
-                    }
-                    
                     seenHrefs.add(href);
-                    seenTitles.add(title);
                     
                     // 向上查找父容器以获取更多信息
                     let container = link.parentElement;
@@ -327,11 +391,9 @@ export class ZhilianCrawler {
                     let city = '';
                     let depth = 0;
                     
-                    // 向上遍历最多5层父元素
                     while (container && depth < 5) {
                       const containerText = container.textContent || '';
                       
-                      // 提取薪资信息
                       if (!salary || salary === '面议') {
                         const salaryMatch = containerText.match(/(\d+(?:\.\d+)?[-~]\d+(?:\.\d+)?[Kk万])|(\d+(?:\.\d+)?[Kk万](?:以上)?)/);
                         if (salaryMatch) {
@@ -339,7 +401,6 @@ export class ZhilianCrawler {
                         }
                       }
                       
-                      // 提取企业名称
                       if (!company) {
                         const companyMatch = containerText.match(/([\u4e00-\u9fa5]{2,30}(?:公司|科技|信息|网络|软件|技术|开发|有限))/);
                         if (companyMatch) {
@@ -347,15 +408,13 @@ export class ZhilianCrawler {
                         }
                       }
                       
-                      // 提取城市信息
                       if (!city) {
-                        const cityMatch = containerText.match(/(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波)[·\s-]?[\u4e00-\u9fa5]*/);
+                        const cityMatch = containerText.match(/(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波)/);
                         if (cityMatch) {
                           city = cityMatch[1];
                         }
                       }
                       
-                      // 如果三个信息都找到了，停止向上查找
                       if (salary !== '面议' && company && city) {
                         break;
                       }
@@ -363,6 +422,12 @@ export class ZhilianCrawler {
                       container = container.parentElement;
                       depth++;
                     }
+                    
+                    // 去重检查
+                    if (seenTitles.has(title)) {
+                      return;
+                    }
+                    seenTitles.add(title);
                     
                     jobList.push({
                       title: title.trim(),
@@ -376,108 +441,6 @@ export class ZhilianCrawler {
                     console.error('处理职位链接时出错:', e);
                   }
                 });
-                
-                console.log(`通过链接提取找到 ${jobList.length} 个职位（去重${duplicateCount}个重复项）`);
-                
-                // 🔧 调试日志：输出前5个职位的详细信息
-                if (jobList.length > 0) {
-                  console.log('前5个职位详情:');
-                  jobList.slice(0, 5).forEach((job, idx) => {
-                    console.log(`  ${idx + 1}. ${job.title.substring(0, 40)} | ${job.company.substring(0, 20)} | ${job.salary}`);
-                  });
-                }
-                
-                // 如果通过链接提取到的职位数量足够，直接返回
-                if (jobList.length >= 15) {
-                  console.log(`✓ DOM结构解析成功，找到 ${jobList.length} 个职位`);
-                  return jobList;
-                }
-                
-                // 策略2: 备用方案 - 查找包含职位信息的卡片容器
-                console.log('策略2: 查找职位卡片容器...');
-                
-                // 尝试常见的职位容器选择器
-                const containerSelectors = [
-                  '[class*="joblist"] [class*="item"]',
-                  '[class*="position"] [class*="item"]',
-                  '[class*="sou"] [class*="item"]',
-                  'article[class*="job"]',
-                  'section[class*="job"]',
-                  'div[class*="job-card"]',
-                  'div[class*="position-card"]'
-                ];
-                
-                for (const selector of containerSelectors) {
-                  try {
-                    const containers = document.querySelectorAll(selector);
-                    if (containers.length === 0) continue;
-                    
-                    console.log(`选择器 "${selector}" 找到 ${containers.length} 个容器`);
-                    
-                    containers.forEach((container: any) => {
-                      try {
-                        const text = container.textContent || '';
-                        
-                        // 检查是否包含职位关键词
-                        if (!text.includes('开发') && !text.includes('工程师') && 
-                            !text.includes('Java') && !text.includes('Python')) {
-                          return;
-                        }
-                        
-                        // 提取职位名称（通常是第一个较长的文本块）
-                        const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-                        let title = '';
-                        for (const line of lines) {
-                          if (line.length > 5 && line.length < 80 && 
-                              (line.includes('开发') || line.includes('工程师') || 
-                               line.toLowerCase().includes('java') || line.toLowerCase().includes('python'))) {
-                            title = line;
-                            break;
-                          }
-                        }
-                        
-                        if (!title) return;
-                        
-                        // 提取企业信息
-                        const companyMatch = text.match(/([\u4e00-\u9fa5]{2,30}(?:公司|科技|信息|网络|软件|技术|开发|有限))/);
-                        const company = companyMatch ? companyMatch[1] : '未知企业';
-                        
-                        // 提取薪资
-                        const salaryMatch = text.match(/(\d+(?:\.\d+)?[-~]\d+(?:\.\d+)?[Kk万])|(\d+(?:\.\d+)?[Kk万](?:以上)?)/);
-                        const salary = salaryMatch ? salaryMatch[0] : '面议';
-                        
-                        // 提取城市
-                        const cityMatch = text.match(/(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波)/);
-                        const city = cityMatch ? cityMatch[1] : '';
-                        
-                        // 提取链接
-                        const linkEl = container.querySelector('a[href*="/job/"]');
-                        const link = linkEl ? (linkEl as HTMLAnchorElement).href : '';
-                        
-                        // 去重
-                        const isDuplicate = jobList.some(job => job.title === title && job.company === company);
-                        if (!isDuplicate) {
-                          jobList.push({
-                            title: title.trim(),
-                            company: company.trim(),
-                            salary: salary.trim(),
-                            city: city.trim(),
-                            link: link
-                          });
-                        }
-                        
-                      } catch (e) {
-                        // 忽略单个容器的错误
-                      }
-                    });
-                    
-                    // 如果已经找到足够的职位，跳出循环
-                    if (jobList.length >= 15) break;
-                    
-                  } catch (e) {
-                    console.error(`选择器 "${selector}" 执行失败:`, e);
-                  }
-                }
                 
                 console.log(`✓ DOM结构解析完成，共找到 ${jobList.length} 个职位`);
                 return jobList;
@@ -694,23 +657,25 @@ export class ZhilianCrawler {
   // 生成模拟职位数据
   private generateMockJob(job: any, config: TaskConfig): JobData {
     return {
-      jobId: `ZL${Date.now()}${Math.random().toString(36).substr(2, 9)}`,
-      jobName: job.title,
-      jobTags: '五险一金,双休,年终奖',
-      jobDescription: `负责${job.title}相关的工作，完成上级交办的任务。具备良好的沟通能力和团队合作精神。`,
-      salaryRange: job.salary || '面议',
-      workCity: job.city || config.city || '北京',
-      workExperience: '1-3年',
-      workAddress: `${job.city || config.city || '北京'}市中心`,
-      education: '本科',
-      companyCode: job.company,
-      companyNature: '民营企业',
-      businessScope: '互联网/电子商务',
-      companyScale: '100-499人',
-      recruitmentCount: '2人',
-      updateDate: new Date().toISOString().split('T')[0],
-      workType: '全职',
-      dataSource: '智联招聘'
+      companyName: job.company || '未知企业',     // 企业名称
+      jobId: `ZL${Date.now()}${Math.random().toString(36).substr(2, 9)}`,  // 职位ID
+      jobName: job.title,                         // 职位名称
+      jobCategory: '技术类',                      // 职位分类（默认值）
+      jobTags: '五险一金,双休,年终奖',            // 职位标签
+      jobDescription: `负责${job.title}相关的工作，完成上级交办的任务。具备良好的沟通能力和团队合作精神。`,  // 职位描述
+      salaryRange: job.salary || '面议',          // 薪资范围
+      workCity: job.city || config.city || '北京',  // 工作城市
+      workExperience: '1-3年',                    // 工作经验
+      workAddress: `${job.city || config.city || '北京'}市中心`,  // 工作地址
+      education: '本科',                          // 学历
+      companyCode: '',                            // 公司代码
+      companyNature: '民营企业',                  // 公司性质
+      businessScope: '互联网/电子商务',           // 经营范围
+      companyScale: '100-499人',                  // 公司规模
+      recruitmentCount: '2人',                    // 岗位招聘人数
+      updateDate: new Date().toISOString().split('T')[0],  // 岗位更新日期
+      workType: '全职',                           // 工作性质
+      dataSource: '智联招聘'                      // 数据来源
     };
   }
 }
