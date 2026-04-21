@@ -294,13 +294,15 @@ export class ZhilianCrawler {
                 const jobLinks = Array.from(document.querySelectorAll('a[href*="/job/"]'));
                 console.log(`找到 ${jobLinks.length} 个职位链接`);
                 
-                // 去重：基于href去重
+                // 🔧 增强去重：同时基于href和职位标题去重
                 const seenHrefs = new Set<string>();
+                const seenTitles = new Set<string>();
+                let duplicateCount = 0;
                 
                 jobLinks.forEach((link: any) => {
                   try {
                     const href = link.href || '';
-                    if (!href || seenHrefs.has(href)) return;
+                    if (!href) return;
                     
                     const title = link.textContent?.trim() || '';
                     
@@ -309,7 +311,14 @@ export class ZhilianCrawler {
                     if (title.includes('立即沟通') || title.includes('立即投递') || 
                         title.includes('收藏') || title.includes('分享')) return;
                     
+                    // 🔧 检查是否重复
+                    if (seenHrefs.has(href) || seenTitles.has(title)) {
+                      duplicateCount++;
+                      return;
+                    }
+                    
                     seenHrefs.add(href);
+                    seenTitles.add(title);
                     
                     // 向上查找父容器以获取更多信息
                     let container = link.parentElement;
@@ -368,7 +377,15 @@ export class ZhilianCrawler {
                   }
                 });
                 
-                console.log(`通过链接提取找到 ${jobList.length} 个职位`);
+                console.log(`通过链接提取找到 ${jobList.length} 个职位（去重${duplicateCount}个重复项）`);
+                
+                // 🔧 调试日志：输出前5个职位的详细信息
+                if (jobList.length > 0) {
+                  console.log('前5个职位详情:');
+                  jobList.slice(0, 5).forEach((job, idx) => {
+                    console.log(`  ${idx + 1}. ${job.title.substring(0, 40)} | ${job.company.substring(0, 20)} | ${job.salary}`);
+                  });
+                }
                 
                 // 如果通过链接提取到的职位数量足够，直接返回
                 if (jobList.length >= 15) {
