@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth2 授权测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f9f9f9;
+            border-left: 4px solid #667eea;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .url-display {
+            background: #2d2d2d;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            margin: 10px 0;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background: #667eea;
+            color: white;
+        }
+        .check-list {
+            list-style: none;
+            padding: 0;
+        }
+        .check-list li {
+            padding: 8px 0;
+            padding-left: 30px;
+            position: relative;
+        }
+        .check-list li:before {
+            content: "☐";
+            position: absolute;
+            left: 0;
+            font-size: 20px;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 OAuth2 授权测试工具</h1>
+        
+        <div class="test-section">
+            <h2>当前配置</h2>
+            <table>
+                <tr>
+                    <th>参数</th>
+                    <th>值</th>
+                </tr>
+                <tr>
+                    <td>授权地址</td>
+                    <td id="authUrl"></td>
+                </tr>
+                <tr>
+                    <td>Client ID</td>
+                    <td id="clientId"></td>
+                </tr>
+                <tr>
+                    <td>Redirect URI</td>
+                    <td id="redirectUri"></td>
+                </tr>
+                <tr>
+                    <td>Scope</td>
+                    <td id="scope"></td>
+                </tr>
+            </table>
+        </div>
+
+        <div class="test-section">
+            <h2>测试选项</h2>
+            <button onclick="testWithCurrentConfig()">使用当前配置测试</button>
+            <button onclick="testWithApiCallback()">使用 /api/auth/callback 测试</button>
+            <button onclick="showFullUrl()">显示完整URL</button>
+        </div>
+
+        <div class="test-section">
+            <h2>诊断清单</h2>
+            <ul class="check-list">
+                <li>确认应用已在Auth服务注册</li>
+                <li>确认client_id正确（aitraining）</li>
+                <li>确认redirect_uri与注册的一致</li>
+                <li>确认Auth服务正常运行</li>
+                <li>检查网络连接是否正常</li>
+            </ul>
+        </div>
+
+        <div id="result" class="result info" style="display: none;">
+            <h3>测试结果</h3>
+            <p id="resultText"></p>
+        </div>
+
+        <div class="test-section">
+            <h2>下一步操作</h2>
+            <ol>
+                <li><strong>点击测试按钮</strong>，观察是否能跳转到登录页</li>
+                <li><strong>如果400错误</strong> → 应用可能未注册，联系管理员</li>
+                <li><strong>如果显示登录页</strong> → 配置正确，可以正常使用</li>
+                <li><strong>查看浏览器控制台</strong>（F12）获取详细错误信息</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        // 配置信息 - 统一使用 aitraining
+        const config = {
+            authorizeUrl: 'http://leaf-auth-server.dev.jinxin.cloud/auth2/oauth2/authorize',
+            clientId: 'aitraining',  // 统一使用 aitraining
+            redirectUri: 'http://localhost:3000/auth/callback',  // 前端路由
+            scope: 'openid all'
+        };
+
+        // 初始化显示
+        document.getElementById('authUrl').textContent = config.authorizeUrl;
+        document.getElementById('clientId').textContent = config.clientId;
+        document.getElementById('redirectUri').textContent = config.redirectUri;
+        document.getElementById('scope').textContent = config.scope;
+
+        // 生成授权URL
+        function generateAuthUrl(redirectUri) {
+            const state = Math.random().toString(36).substring(2, 15);
+            const params = new URLSearchParams({
+                client_id: config.clientId,
+                response_type: 'code',
+                scope: config.scope,
+                redirect_uri: redirectUri || config.redirectUri,
+                state: state
+            });
+            return `${config.authorizeUrl}?${params.toString()}`;
+        }
+
+        // 使用当前配置测试
+        function testWithCurrentConfig() {
+            const url = generateAuthUrl();
+            console.log('[Test] 测试URL:', url);
+            showResult('正在跳转...', 'info');
+            setTimeout(() => {
+                window.location.href = url;
+            }, 500);
+        }
+
+        // 使用/api/auth/callback测试
+        function testWithApiCallback() {
+            const apiRedirectUri = 'http://localhost:3000/api/auth/callback';
+            const url = generateAuthUrl(apiRedirectUri);
+            console.log('[Test] 测试URL (带/api):', url);
+            showResult(`正在测试 redirect_uri=${apiRedirectUri}...`, 'info');
+            setTimeout(() => {
+                window.location.href = url;
+            }, 500);
+        }
+
+        // 显示完整URL
+        function showFullUrl() {
+            const url = generateAuthUrl();
+            const resultDiv = document.getElementById('result');
+            const resultText = document.getElementById('resultText');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultText.innerHTML = `
+                <strong>完整授权URL：</strong><br>
+                <div class="url-display">${url}</div>
+                <p>您可以复制此URL直接在浏览器中访问测试</p>
+            `;
+        }
+
+        // 显示结果
+        function showResult(message, type) {
+            const resultDiv = document.getElementById('result');
+            const resultText = document.getElementById('resultText');
+            
+            resultDiv.style.display = 'block';
+            resultDiv.className = `result ${type}`;
+            resultText.textContent = message;
+        }
+
+        // 页面加载时显示提示
+        window.onload = function() {
+            console.log('%c OAuth2测试工具已加载 ', 'background: #667eea; color: white; font-size: 16px; padding: 10px;');
+            console.log('配置信息:', config);
+        };
+    </script>
+</body>
+</html>

@@ -27,5 +27,5 @@
 可补充要求：
 
 ```text
-search_vector 当前只索引 content，所以标题需要额外匹配；不要固定截取正文开头作为摘要，应根据命中词截取上下文；对于 jiebacfg 分词后的词元，要把数据库实际解析出的 tsquery 词元也返回给前端用于高亮；结果页需要分页，建议用 limit + 1 判断 hasNext，避免每次 count(*)。
+search_vector 当前只索引 content，所以标题需要额外匹配；不要固定截取正文开头作为摘要，应根据命中词截取上下文；对于 jiebacfg 分词后的词元，要把数据库实际解析出的 tsquery 词元也返回给前端用于高亮；全文检索时不要使用 `order by` 排序；结果页需要分页，建议用 limit + 1 判断 hasNext，避免每次 count(*)。
 ```

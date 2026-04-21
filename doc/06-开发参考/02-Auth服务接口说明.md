@@ -22,6 +22,16 @@
 - 返回包装结构
 - 常见数据对象字段约定
 
+#### 本地 OAuth2 回调约束
+
+本项目在本地联调 OAuth2 授权码模式时，回调地址不是可随意变更的示例值，而是固定约束：
+
+- `OAUTH_REDIRECT_URI` 必须配置为 `http://localhost:3000/api/auth/callback`
+- 因为回调地址固定包含 `localhost:3000`，所以后端服务在本地启动联调时，服务端口务必使用 `3000`
+- 如果本地服务启动在其他端口，例如 `3001`、`8080`，将无法正确接收认证中心回调，进而导致授权码登录流程失败
+
+涉及 OAuth2 授权码登录、回调处理、`code` 换 token 等场景时，均应按上述固定配置执行。
+
 在本文档中涉及的应用标识约定如下：
 
 - `appCode` 为应用编号，每个应用只会有一个 `appCode`
@@ -39,7 +49,7 @@
 
 - 顶层字段通常包含：`code`、`message`、`data`
 - 业务数据优先从 `data` 字段读取
-- 列表接口若返回分页对象，分页字段通常位于 `data` 内部
+- 列表接口若返回分页对象，`data` 为分页对象，分页列表字段使用 `dataList`
 
 ##### `BaseResponse<T>`
 
@@ -116,6 +126,7 @@
 | GET | `/api/v2/login/getLoginTokenByUserLoginName` | `JSONResult<TokenVO>` | query: `userLoginName` |
 | GET | `/api/v2/login/getLoginToken` | `JSONResult<TokenVO>` | 无参 |
 | GET | `/api/v2/login/getBase64LoginToken` | `JSONResult<TokenVO>` | 无参 |
+| POST | `/api/v2/login/logoutTicket` | `JSONResult<String>` | 无参，依赖当前登录态 |
 | GET | `/api/v2/login/ticket` | `JSONResult<String>` | 无参 |
 | GET | `/api/v2/login/ticket/userinfo` | `JSONResult<UserLoginVO>` | query: `ticket` |
 
@@ -221,6 +232,25 @@
   接口描述：获取当前登录用户的 base64 加密 token。
   请求参数：无业务入参，通常依赖当前登录态。
   响应数据：`JSONResult<TokenVO>`，返回 base64 编码后的 `accessToken` 和 `refreshToken`。
+- `POST /api/v2/login/logoutTicket`
+  接口描述：获取当前登录用户的登出票据，用于后续拼接 `/oauth/logout` 地址。
+  请求参数：无业务 body，通常依赖当前登录态，调用时建议带 `Authorization: Bearer {access_token}`，跨站场景可同时带认证中心 Cookie。
+  响应数据：`JSONResult<String>`，`data` 为本次登出使用的一次性 `logoutTicket`。
+  典型响应示例：
+
+  ```json
+  {
+    "status": 200,
+    "msg": "操作成功！",
+    "success": true,
+    "data": "cf4671ad-5b8c-448e-98b6-ffb6bda37678"
+  }
+  ```
+
+  推荐使用方式：
+  1. 先调用本接口获取 `logoutTicket`。
+  2. 再跳转：
+     `http://leaf-auth-server.dev.jinxin.cloud/auth2/oauth/logout?client_id=aitraining&post_logout_redirect_uri=http://localhost:3000&logout_ticket={logoutTicket}&state=123`
 - `GET /api/v2/login/ticket`
   接口描述：获取登录用户票据。
   请求参数：无业务入参，通常依赖当前登录态。
@@ -271,7 +301,7 @@
 - `POST /api/v2/user/pageUserInfosByEntity`
   接口描述：分页查询用户信息。
   请求参数：`UserInfoQueryDTO`，除分页公共字段外，主要包括 `encryptKeyWords` 加密关键字、`launchStatusCd` 账号状态、`organizationId` 部门、`grpId` 分组、`authRoleId` 账号类型、`organizationIds` 部门 ID 数组、`ifAuthed` 授权状态、`tenantIds` 租户 ID 数组、`ifDelete` 是否删除、`userIds` 用户 ID 数组。
-  响应数据：`JSONResult<PageResult<AuthUserInfoVO>>`，`data.records` 为用户列表，`data.total/current/size` 为分页信息。
+  响应数据：`JSONResult<PageResult<AuthUserInfoVO>>`，`data.dataList` 为用户列表，`data.total/current/size` 为分页信息。
 - `GET /api/v2/user/listUserInfoByUserLoginNameList`
   接口描述：根据用户名批量查询用户信息。
   请求参数：查询参数 `userLoginNameList`，含义为用户名数组。
@@ -1146,7 +1176,7 @@
   "code": "200",
   "message": "成功",
   "data": {
-    "records": [
+    "dataList": [
       {
         "userId": 10001,
         "tenantId": 20001,
@@ -1743,7 +1773,7 @@
   "code": "200",
   "message": "成功",
   "data": {
-    "records": [
+    "dataList": [
       {
         "logRecordId": 1,
         "applId": 50001,

@@ -42,7 +42,9 @@ BASE 大部分非分页接口返回 `JSONResult<T>`。
 - `pageNum`
 - `pageSize`
 - `total`
-- `data`
+- `dataList`
+
+分页列表数据统一放在 `dataList` 字段中，不使用 `data` 字段承载列表内容。
 
 #### 二进制响应
 
@@ -147,7 +149,6 @@ BASE 大部分非分页接口返回 `JSONResult<T>`。
 | POST | `/ds/selectDataSourceList` | `JSONResult<List<DataSourceApiVo>>` | body: `DataSourceInput` |
 | GET | `/ds/selectDataSourceTemplateList` | `JSONResult<List<DataSourceTemplateApiVo>>` | 无参 |
 | GET | `/ds/selectDataSourceTemplate` | `JSONResult<DataSourceTemplateApiVo>` | query: `dataSourceTemplateId` |
-| POST | `/ds/execSql` | `JSONResult<Boolean>` | body: `DataSourceExecSqlInput` |
 | POST | `/rest/dataSourceTemplate/page` | `PageResult<DataSourceTemplateVo>` | body: `PageDataSourceTemplateInput` |
 | POST | `/rest/datasource/page` | `PageResult<DataSourceVo>` | body: `PageDataSourceInput` |
 | POST | `/rest/datasource/add` | `JSONResult<Boolean>` | body: `AddDataSourceInput` |
@@ -283,7 +284,7 @@ Cookie: seabox_acc_token={access_token}; access_token={access_token}
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": []
+  "dataList": []
 }
 ```
 
@@ -967,47 +968,6 @@ GET /ds/selectDataSourceTemplate?dataSourceTemplateId=1 HTTP/1.1
 }
 ```
 
-### POST /ds/execSql
-
-接口描述：
-
-执行sql
-
-请求入参：
-
-- 请求体: `DataSourceExecSqlInput`
-  - `dataSourceId` (Long): 数据源id
-  - `sql` (String): 需要执行的sql
-
-响应出参：
-
-- 返回类型: `JSONResult<Boolean>`
-- 顶层字段: `success`、`msg`、`data`。
-- `data`: `Boolean`。
-
-
-请求示例：
-
-```http
-POST /ds/execSql HTTP/1.1
-Content-Type: application/json
-
-{
-  "dataSourceId": 1,
-  "sql": "sample"
-}
-```
-
-响应示例：
-
-```json
-{
-  "success": true,
-  "msg": "success",
-  "data": true
-}
-```
-
 ### POST /rest/dataSourceTemplate/page
 
 接口描述：
@@ -1029,8 +989,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<DataSourceTemplateVo>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `DataSourceTemplateVo` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `DataSourceTemplateVo` 列表。
   - `serialVersionUID` (static final long): 见示例
   - `templateId` (Long): 模板标识
   - `templateName` (String): 模板名称
@@ -1081,7 +1041,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "templateId": 1,
       "templateName": "sample",
@@ -1134,8 +1094,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<DataSourceVo>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `DataSourceVo` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `DataSourceVo` 列表。
   - `dataSourceId` (Long): 数据源标识
   - `dataSourceName` (String): 数据源标识
   - `dataSourceHost` (String): host地址
@@ -1209,7 +1169,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "dataSourceId": 1,
       "dataSourceName": "sample",
@@ -3198,8 +3158,8 @@ file=@source.xlsx
 响应出参：
 
 - 返回类型: `PageResult<JobGroupApiVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `JobGroupApiVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `JobGroupApiVO` 列表。
   - `jobGrpId` (Long): 任务组标识
   - `jobGrpName` (String): 任务组名称
   - `jobGrpDescribe` (String): 任务描述
@@ -3238,7 +3198,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "jobGrpId": 1,
       "jobGrpName": "sample",
@@ -4198,8 +4158,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<JobInfoApiVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `JobInfoApiVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `JobInfoApiVO` 列表。
   - `jobId` (Long): 任务标识
   - `jobName` (String): 任务名称
   - `jobCode` (String): 任务编码
@@ -4246,7 +4206,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "jobId": 1,
       "jobName": "sample",
@@ -4810,8 +4770,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<JobGroupInstanceVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `JobGroupInstanceVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `JobGroupInstanceVO` 列表。
 
 
 请求示例：
@@ -4834,7 +4794,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "jobGroupInstanceId": 1
     }
@@ -4858,8 +4818,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<JobInstanceVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `JobInstanceVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `JobInstanceVO` 列表。
 
 
 请求示例：
@@ -4882,7 +4842,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "jobInstanceId": 1
     }
@@ -5319,8 +5279,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<SyncJobVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `SyncJobVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `SyncJobVO` 列表。
   - `serialVersionUID` (static final long): 见示例
   - `syncJobId` (Long): 作业标识
   - `syncJobFileId` (Long): 作业文件标识
@@ -5379,7 +5339,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "syncJobId": 1,
       "syncJobFileId": 1,
@@ -5429,8 +5389,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<SyncJobHistoryVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `SyncJobHistoryVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `SyncJobHistoryVO` 列表。
   - `syncJobId` (Long): 作业标识
   - `syncJobFileId` (Long): 作业文件标识
   - `syncJobName` (String): 作业名称
@@ -5461,7 +5421,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "syncJobId": 1,
       "syncJobFileId": 1,
@@ -6537,8 +6497,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<SyncJobInstanceVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `SyncJobInstanceVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `SyncJobInstanceVO` 列表。
   - `serialVersionUID` (static final long): 见示例
   - `syncJobInstanceId` (Long): 实例标识
   - `syncJobId` (Long): 数据同步标识
@@ -6574,7 +6534,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "syncJobInstanceId": 1,
       "syncJobId": 1,
@@ -7377,8 +7337,8 @@ Content-Type: application/json
 响应出参：
 
 - 返回类型: `PageResult<WfBaseDefVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `WfBaseDefVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `WfBaseDefVO` 列表。
   - `wfBaseDefObjectId` (Long): 工作流基础定义对象标识
   - `wfBaseDefFileId` (Long): 工作流基础定义文件标识
   - `wfCnName` (String): 工作流中文名称
@@ -7434,7 +7394,7 @@ Content-Type: application/json
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "wfBaseDefObjectId": 1,
       "wfBaseDefFileId": 1,
@@ -8951,8 +8911,8 @@ POST /workflow/countMyWfInstance?keyWord=sample&filterType=sample&approvalObject
 响应出参：
 
 - 返回类型: `PageResult<WfInstanceApiVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `WfInstanceApiVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `WfInstanceApiVO` 列表。
   - `wfInstanceId` (Long): 工作流实例标识
   - `wfBaseDefObjectId` (Long): 工作流基础定义对象标识
   - `wfBaseDefFileId` (Long): 工作流基础定义文件标识
@@ -8997,7 +8957,7 @@ POST /workflow/pageMyWfInstance?keyWord=sample&filterType=sample&approvalObjectI
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "wfInstanceId": 1,
       "wfBaseDefObjectId": 1,
@@ -9046,8 +9006,8 @@ POST /workflow/pageMyWfInstance?keyWord=sample&filterType=sample&approvalObjectI
 响应出参：
 
 - 返回类型: `PageResult<WfInstanceApiVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `WfInstanceApiVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `WfInstanceApiVO` 列表。
   - `wfInstanceId` (Long): 工作流实例标识
   - `wfBaseDefObjectId` (Long): 工作流基础定义对象标识
   - `wfBaseDefFileId` (Long): 工作流基础定义文件标识
@@ -9092,7 +9052,7 @@ POST /workflow/pageWfInstance?keyWord=sample&filterType=sample&approvalObjectId=
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "wfInstanceId": 1,
       "wfBaseDefObjectId": 1,
@@ -9664,8 +9624,8 @@ POST /workflow/node/count?keyWord=sample&filterType=sample&approvalObjectId=samp
 响应出参：
 
 - 返回类型: `PageResult<WfInstanceNodeApiVO>`
-- 顶层字段: `pageNum`、`pageSize`、`total`、`data`。
-- `data`: `WfInstanceNodeApiVO` 列表。
+- 顶层字段: `pageNum`、`pageSize`、`total`、`dataList`。
+- `dataList`: `WfInstanceNodeApiVO` 列表。
   - `wfInstanceId` (Long): 工作流实例标识
   - `wfInstanceNodeId` (Long): 工作流实例节点标识
   - `wfDefDeployInstanceId` (Long): 工作流定义部署实例标识
@@ -9714,7 +9674,7 @@ POST /workflow/node/page?keyWord=sample&filterType=sample&approvalObjectId=sampl
   "pageNum": 1,
   "pageSize": 10,
   "total": 1,
-  "data": [
+  "dataList": [
     {
       "wfInstanceId": 1,
       "wfInstanceNodeId": 1,

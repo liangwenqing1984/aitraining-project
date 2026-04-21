@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useUserStore } from '@/stores/user'
+import { getUserInfo, logout as authLogout } from '@/utils/auth'
 import {
   HomeFilled,
   InfoFilled,
@@ -22,7 +22,14 @@ import {
 
 const route = useRoute()
 const router = useRouter()
-const userStore = useUserStore()
+
+// 🔧 从Auth服务获取的用户信息
+const userInfo = ref<any>({
+  name: '用户',
+  avatar: '',
+  userId: '',
+  userLoginName: ''
+})
 
 const isCollapse = ref(false)
 
@@ -68,12 +75,31 @@ const handleMenuSelect = (path: string) => {
 
 const handleCommand = (command: string) => {
   if (command === 'logout') {
-    userStore.logout()
-    // 这里可以跳转到登录页
+    handleLogout()
   } else if (command === 'profile') {
     // 跳转到个人中心
   }
 }
+
+// 🔧 处理登出
+const handleLogout = () => {
+  console.log('[MainLayout] 用户登出')
+  authLogout()
+}
+
+// 🔧 加载用户信息
+onMounted(() => {
+  const info = getUserInfo()
+  if (info) {
+    userInfo.value = {
+      name: info.cnName || info.userLoginName || '用户',
+      avatar: info.userProfilePhoto || '',
+      userId: info.userId,
+      userLoginName: info.userLoginName
+    }
+    console.log('[MainLayout] 用户信息已加载:', userInfo.value)
+  }
+})
 
 // 获取当前页面标题
 const getCurrentPageTitle = () => {
@@ -145,12 +171,12 @@ const getCurrentPageTitle = () => {
         <div class="header-right">
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="user-info">
-              <el-avatar :size="36" :src="userStore.userInfo.avatar" class="user-avatar">
-                {{ userStore.userInfo.name?.charAt(0) }}
+              <el-avatar :size="36" :src="userInfo.avatar" class="user-avatar">
+                {{ userInfo.name?.charAt(0) }}
               </el-avatar>
               <div class="user-details">
-                <span class="user-name">{{ userStore.userInfo.name }}</span>
-                <span class="user-role">管理员</span>
+                <span class="user-name">{{ userInfo.name }}</span>
+                <span class="user-role">{{ userInfo.userLoginName || '用户' }}</span>
               </div>
               <el-icon class="dropdown-icon"><ArrowDown /></el-icon>
             </div>
