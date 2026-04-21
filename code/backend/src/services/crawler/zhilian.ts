@@ -274,244 +274,195 @@ export class ZhilianCrawler {
                 console.log(`[ZhilianCrawler] 滚动后最终检查:`, finalCheck);
               }
 
-              // 提取职位数据 - 使用基于文本内容的智能分析方法
+              // 🔧 关键改进：改用基于DOM结构的解析方式
+              console.log('[ZhilianCrawler] 开始使用DOM结构解析职位数据...');
+              
               // @ts-ignore - 此代码在浏览器环境中运行
               const jobs = await page.evaluate(() => {
                 const jobList: any[] = [];
                 
-                console.log('开始提取职位数据...');
+                console.log('开始DOM结构解析...');
                 
-                // 🔧 关键修复: 检查document.body是否存在
+                // 🔧 检查document.body是否存在
                 if (!document.body) {
                   console.error('[ZhilianCrawler] document.body为null,页面可能加载失败');
                   return [];
                 }
                 
-                // 策略1: 查找包含职位关键词的文本块，然后向上追溯父容器
-                const allTexts = document.body.textContent || '';
-                const lines = allTexts.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                // 策略1: 查找所有职位链接（最可靠的方式）
+                console.log('策略1: 查找职位链接...');
+                const jobLinks = Array.from(document.querySelectorAll('a[href*="/job/"]'));
+                console.log(`找到 ${jobLinks.length} 个职位链接`);
                 
-                // 查找职位标题行（包含"开发"、"工程师"等关键词）
-                const jobTitleLines: string[] = [];
-                for (let i = 0; i < lines.length; i++) {
-                  let line = lines[i];
-                  
-                  // 清理操作按钮文本
-                  line = line.replace(/立即投递\s*/g, '')
-                             .replace(/收藏\s*/g, '')
-                             .replace(/投递\s*/g, '')
-                             .trim();
-                  
-                  // 🔧 关键修复：使用toLowerCase()进行不区分大小写的检查
-                  const lineLower = line.toLowerCase();
-                  
-                  // 检查是否是职位标题（包含技术关键词且长度适中）
-                  const hasJobKeyword = lineLower.includes('开发') || lineLower.includes('工程师') || lineLower.includes('java') || 
-                                        lineLower.includes('python') || lineLower.includes('前端') || lineLower.includes('后端') ||
-                                        lineLower.includes('算法') || lineLower.includes('架构') || lineLower.includes('测试') ||
-                                        lineLower.includes('经理') || lineLower.includes('主管') || lineLower.includes('总监') ||
-                                        lineLower.includes('程序员') || lineLower.includes('专家') || lineLower.includes('顾问');
-                  
-                  // 🔧 调试日志：记录前5个被过滤的行及其原因
-                  if (hasJobKeyword && jobTitleLines.length < 10) {
-                    console.log(`[DEBUG] 候选行 ${jobTitleLines.length + 1}: "${line.substring(0, 60)}"`);
-                    console.log(`  - 长度: ${line.length}`);
-                    
-                    // 检查每个排除条件
-                    const excludeReasons = [];
-                    if (line.length < 4) excludeReasons.push('太短(<4)');
-                    if (line.length > 100) excludeReasons.push('太长(>100)');
-                    if (line.includes('不限')) excludeReasons.push('包含"不限"');
-                    if (line.includes('薪资要求')) excludeReasons.push('包含"薪资要求"');
-                    if (line.includes('学历要求')) excludeReasons.push('包含"学历要求"');
-                    if (line.includes('公司行业')) excludeReasons.push('包含"公司行业"');
-                    if (line.includes('行政区')) excludeReasons.push('包含"行政区"');
-                    if (line.includes('地铁沿线')) excludeReasons.push('包含"地铁沿线"');
-                    if (line.includes('公司规模')) excludeReasons.push('包含"公司规模"');
-                    if (line.includes('公司性质')) excludeReasons.push('包含"公司性质"');
-                    if (line.includes('有限公司')) excludeReasons.push('包含"有限公司"');
-                    if (line.includes('责任公司')) excludeReasons.push('包含"责任公司"');
-                    if (line.includes('分公司')) excludeReasons.push('包含"分公司"');
-                    if (line.includes('交流中心')) excludeReasons.push('包含"交流中心"');
-                    if (line.includes('研究中心')) excludeReasons.push('包含"研究中心"');
-                    if (line.includes('研究院')) excludeReasons.push('包含"研究院"');
-                    if (line.includes('开发中心')) excludeReasons.push('包含"开发中心"');
-                    if (line.includes('服务中心')) excludeReasons.push('包含"服务中心"');
-                    if (line.includes('"title"')) excludeReasons.push('包含"title"');
-                    if (line.includes('meta')) excludeReasons.push('包含"meta"');
-                    if (line.includes('charset')) excludeReasons.push('包含"charset"');
-                    if (line.includes('「')) excludeReasons.push('包含"「"');
-                    if (line.includes('」')) excludeReasons.push('包含"」"');
-                    if (/^(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津)[·\s]/.test(line)) excludeReasons.push('以城市开头');
-                    if (/^(房地产|互联网|金融|教育|医疗|制造)[\u4e00-\u9fa5]{0,20}$/.test(line)) excludeReasons.push('行业分类');
-                    if (/^北京[市区县]$/.test(line)) excludeReasons.push('北京区县');
-                    
-                    if (excludeReasons.length > 0) {
-                      console.log(`  - ❌ 被过滤原因: ${excludeReasons.join(', ')}`);
-                    } else {
-                      console.log(`  - ✅ 通过初步筛选`);
-                    }
-                  }
-                  
-                  // 排除条件 - 🔧 进一步优化：极大放宽过滤条件
-                  const shouldExclude = 
-                    // 排除太短或太长的文本（进一步放宽上限从80到100）
-                    line.length < 4 || line.length > 100 ||
-                    // 排除包含特定关键词的行
-                    line.includes('不限') || line.includes('薪资要求') || line.includes('学历要求') ||
-                    line.includes('公司行业') || line.includes('行政区') || line.includes('地铁沿线') ||
-                    line.includes('公司规模') || line.includes('公司性质') ||
-                    // 🔧 关键修复：移除企业名称过滤！企业名称是正常数据，不应排除
-                    // line.includes('有限公司') || line.includes('责任公司') || line.includes('分公司') ||
-                    // 排除机构名称（包含"中心"、"研究院"等）
-                    line.includes('交流中心') || line.includes('研究中心') || line.includes('研究院') ||
-                    line.includes('开发中心') || line.includes('服务中心') ||
-                    // 排除HTML元数据
-                    line.includes('"title"') || line.includes('meta') || line.includes('charset') ||
-                    line.includes('「') || line.includes('」') ||
-                    // 排除纯城市信息（以城市开头）
-                    /^(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津)[·\s]/.test(line) ||
-                    // 排除行业分类（进一步放宽：允许更长的描述）
-                    /^(房地产|互联网|金融|教育|医疗|制造)[\u4e00-\u9fa5]{0,20}$/.test(line) ||
-                    // 排除以"北京"开头的非标准职位名（保留区县信息）
-                    /^北京[市区县]$/.test(line);
-                  
-                  if (hasJobKeyword && !shouldExclude) {
-                    // 进一步清理：移除城市信息
-                    line = line.replace(/[\s]+(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津)[\u4e00-\u9fa5·\s]*/g, '')
-                               .trim();
-                    
-                    // 清理多余空格和特殊字符
-                    line = line.replace(/\s+/g, ' ')
-                               .replace(/[·•]/g, '')
-                               .trim();
-                    
-                    // 清理末尾的技术标签（如"JavaScriptC++"）
-                    line = line.replace(/[A-Z][a-zA-Z+]{5,}$/, '').trim();
-                    
-                    // 清理开头的技术标签
-                    line = line.replace(/^[A-Z][a-zA-Z+]{5,}\s*/, '').trim();
-                    
-                    // 🔧 关键修复：移除过于严格的二次过滤
-                    // 之前的条件要求必须包含特定职位词，导致大量合法职位被过滤
-                    // 现在只要通过了初步的hasJobKeyword检查且长度合理就保留
-                    if (line.length >= 4 && line.length <= 80) {
-                      jobTitleLines.push(line);
-                    }
-                  }
-                }
+                // 去重：基于href去重
+                const seenHrefs = new Set<string>();
                 
-                console.log(`找到 ${jobTitleLines.length} 个候选职位标题`);
-                
-                // 对于每个职位标题，尝试从周围文本提取企业信息
-                jobTitleLines.forEach((title, index) => {
-                  // 在原始文本中查找该标题的位置
-                  const titleIndex = allTexts.indexOf(title);
-                  if (titleIndex === -1) return;
-                  
-                  // 获取标题前后500字符的上下文
-                  const contextStart = Math.max(0, titleIndex - 300);
-                  const contextEnd = Math.min(allTexts.length, titleIndex + title.length + 500);
-                  const context = allTexts.substring(contextStart, contextEnd);
-                  
-                  // 从上下文中提取企业名称（包含"公司"、"科技"等关键词）
-                  const companyMatch = context.match(/([\u4e00-\u9fa5]{2,30}(?:公司|科技|信息|网络|软件|技术|开发|有限))[\s\n]/);
-                  const company = companyMatch ? companyMatch[1] : '未知企业';
-                  
-                  // 从上下文中提取薪资信息 - 使用更精准的正则表达式
-                  // 策略：优先匹配包含薪资关键词（薪、资、月薪、年薪、k、K、万）的文本
-                  let salary = '面议';
-                  
-                  // 正则1: 匹配 "X-Y万"、"X.Y-Z.Y万"、"X-YK"、"X.Y-Z.YK" 格式
-                  const salaryPattern1 = /(\d+(?:\.\d+)?[-~]\d+(?:\.\d+)?[Kk万])/;
-                  // 正则2: 匹配 "X万"、"XK"、"X万以上"、"XK以上"
-                  const salaryPattern2 = /(\d+(?:\.\d+)?[Kk万](?:以上|以下)?)/;
-                  // 正则3: 匹配 "X千-Y千"、"X千以上"
-                  const salaryPattern3 = /(\d+(?:\.\d+)?千[-~]\d+(?:\.\d+)?千|\d+(?:\.\d+)?千以上)/;
-                  // 正则4: 匹配 "X元-Y元"、"X元/月"
-                  const salaryPattern4 = /(\d+(?:\.\d+)?元[-~]\d+(?:\.\d+)?元|\d+(?:\.\d+)?元\/月)/;
-                  
-                  // 按优先级尝试匹配
-                  let salaryMatch = salaryPattern1.exec(context);
-                  if (!salaryMatch) salaryMatch = salaryPattern2.exec(context);
-                  if (!salaryMatch) salaryMatch = salaryPattern3.exec(context);
-                  if (!salaryMatch) salaryMatch = salaryPattern4.exec(context);
-                  
-                  // 验证匹配结果：排除明显不是薪资的数据
-                  if (salaryMatch) {
-                    const matched = salaryMatch[1];
-                    const numPart = matched.replace(/[^0-9.]/g, '');
-                    const nums = numPart.split(/[.~\-]/).filter(n => n.length > 0);
+                jobLinks.forEach((link: any) => {
+                  try {
+                    const href = link.href || '';
+                    if (!href || seenHrefs.has(href)) return;
                     
-                    // 检查是否是合理的薪资范围
-                    const isValid = nums.every(n => {
-                      const num = parseFloat(n);
-                      // 如果是"万"单位，合理范围是0.5-100万
-                      if (matched.includes('万')) {
-                        return num >= 0.5 && num <= 100;
+                    const title = link.textContent?.trim() || '';
+                    
+                    // 过滤无效标题
+                    if (!title || title.length < 4 || title.length > 100) return;
+                    if (title.includes('立即沟通') || title.includes('立即投递') || 
+                        title.includes('收藏') || title.includes('分享')) return;
+                    
+                    seenHrefs.add(href);
+                    
+                    // 向上查找父容器以获取更多信息
+                    let container = link.parentElement;
+                    let salary = '面议';
+                    let company = '';
+                    let city = '';
+                    let depth = 0;
+                    
+                    // 向上遍历最多5层父元素
+                    while (container && depth < 5) {
+                      const containerText = container.textContent || '';
+                      
+                      // 提取薪资信息
+                      if (!salary || salary === '面议') {
+                        const salaryMatch = containerText.match(/(\d+(?:\.\d+)?[-~]\d+(?:\.\d+)?[Kk万])|(\d+(?:\.\d+)?[Kk万](?:以上)?)/);
+                        if (salaryMatch) {
+                          salary = salaryMatch[0];
+                        }
                       }
-                      // 如果是"K"单位，合理范围是1-100K
-                      if (matched.toLowerCase().includes('k')) {
-                        return num >= 1 && num <= 100;
+                      
+                      // 提取企业名称
+                      if (!company) {
+                        const companyMatch = containerText.match(/([\u4e00-\u9fa5]{2,30}(?:公司|科技|信息|网络|软件|技术|开发|有限))/);
+                        if (companyMatch) {
+                          company = companyMatch[1];
+                        }
                       }
-                      // 如果是"千"单位，合理范围是1-100千
-                      if (matched.includes('千')) {
-                        return num >= 1 && num <= 100;
+                      
+                      // 提取城市信息
+                      if (!city) {
+                        const cityMatch = containerText.match(/(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波)[·\s-]?[\u4e00-\u9fa5]*/);
+                        if (cityMatch) {
+                          city = cityMatch[1];
+                        }
                       }
-                      // 如果是纯数字，合理范围是3000-100000（元/月）
-                      return num >= 3000 && num <= 100000;
-                    });
-                    
-                    if (isValid) {
-                      salary = matched;
+                      
+                      // 如果三个信息都找到了，停止向上查找
+                      if (salary !== '面议' && company && city) {
+                        break;
+                      }
+                      
+                      container = container.parentElement;
+                      depth++;
                     }
-                  }
-                  
-                  // 从上下文中提取城市信息
-                  const cityMatch = context.match(/(?:北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波)[\u4e00-\u9fa5·]*/);
-                  const city = cityMatch ? cityMatch[0].replace(/[·\s]/g, '') : '';
-                  
-                  jobList.push({
-                    title: title.trim(),
-                    company: company.trim(),
-                    salary: salary.trim(),
-                    city: city.trim(),
-                    link: ''
-                  });
-                  
-                  console.log(`职位 ${index + 1}: ${title.substring(0, 50)} | 企业: ${company.substring(0, 30)}`);
-                });
-                
-                if (jobList.length > 0) {
-                  console.log(`✓ 通过文本分析找到 ${jobList.length} 个职位`);
-                  return jobList;
-                }
-                
-                // 策略2: 备用方案 - 查找所有职位相关链接
-                console.log('文本分析未找到数据，尝试链接提取...');
-                const allLinks = document.querySelectorAll('a[href*="/job/"], a[href*="/jobs/"], a[href*="/position/"]');
-                
-                allLinks.forEach((link: any) => {
-                  const href = link.href || '';
-                  const text = link.textContent?.trim() || '';
-                  
-                  // 过滤掉无关链接
-                  if (text.length > 5 && text.length < 100 && 
-                      !text.includes('立即沟通') && 
-                      !text.includes('立即投递') &&
-                      !text.includes('收藏')) {
                     
                     jobList.push({
-                      title: text,
-                      company: '未知企业',
-                      salary: '面议',
-                      city: '',
+                      title: title.trim(),
+                      company: company.trim() || '未知企业',
+                      salary: salary.trim(),
+                      city: city.trim(),
                       link: href
                     });
+                    
+                  } catch (e) {
+                    console.error('处理职位链接时出错:', e);
                   }
                 });
                 
                 console.log(`通过链接提取找到 ${jobList.length} 个职位`);
+                
+                // 如果通过链接提取到的职位数量足够，直接返回
+                if (jobList.length >= 15) {
+                  console.log(`✓ DOM结构解析成功，找到 ${jobList.length} 个职位`);
+                  return jobList;
+                }
+                
+                // 策略2: 备用方案 - 查找包含职位信息的卡片容器
+                console.log('策略2: 查找职位卡片容器...');
+                
+                // 尝试常见的职位容器选择器
+                const containerSelectors = [
+                  '[class*="joblist"] [class*="item"]',
+                  '[class*="position"] [class*="item"]',
+                  '[class*="sou"] [class*="item"]',
+                  'article[class*="job"]',
+                  'section[class*="job"]',
+                  'div[class*="job-card"]',
+                  'div[class*="position-card"]'
+                ];
+                
+                for (const selector of containerSelectors) {
+                  try {
+                    const containers = document.querySelectorAll(selector);
+                    if (containers.length === 0) continue;
+                    
+                    console.log(`选择器 "${selector}" 找到 ${containers.length} 个容器`);
+                    
+                    containers.forEach((container: any) => {
+                      try {
+                        const text = container.textContent || '';
+                        
+                        // 检查是否包含职位关键词
+                        if (!text.includes('开发') && !text.includes('工程师') && 
+                            !text.includes('Java') && !text.includes('Python')) {
+                          return;
+                        }
+                        
+                        // 提取职位名称（通常是第一个较长的文本块）
+                        const lines = text.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+                        let title = '';
+                        for (const line of lines) {
+                          if (line.length > 5 && line.length < 80 && 
+                              (line.includes('开发') || line.includes('工程师') || 
+                               line.toLowerCase().includes('java') || line.toLowerCase().includes('python'))) {
+                            title = line;
+                            break;
+                          }
+                        }
+                        
+                        if (!title) return;
+                        
+                        // 提取企业信息
+                        const companyMatch = text.match(/([\u4e00-\u9fa5]{2,30}(?:公司|科技|信息|网络|软件|技术|开发|有限))/);
+                        const company = companyMatch ? companyMatch[1] : '未知企业';
+                        
+                        // 提取薪资
+                        const salaryMatch = text.match(/(\d+(?:\.\d+)?[-~]\d+(?:\.\d+)?[Kk万])|(\d+(?:\.\d+)?[Kk万](?:以上)?)/);
+                        const salary = salaryMatch ? salaryMatch[0] : '面议';
+                        
+                        // 提取城市
+                        const cityMatch = text.match(/(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波)/);
+                        const city = cityMatch ? cityMatch[1] : '';
+                        
+                        // 提取链接
+                        const linkEl = container.querySelector('a[href*="/job/"]');
+                        const link = linkEl ? (linkEl as HTMLAnchorElement).href : '';
+                        
+                        // 去重
+                        const isDuplicate = jobList.some(job => job.title === title && job.company === company);
+                        if (!isDuplicate) {
+                          jobList.push({
+                            title: title.trim(),
+                            company: company.trim(),
+                            salary: salary.trim(),
+                            city: city.trim(),
+                            link: link
+                          });
+                        }
+                        
+                      } catch (e) {
+                        // 忽略单个容器的错误
+                      }
+                    });
+                    
+                    // 如果已经找到足够的职位，跳出循环
+                    if (jobList.length >= 15) break;
+                    
+                  } catch (e) {
+                    console.error(`选择器 "${selector}" 执行失败:`, e);
+                  }
+                }
+                
+                console.log(`✓ DOM结构解析完成，共找到 ${jobList.length} 个职位`);
                 return jobList;
               });
 
