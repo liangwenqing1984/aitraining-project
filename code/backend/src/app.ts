@@ -29,8 +29,9 @@ app.use(cors({
   origin: ['http://localhost:3000', 'http://localhost:3002', 'http://127.0.0.1:3000'],
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// 🔧 优化：增加请求体大小限制（默认100kb -> 1mb），支持大量关键词和企业名称
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser()); // 添加cookie-parser中间件
 
 // 静态文件（CSV下载）

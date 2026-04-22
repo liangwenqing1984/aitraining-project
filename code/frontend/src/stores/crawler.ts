@@ -289,7 +289,31 @@ export const useCrawlerStore = defineStore('crawler', () => {
       }
     } catch (error: any) {
       console.error('[Store] Delete task error:', error)
-      ElMessage.error(error.message || '删除失败')
+      ElMessage.error('删除任务失败')
+    }
+  }
+
+  // 🔧 更新任务配置（不启动任务）
+  async function updateTaskConfig(taskId: string, config: TaskConfig) {
+    try {
+      const res = await taskApi.updateTaskConfig(taskId, config)
+      if (res.success) {
+        ElMessage.success(res.message || '任务配置已保存')
+        // 重新加载任务列表以获取最新信息
+        await loadTasks()
+        // 如果当前正在查看该任务，更新当前任务信息
+        if (currentTask.value?.id === taskId) {
+          const updatedTask = await taskApi.getTask(taskId)
+          if (updatedTask.success && updatedTask.data) {
+            currentTask.value = updatedTask.data
+          }
+        }
+      } else {
+        ElMessage.error(res.error || '保存配置失败')
+      }
+    } catch (error: any) {
+      console.error('[Store] Update task config error:', error)
+      throw error
     }
   }
 
@@ -427,6 +451,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
     pauseTask,
     resumeTask,
     deleteTask,
+    updateTaskConfig,  // 🔧 新增：更新任务配置
     addLog, // 保持兼容性
     addLogToTask, // 新方法
     clearLogs,

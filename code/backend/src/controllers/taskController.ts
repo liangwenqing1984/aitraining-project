@@ -42,6 +42,18 @@ export async function createTask(req: Request, res: Response) {
     const taskId = uuidv4();
     console.log('[TaskController] ✅ 生成任务ID:', taskId);
 
+    // 🔧 支持前端传递自定义任务名称
+    let taskName: string;
+    if (config.name && typeof config.name === 'string' && config.name.trim()) {
+      // 如果前端提供了自定义名称，直接使用
+      taskName = config.name.trim();
+      console.log('[TaskController] 📝 使用前端传递的自定义任务名称:', taskName);
+    } else {
+      // 否则自动生成任务名称
+      taskName = generateTaskName(config);
+      console.log('[TaskController] 🤖 自动生成任务名称:', taskName);
+    }
+
     // 创建任务记录
     const stmt = db.prepare(`
       INSERT INTO tasks (id, name, source, config, status, created_at, updated_at)
@@ -49,9 +61,8 @@ export async function createTask(req: Request, res: Response) {
     `);
 
     const source = config.sites.length > 1 ? 'all' : config.sites[0];
-    const taskName = generateTaskName(config);
     
-    console.log('[TaskController] 任务名称:', taskName);
+    console.log('[TaskController] 最终任务名称:', taskName);
     console.log('[TaskController] 数据来源:', source);
     console.log('[TaskController] 配置对象:', JSON.stringify(config, null, 2));
 
@@ -332,6 +343,95 @@ export async function deleteTask(req: Request, res: Response) {
     res.status(500).json({
       success: false,
       error: error.message
+    } as ApiResponse);
+  }
+}
+
+// 🔧 更新任务配置（不启动任务）
+export async function updateTaskConfig(req: Request, res: Response) {
+  try {
+    const { id } = req.params;
+    const config: TaskConfig = req.body;
+    
+    console.log('[TaskController] ========== 收到更新任务配置请求 ==========');
+    console.log('[TaskController] 任务ID:', id);
+    console.log('[TaskController] 新配置:', JSON.stringify(config, null, 2));
+    
+    // 验证必要字段
+    if (!config.sites || !Array.isArray(config.sites) || config.sites.length === 0) {
+      console.error('[TaskController] ❌ 验证失败: 未选择数据来源');
+      return res.status(400).json({
+        success: false,
+        error: '请选择至少一个数据来源'
+      } as ApiResponse);
+    }
+    
+    // 检查是否有关键词
+    const hasKeywords = (config.keywords && Array.isArray(config.keywords) && config.keywords.length > 0) || 
+                        (config.keyword && typeof config.keyword === 'string' && config.keyword.trim().length > 0);
+    
+    if (!hasKeywords) {
+      console.error('[TaskController] ❌ 验证失败: 未提供关键词');
+      return res.status(400).json({
+        success: false,
+        error: '请至少输入一个职位关键词'
+      } as ApiResponse);
+    }
+    
+    // 检查任务是否存在
+    const existingTask = await db.prepare('SELECT * FROM tasks WHERE id = $1').get(id) as Task;
+    if (!existingTask) {
+      console.warn('[TaskController] 任务不存在, ID:', id);
+      return res.status(404).json({
+        success: false,
+        error: '任务不存在'
+      } as ApiResponse);
+    }
+    
+    // 如果任务正在运行，不允许修改
+    if (existingTask.status === 'running') {
+      console.warn('[TaskController] 任务正在运行，无法修改配置');
+      return res.status(400).json({
+        success: false,
+        error: '任务正在运行中，请先停止任务后再修改配置'
+      } as ApiResponse);
+    }
+    
+    // 生成任务名称
+    let taskName: string;
+    if (config.name && typeof config.name === 'string' && config.name.trim()) {
+      taskName = config.name.trim();
+      console.log('[TaskController] 📝 使用自定义任务名称:', taskName);
+    } else {
+      taskName = generateTaskName(config);
+      console.log('[TaskController] 🤖 自动生成任务名称:', taskName);
+    }
+    
+    // 更新任务配置
+    const source = config.sites.length > 1 ? 'all' : config.sites[0];
+    const updateStmt = db.prepare(`
+      UPDATE tasks 
+      SET name = $1, source = $2, config = $3, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $4
+    `);
+    
+    await updateStmt.run(taskName, source, JSON.stringify(config), id);
+    
+    console.log('[TaskController] ✅ 任务配置更新成功');
+    console.log('[TaskController] ==========================================');
+    
+    res.json({
+      success: true,
+      message: '任务配置已保存',
+      data: { taskId: id, name: taskName }
+    } as ApiResponse);
+  } catch (error: any) {
+    console.error('[TaskController] ❌ 更新任务配置失败:', error.message);
+    console.error('[TaskController] 错误堆栈:', error.stack);
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || '服务器内部错误'
     } as ApiResponse);
   }
 }

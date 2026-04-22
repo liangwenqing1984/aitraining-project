@@ -8,9 +8,22 @@ const pool = new Pool({
   database: 'training_exercises',
   user: 'liangwenqing',
   password: 'liangwenqing',
-  max: 20, // 连接池最大连接数
+  max: 50, // 🔧 增加连接池最大连接数，从20提升到50，支持高并发爬虫任务
   idleTimeoutMillis: 30000, // 空闲连接超时时间
-  connectionTimeoutMillis: 2000, // 连接超时时间
+  connectionTimeoutMillis: 5000, // 🔧 增加连接超时时间，从2秒提升到5秒
+});
+
+// 🔧 添加连接池监控日志
+pool.on('connect', () => {
+  console.log(`[DB Pool] 新连接建立，当前活跃连接数: ${pool.totalCount - pool.idleCount}/${20}`);
+});
+
+pool.on('remove', () => {
+  console.log(`[DB Pool] 连接移除，当前总连接数: ${pool.totalCount}`);
+});
+
+pool.on('error', (err) => {
+  console.error('[DB Pool] 连接池错误:', err.message);
 });
 
 // 初始化数据库表

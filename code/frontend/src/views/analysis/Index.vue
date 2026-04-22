@@ -28,12 +28,27 @@ async function loadAndAnalyze(fileId: string) {
     const fileRes: any = await fileApi.getFile(fileId)
     if (fileRes.data) {
       fileInfo.value = fileRes.data
+      console.log('[Analysis] 文件信息:', {
+        id: fileRes.data.id,
+        filename: fileRes.data.filename,
+        recordCount: fileRes.data.record_count,
+        fileSize: fileRes.data.file_size
+      })
     }
     
     // 2. 分析CSV数据
     const analyzeRes: any = await fileApi.analyzeFile(fileId)
     if (analyzeRes.success && analyzeRes.data) {
       analysisResult.value = analyzeRes.data
+      
+      // 🔧 详细诊断日志
+      console.log('[Analysis] ========== 分析结果诊断 ==========')
+      console.log('[Analysis] 后端返回的总记录数:', analyzeRes.data.totalRecords)
+      console.log('[Analysis] 后端返回的字段数量:', analyzeRes.data.headers?.length)
+      console.log('[Analysis] 字段列表:', analyzeRes.data.headers)
+      console.log('[Analysis] 字段统计信息数量:', Object.keys(analyzeRes.data.fieldStats || {}).length)
+      console.log('[Analysis] ======================================')
+      
       ElMessage.success('数据分析完成')
       
       // 延迟初始化图表，确保DOM已渲染
@@ -63,8 +78,28 @@ const salaryDistributionData = computed(() => {
 
 // 计算属性：城市分布数据
 const cityDistributionData = computed(() => {
-  const cityField = analysisResult.value?.headers?.find((h: string) => h.includes('城市'))
-  if (!cityField || !analysisResult.value?.fieldStats?.[cityField]?.topValues) return []
+  if (!analysisResult.value?.headers) return []
+  
+  // 🔧 关键修复：优先精确匹配"工作城市"
+  let cityField = analysisResult.value.headers.find((h: string) => h === '工作城市')
+  
+  // 降级模糊匹配
+  if (!cityField) {
+    cityField = analysisResult.value.headers.find((h: string) => h.includes('城市'))
+  }
+  
+  console.log('[Analysis] 城市字段匹配结果:', {
+    cityField,
+    allHeaders: analysisResult.value.headers,
+    hasTopValues: !!analysisResult.value?.fieldStats?.[cityField]?.topValues,
+    topValuesCount: analysisResult.value?.fieldStats?.[cityField]?.topValues?.length || 0
+  })
+  
+  if (!cityField || !analysisResult.value?.fieldStats?.[cityField]?.topValues) {
+    console.warn('[Analysis] 城市分布数据为空', { cityField })
+    return []
+  }
+  
   return analysisResult.value.fieldStats[cityField].topValues.slice(0, 10).map((item: any) => ({
     name: item.value,
     value: item.count,
@@ -215,12 +250,16 @@ const availableCharts = computed(() => {
     { id: 'companyScale', title: '公司规模', hasData: companyScaleData.value.length > 0 }
   ]
   
-  // 🔧 调试日志：输出所有图表的数据状态
+  // 🔧 调试日志：输出所有图表的数据状态和CSV表头
+  console.log('[Analysis] ========== 数据分析诊断 ==========')
+  console.log('[Analysis] CSV文件表头:', analysisResult.value?.headers)
+  console.log('[Analysis] 总记录数:', analysisResult.value?.totalRecords)
   console.log('[Analysis] 图表数据状态:', chartsList.map(c => ({
     id: c.id,
     title: c.title,
     hasData: c.hasData
   })))
+  console.log('[Analysis] ======================================')
   
   return chartsList.filter(chart => chart.hasData)
 })

@@ -10,6 +10,7 @@ export interface ApiResponse<T = any> {
 
 export interface TaskConfig {
   sites: ('zhilian' | '51job')[]
+  name?: string  // 🔧 支持前端传递自定义任务名称
   province?: string
   city?: string
   keyword?: string
@@ -73,6 +74,11 @@ export const taskApi = {
 
   deleteTask(id: string): Promise<ApiResponse> {
     return api.delete(`/tasks/${id}`) as any
+  },
+
+  // 🔧 更新任务配置（不启动任务）
+  updateTaskConfig(id: string, config: TaskConfig): Promise<ApiResponse<{ taskId: string; name: string }>> {
+    return api.put(`/tasks/${id}/config`, config) as any
   },
 
   getRegions(): Promise<ApiResponse> {

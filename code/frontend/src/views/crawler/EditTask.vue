@@ -91,6 +91,9 @@ const cities = ref<{ [key: string]: string[] }>({
 const selectedProvince = ref('')
 const selectedCities = ref<string[]>([])
 
+// 🔧 新增：任务名称
+const taskName = ref('')
+
 // 多个关键词和企业名称
 const keywordInput = ref('')
 const companyInput = ref('')
@@ -165,6 +168,10 @@ onMounted(async () => {
     }
     
     console.log('[EditTask] 解析后的config:', config)
+    
+    // 🔧 填充任务名称（从任务对象中获取，而不是config）
+    taskName.value = task?.name || ''
+    console.log('[EditTask] 任务名称:', taskName.value)
     
     // 填充表单 - 使用可选链和默认值
     taskForm.value = {
@@ -279,6 +286,74 @@ function toggleCity(city: string) {
   }
 }
 
+// 保存配置（不启动任务）
+async function saveConfigOnly() {
+  // 验证必填项
+  if (taskForm.value.sites.length === 0) {
+    ElMessage.warning('请选择数据来源')
+    return
+  }
+  
+  if (keywords.value.length === 0) {
+    ElMessage.warning('请至少添加一个职位关键词')
+    return
+  }
+  
+  if (selectedCities.value.length === 0) {
+    ElMessage.warning('请至少选择一个城市')
+    return
+  }
+  
+  saving.value = true
+  
+  try {
+    const taskId = route.params.id as string
+    
+    // 构建新的配置
+    const newConfig: TaskConfig = {
+      ...taskForm.value,
+      keywords: keywords.value,
+      keyword: keywords.value[0], // 保留第一个作为主关键词
+      companies: companies.value,
+      company: companies.value[0] || '', // 保留第一个作为主企业
+      cities: selectedCities.value,
+      city: selectedCities.value[0] || '' // 保留第一个作为主城市
+    }
+    
+    // 🔧 如果用户修改了任务名称，则传递新名称
+    if (taskName.value.trim()) {
+      newConfig.name = taskName.value.trim()
+      console.log('[EditTask] 使用自定义任务名称:', newConfig.name)
+    }
+    
+    // 调用更新配置API
+    await crawlerStore.updateTaskConfig(taskId, newConfig)
+    
+    // 检查组件是否仍然存活
+    if (!isComponentAlive) {
+      console.warn('[EditTask] 组件已卸载，取消后续操作')
+      return
+    }
+    
+    ElMessage.success('任务配置已保存')
+    
+    // 可选：返回任务列表或停留在当前页面
+    // await router.push('/crawler')
+  } catch (error: any) {
+    if (!isComponentAlive) {
+      console.warn('[EditTask] 组件已卸载，忽略错误处理')
+      return
+    }
+    
+    console.error('[EditTask] 保存配置失败:', error)
+    ElMessage.error('保存配置失败: ' + error.message)
+  } finally {
+    if (isComponentAlive) {
+      saving.value = false
+    }
+  }
+}
+
 // 保存并重新启动
 async function saveAndRestart() {
   // 验证必填项
@@ -311,6 +386,12 @@ async function saveAndRestart() {
       company: companies.value[0] || '', // 保留第一个作为主企业
       cities: selectedCities.value,
       city: selectedCities.value[0] || '' // 保留第一个作为主城市
+    }
+    
+    // 🔧 如果用户修改了任务名称，则传递新名称
+    if (taskName.value.trim()) {
+      newConfig.name = taskName.value.trim()
+      console.log('[EditTask] 使用自定义任务名称:', newConfig.name)
     }
     
     // 删除旧任务
@@ -364,6 +445,16 @@ function cancel() {
       </template>
 
       <el-form :model="taskForm" label-width="120px">
+        <!-- 🔧 新增：任务名称输入 -->
+        <el-form-item label="任务名称">
+          <el-input
+            v-model="taskName"
+            placeholder="可选，留空则自动生成（如：智联 - 北京）"
+            clearable
+          />
+          <div class="form-tip">提示：修改任务名称后，保存时将使用新名称</div>
+        </el-form-item>
+
         <el-form-item label="数据来源" required>
           <el-checkbox-group v-model="taskForm.sites">
             <el-checkbox value="zhilian">智联招聘</el-checkbox>
@@ -491,7 +582,8 @@ function cancel() {
         />
 
         <el-form-item>
-          <el-button type="primary" @click="saveAndRestart" :loading="saving">保存并重新启动</el-button>
+          <el-button type="success" @click="saveConfigOnly" :loading="saving">💾 保存配置</el-button>
+          <el-button type="primary" @click="saveAndRestart" :loading="saving">🚀 保存并重新启动</el-button>
           <el-button @click="cancel">取消</el-button>
         </el-form-item>
       </el-form>

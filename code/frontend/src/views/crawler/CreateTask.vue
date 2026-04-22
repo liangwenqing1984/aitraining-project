@@ -89,11 +89,17 @@ const cities = ref<{ [key: string]: string[] }>({
 const selectedProvince = ref('')
 const selectedCities = ref<string[]>([])
 
+// 🔧 新增：任务名称
+const taskName = ref('')
+
 // 多个关键词和企业名称
 const keywordInput = ref('')
 const companyInput = ref('')
 const keywords = ref<string[]>([])
 const companies = ref<string[]>([])
+
+// 🔧 配置常量：支持大规模关键词组合
+const MAX_KEYWORDS = 100  // 🔧 从50提升到100，支持一次性输入100个关键词
 
 const taskForm = ref<TaskConfig>({
   sites: [],
@@ -114,12 +120,67 @@ const handleProvinceChange = (value: string) => {
   selectedCities.value = []
 }
 
-// 添加关键词
+// 添加关键词（支持批量添加）
 function addKeyword() {
-  const value = keywordInput.value.trim()
-  if (value && !keywords.value.includes(value)) {
-    keywords.value.push(value)
-    keywordInput.value = ''
+  const inputValue = keywordInput.value.trim()
+  if (!inputValue) return
+  
+  // 支持多种分隔符：逗号、顿号、分号、空格
+  const separators = /[,\uff0c;；\s]+/  // , ， ; ； 空格
+  let newKeywords = inputValue
+    .split(separators)
+    .map(kw => kw.trim())
+    .filter(kw => kw.length > 0)
+  
+  // 🔧 单次输入上限：防止超大文本导致性能问题
+  const MAX_SINGLE_INPUT = 100
+  if (newKeywords.length > MAX_SINGLE_INPUT) {
+    ElMessage.warning(`单次输入关键词数量过多（${newKeywords.length}个），最多支持 ${MAX_SINGLE_INPUT} 个，将自动截断`)
+    newKeywords = newKeywords.slice(0, MAX_SINGLE_INPUT)
+  }
+  
+  // 🔧 去重：过滤已存在的关键词
+  const uniqueKeywords = newKeywords.filter(kw => !keywords.value.includes(kw))
+  
+  if (uniqueKeywords.length === 0) {
+    ElMessage.warning('输入的关键词均已存在，请尝试其他关键词')
+    return
+  }
+  
+  // 🔧 限制最大关键词数量（防止请求体过大）
+  const remainingSlots = MAX_KEYWORDS - keywords.value.length
+  
+  if (remainingSlots <= 0) {
+    ElMessage.warning(`关键词数量已达上限（${MAX_KEYWORDS}个），请先删除部分关键词`)
+    return
+  }
+  
+  // 如果新关键词超过剩余名额，只添加前面的部分
+  const keywordsToAdd = uniqueKeywords.slice(0, remainingSlots)
+  const skippedCount = uniqueKeywords.length - keywordsToAdd.length
+  const duplicateCount = newKeywords.length - uniqueKeywords.length
+  
+  // 批量添加
+  keywords.value.push(...keywordsToAdd)
+  keywordInput.value = ''
+  
+  // 🔧 优化提示消息：更详细友好的反馈
+  const parts = []
+  parts.push(`已添加 ${keywordsToAdd.length} 个关键词`)
+  
+  if (duplicateCount > 0) {
+    parts.push(`跳过 ${duplicateCount} 个重复`)
+  }
+  if (skippedCount > 0) {
+    parts.push(`超出上限跳过 ${skippedCount} 个`)
+  }
+  
+  if (keywordsToAdd.length === 1 && duplicateCount === 0 && skippedCount === 0) {
+    // 单个添加
+    ElMessage.success(`已添加: ${keywordsToAdd[0]}`)
+  } else {
+    // 批量添加
+    ElMessage.success(parts.join('，'))
   }
 }
 
@@ -128,12 +189,47 @@ function removeKeyword(index: number) {
   keywords.value.splice(index, 1)
 }
 
-// 添加企业名称
+// 添加企业名称（支持批量添加）
 function addCompany() {
-  const value = companyInput.value.trim()
-  if (value && !companies.value.includes(value)) {
-    companies.value.push(value)
-    companyInput.value = ''
+  const inputValue = companyInput.value.trim()
+  if (!inputValue) return
+  
+  // 支持多种分隔符：逗号、顿号、分号、空格
+  const separators = /[,\uff0c;；\s]+/  // , ， ; ； 空格
+  const newCompanies = inputValue
+    .split(separators)
+    .map(comp => comp.trim())
+    .filter(comp => comp.length > 0 && !companies.value.includes(comp))
+  
+  if (newCompanies.length === 0) {
+    ElMessage.warning('请输入有效的企业名称')
+    return
+  }
+  
+  // 🔧 限制最大企业数量（支持大规模企业筛选）
+  const MAX_COMPANIES = 3000  // 🔧 从100提升到3000，支持一次性输入3000家企业
+  const remainingSlots = MAX_COMPANIES - companies.value.length
+  
+  if (remainingSlots <= 0) {
+    ElMessage.warning(`企业名称数量已达上限（${MAX_COMPANIES}个），请先删除部分企业`)
+    return
+  }
+  
+  // 如果新企业超过剩余名额，只添加前面的部分
+  const companiesToAdd = newCompanies.slice(0, remainingSlots)
+  const skippedCount = newCompanies.length - companiesToAdd.length
+  
+  // 批量添加
+  companies.value.push(...companiesToAdd)
+  companyInput.value = ''
+  
+  // 提示用户
+  if (skippedCount > 0) {
+    ElMessage.warning(`已添加 ${companiesToAdd.length} 个企业，跳过 ${skippedCount} 个（超出上限${MAX_COMPANIES}）`)
+  } else if (companiesToAdd.length === 1) {
+    ElMessage.success(`已添加: ${companiesToAdd[0]}`)
+  } else {
+    ElMessage.success(`已批量添加 ${companiesToAdd.length} 个企业`)
   }
 }
 
@@ -183,6 +279,12 @@ async function startTask() {
       delay: taskForm.value.delay,
       concurrency: taskForm.value.concurrency,
       province: taskForm.value.province || selectedProvince.value,
+    }
+    
+    // 🔧 如果用户输入了任务名称，则使用自定义名称
+    if (taskName.value.trim()) {
+      config.name = taskName.value.trim()
+      console.log('[CreateTask] 使用自定义任务名称:', config.name)
     }
     
     // 只添加非空可选字段
@@ -271,6 +373,7 @@ async function startTask() {
 }
 
 function resetForm() {
+  taskName.value = ''  // 🔧 重置任务名称
   taskForm.value = {
     sites: [],
     keyword: '',
@@ -302,6 +405,16 @@ function cancel() {
       </template>
 
       <el-form :model="taskForm" label-width="120px">
+        <!-- 🔧 新增：任务名称输入 -->
+        <el-form-item label="任务名称">
+          <el-input
+            v-model="taskName"
+            placeholder="可选，留空则自动生成（如：智联 - 北京）"
+            clearable
+          />
+          <div class="form-tip">提示：如果不填写，系统将根据数据来源和城市自动生成名称</div>
+        </el-form-item>
+
         <el-form-item label="数据来源" required>
           <el-checkbox-group v-model="taskForm.sites">
             <el-checkbox value="zhilian">智联招聘</el-checkbox>
@@ -313,7 +426,7 @@ function cancel() {
           <div class="input-with-tags">
             <el-input
               v-model="keywordInput"
-              placeholder="输入关键词后按回车或点击添加"
+              placeholder='可一次性输入多个关键词，用逗号/顿号/分号/空格分隔，如："Java开发,前端工程师,产品经理"'
               clearable
               @keyup.enter="addKeyword"
             >
@@ -333,14 +446,16 @@ function cancel() {
               </el-tag>
             </div>
           </div>
-          <div class="form-tip">提示：可以添加多个关键词，系统将依次爬取每个关键词的职位信息</div>
+          <div class="form-tip">
+            💡 提示：支持批量输入，可一次性输入10个关键词（如："Java开发,前端工程师,产品经理"），最多支持{{ MAX_KEYWORDS }}个关键词
+          </div>
         </el-form-item>
 
         <el-form-item label="企业名称">
           <div class="input-with-tags">
             <el-input
               v-model="companyInput"
-              placeholder="输入企业名称后按回车或点击添加（可选）"
+              placeholder="输入企业名称，用逗号/顿号/分号/空格分隔可批量添加（可选）"
               clearable
               @keyup.enter="addCompany"
             >
@@ -361,7 +476,9 @@ function cancel() {
               </el-tag>
             </div>
           </div>
-          <div class="form-tip">提示：可以添加多个企业名称，用于精确匹配特定企业的职位</div>
+          <div class="form-tip">
+            💡 提示：支持批量输入（如："阿里巴巴,腾讯,字节跳动"），最多100个企业
+          </div>
         </el-form-item>
 
         <el-form-item label="工作地区">

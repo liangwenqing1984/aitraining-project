@@ -19,6 +19,10 @@ function goToCreate() {
   router.push('/crawler/create')
 }
 
+function goToBatchCreate() {
+  router.push('/crawler/batch-create')
+}
+
 function goToMonitor(taskId: string) {
   router.push(`/crawler/monitor/${taskId}`)
 }
@@ -142,7 +146,18 @@ interface KeywordDetailInfo {
   keywords: string[]
   cities: string[]
   companies: string[]
-  displayText: string
+  displayText: string  // 缩略显示文本（前3个）
+}
+
+// 🔧 辅助函数：截断数组并添加省略提示
+function truncateArray(arr: string[], maxCount: number = 3): { items: string[], hasMore: boolean } {
+  if (arr.length <= maxCount) {
+    return { items: arr, hasMore: false }
+  }
+  return { 
+    items: arr.slice(0, maxCount), 
+    hasMore: true 
+  }
 }
 
 function getKeywordDetails(task: Task): KeywordDetailInfo {
@@ -154,11 +169,26 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
     const cities = config.cities || (config.city ? [config.city] : [])
     const companies = config.companies || (config.company ? [config.company] : [])
     
-    // 生成缩略显示文本
+    // 🔧 优化：生成缩略显示文本（每个类别最多显示前3个）
     const parts = []
-    if (keywords.length > 0) parts.push(`职位:${keywords.join(',')}`)
-    if (cities.length > 0) parts.push(`城市:${cities.join(',')}`)
-    if (companies.length > 0) parts.push(`企业:${companies.join(',')}`)
+    
+    if (keywords.length > 0) {
+      const truncated = truncateArray(keywords, 3)
+      const keywordText = truncated.items.join(',')
+      parts.push(`职位:${keywordText}${truncated.hasMore ? '...' : ''}`)
+    }
+    
+    if (cities.length > 0) {
+      const truncated = truncateArray(cities, 3)
+      const cityText = truncated.items.join(',')
+      parts.push(`城市:${cityText}${truncated.hasMore ? '...' : ''}`)
+    }
+    
+    if (companies.length > 0) {
+      const truncated = truncateArray(companies, 3)
+      const companyText = truncated.items.join(',')
+      parts.push(`企业:${companyText}${truncated.hasMore ? '...' : ''}`)
+    }
     
     const displayText = parts.length > 0 ? parts.join(' | ') : '-'
     
@@ -168,6 +198,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
     return { keywords: [], cities: [], companies: [], displayText: '-' }
   }
 }
+
 </script>
 
 <template>
@@ -231,7 +262,12 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
       <template #header>
         <div class="card-header">
           <span>任务列表</span>
-          <el-button type="primary" :icon="Plus" @click="goToCreate">创建任务</el-button>
+          <div class="header-actions">
+            <el-button type="success" @click="goToBatchCreate">
+              🚀 批量创建（适合大规模企业筛选）
+            </el-button>
+            <el-button type="primary" :icon="Plus" @click="goToCreate">创建任务</el-button>
+          </div>
         </div>
       </template>
 
@@ -243,13 +279,14 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
           </template>
         </el-table-column>
         
-        <!-- 🔧 新增：关键词详情列 -->
-        <el-table-column label="关键词详情" min-width="160" show-overflow-tooltip>
+        <!-- 🔧 优化：职位关键词列 -->
+        <el-table-column label="职位关键词" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <el-popover
               placement="top"
-              :width="400"
+              :width="450"
               trigger="hover"
+              popper-class="keyword-detail-popover-wrapper"
             >
               <template #reference>
                 <div class="keyword-summary">
@@ -261,43 +298,59 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
               <div class="keyword-detail-popover">
                 <template v-if="getKeywordDetails(row).keywords.length > 0 || getKeywordDetails(row).cities.length > 0 || getKeywordDetails(row).companies.length > 0">
                   <div v-if="getKeywordDetails(row).keywords.length > 0" class="detail-section">
-                    <div class="detail-label">职位关键词：</div>
+                    <div class="detail-label">
+                      <span class="label-icon">💼</span>
+                      职位关键词（{{ getKeywordDetails(row).keywords.length }}个）：
+                    </div>
                     <div class="detail-tags">
                       <el-tag 
                         v-for="(kw, index) in getKeywordDetails(row).keywords" 
                         :key="'kw-' + index" 
                         size="small" 
-                        style="margin: 2px"
+                        effect="plain"
+                        class="keyword-tag"
                       >
                         {{ kw }}
                       </el-tag>
                     </div>
                   </div>
                   
+                  <el-divider v-if="getKeywordDetails(row).keywords.length > 0 && (getKeywordDetails(row).cities.length > 0 || getKeywordDetails(row).companies.length > 0)" style="margin: 8px 0" />
+                  
                   <div v-if="getKeywordDetails(row).cities.length > 0" class="detail-section">
-                    <div class="detail-label">城市：</div>
+                    <div class="detail-label">
+                      <span class="label-icon">🌆</span>
+                      城市（{{ getKeywordDetails(row).cities.length }}个）：
+                    </div>
                     <div class="detail-tags">
                       <el-tag 
                         v-for="(city, index) in getKeywordDetails(row).cities" 
                         :key="'city-' + index" 
                         size="small" 
                         type="success"
-                        style="margin: 2px"
+                        effect="plain"
+                        class="city-tag"
                       >
                         {{ city }}
                       </el-tag>
                     </div>
                   </div>
                   
+                  <el-divider v-if="getKeywordDetails(row).cities.length > 0 && getKeywordDetails(row).companies.length > 0" style="margin: 8px 0" />
+                  
                   <div v-if="getKeywordDetails(row).companies.length > 0" class="detail-section">
-                    <div class="detail-label">企业名称：</div>
+                    <div class="detail-label">
+                      <span class="label-icon">🏢</span>
+                      目标企业（{{ getKeywordDetails(row).companies.length }}个）：
+                    </div>
                     <div class="detail-tags">
                       <el-tag 
                         v-for="(comp, index) in getKeywordDetails(row).companies" 
                         :key="'comp-' + index" 
                         size="small" 
                         type="warning"
-                        style="margin: 2px"
+                        effect="plain"
+                        class="company-tag"
                       >
                         {{ comp }}
                       </el-tag>
@@ -306,7 +359,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
                 </template>
                 
                 <div v-else class="detail-empty">
-                  暂无配置信息
+                  <el-empty description="暂无配置信息" :image-size="60" />
                 </div>
               </div>
             </el-popover>
@@ -548,6 +601,12 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   align-items: center;
 }
 
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
 .loading {
   animation: rotate 1s linear infinite;
 }
@@ -557,27 +616,34 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   to { transform: rotate(360deg); }
 }
 
-/* 🔧 关键词详情样式 */
+/* 🔧 关键词详情样式 - 优化版 */
 .keyword-summary {
   cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
   color: #606266;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
+  background-color: #fafafa;
+  border: 1px solid transparent;
 }
 
 .keyword-summary:hover {
-  background-color: #f5f7fa;
+  background-color: #f0f2f5;
+  border-color: #e4e7ed;
+  color: #303133;
 }
 
 .keyword-detail-popover {
-  padding: 8px 0;
+  padding: 4px 0;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .detail-section {
   margin-bottom: 12px;
+  padding: 0 4px;
 }
 
 .detail-section:last-child {
@@ -588,19 +654,92 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   font-size: 13px;
   font-weight: 600;
   color: #303133;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.label-icon {
+  font-size: 16px;
+  display: inline-block;
 }
 
 .detail-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
+  padding-left: 22px; /* 对齐标签图标 */
+}
+
+/* 职位关键词标签样式 */
+.keyword-tag {
+  background-color: #ecf5ff;
+  border-color: #d9ecff;
+  color: #409eff;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.keyword-tag:hover {
+  background-color: #d9ecff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(64, 158, 255, 0.2);
+}
+
+/* 城市标签样式 */
+.city-tag {
+  background-color: #f0f9ff;
+  border-color: #e1f3ff;
+  color: #67c23a;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.city-tag:hover {
+  background-color: #e1f3ff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(103, 194, 58, 0.2);
+}
+
+/* 企业标签样式 */
+.company-tag {
+  background-color: #fdf6ec;
+  border-color: #faecd8;
+  color: #e6a23c;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.company-tag:hover {
+  background-color: #faecd8;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(230, 162, 60, 0.2);
 }
 
 .detail-empty {
   text-align: center;
   color: #909399;
   font-size: 13px;
-  padding: 12px 0;
+  padding: 20px 0;
+}
+
+/* 自定义滚动条样式 */
+.keyword-detail-popover::-webkit-scrollbar {
+  width: 6px;
+}
+
+.keyword-detail-popover::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.keyword-detail-popover::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.keyword-detail-popover::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
 }
 </style>

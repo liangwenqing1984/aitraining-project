@@ -154,7 +154,7 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       } as ApiResponse);
     }
     
-    // 2. 读取CSV文件
+    // 2. 读取文件(支持CSV和Excel双格式)
     const filePath = file.filepath;
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({
@@ -163,22 +163,89 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       } as ApiResponse);
     }
     
-    // 🔧 使用csv-parser正确解析CSV
+    // 🔧 关键修复：根据文件扩展名选择解析器
+    const isExcel = filePath.endsWith('.xlsx') || filePath.endsWith('.xls');
     const records: any[] = [];
     let headers: string[] = [];
     
-    await new Promise((resolve, reject) => {
-      fs.createReadStream(filePath, { encoding: 'utf-8' })
-        .pipe(csv())
-        .on('headers', (headerList) => {
-          headers = headerList;
-        })
-        .on('data', (row) => {
-          records.push(row);
-        })
-        .on('end', resolve)
-        .on('error', reject);
-    });
+    if (isExcel) {
+      // 📊 Excel格式解析
+      console.log(`[FileController] 检测到Excel文件，使用ExcelJS解析`);
+      const ExcelJSModule = await import('exceljs');
+      // 🔧 关键修复：ExcelJS动态导入后需要访问.default属性
+      const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+      const workbook = new ExcelJS.Workbook();
+      
+      try {
+        await workbook.xlsx.readFile(filePath);
+        const worksheet = workbook.worksheets[0]; // 读取第一个工作表
+        
+        if (!worksheet) {
+          return res.json({
+            success: true,
+            data: {
+              totalRecords: 0,
+              message: 'Excel文件为空'
+            }
+          } as ApiResponse);
+        }
+        
+        // 提取表头（第1行）
+        const headerRow = worksheet.getRow(1);
+        headers = [];
+        headerRow.eachCell((cell, colNumber) => {
+          headers.push(String(cell.value || '').trim());
+        });
+        
+        console.log(`[FileController] Excel表头解析完成: ${headers.length}个字段`, headers);
+        
+        // 提取数据行（第2行起）
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return; // 跳过表头
+          
+          const record: any = {};
+          headers.forEach((header, index) => {
+            const cellValue = row.getCell(index + 1).value;
+            record[header] = cellValue ? String(cellValue).trim() : '';
+          });
+          
+          // 过滤全空行
+          const hasData = Object.values(record).some(v => v && v !== '');
+          if (hasData) {
+            records.push(record);
+          }
+        });
+        
+        console.log(`[FileController] Excel数据解析完成: ${records.length}条记录`);
+        
+      } catch (error: any) {
+        console.error('[FileController] Excel解析失败:', error);
+        return res.status(500).json({
+          success: false,
+          error: `Excel文件解析失败: ${error.message}`
+        } as ApiResponse);
+      }
+    } else {
+      // 📄 CSV格式解析
+      console.log(`[FileController] 检测到CSV文件，使用csv-parser解析`);
+      
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(filePath, { encoding: 'utf-8' })
+          .pipe(csv())
+          .on('headers', (headerList) => {
+            headers = headerList;
+            console.log(`[FileController] CSV表头解析完成: ${headers.length}个字段`, headers);
+          })
+          .on('data', (row) => {
+            records.push(row);
+          })
+          .on('end', () => {
+            console.log(`[FileController] CSV数据解析完成: ${records.length}条记录`);
+            resolve(true);
+          })
+          .on('error', reject);
+      });
+    }
     
     if (records.length === 0) {
       return res.json({
@@ -189,6 +256,16 @@ export async function analyzeCsvFile(req: Request, res: Response) {
         }
       } as ApiResponse);
     }
+    
+    // 🔧 详细诊断日志
+    console.log(`[FileController] ========== 分析诊断 ==========`);
+    console.log(`[FileController] 文件格式: ${isExcel ? 'Excel (.xlsx)' : 'CSV'}`);
+    console.log(`[FileController] 文件路径: ${filePath}`);
+    console.log(`[FileController] 总记录数: ${records.length}`);
+    console.log(`[FileController] 字段数量: ${headers.length}`);
+    console.log(`[FileController] 字段列表:`, headers);
+    console.log(`[FileController] 第一条数据示例:`, records[0]);
+    console.log(`[FileController] ======================================`);
     
     // 3. 深度统计分析
     const analysis: any = {
@@ -231,7 +308,8 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       }
       
       // 分类字段频率分布（城市、职位、公司性质等）
-      if (uniqueValues.size <= 100 && uniqueValues.size > 1) {
+      // 🔧 优化：提高阈值到200，确保企业性质、公司规模等字段能生成topValues
+      if (uniqueValues.size <= 200 && uniqueValues.size > 1) {
         const frequency: any = {};
         values.forEach(v => {
           frequency[v] = (frequency[v] || 0) + 1;
@@ -247,6 +325,8 @@ export async function analyzeCsvFile(req: Request, res: Response) {
           count,
           percentage: ((count as number) / values.length * 100).toFixed(1)
         }));
+      } else if (uniqueValues.size > 200) {
+        console.warn(`[FileController] 字段 "${header}" 唯一值过多(${uniqueValues.size})，跳过topValues生成`);
       }
     });
     
@@ -335,18 +415,38 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       });
     }
     
-    // 4.5 企业性质分析
-    const natureField = headers.find(h => h.includes('性质'));
-    if (natureField && analysis.fieldStats[natureField]?.topValues) {
-      const natureData = analysis.fieldStats[natureField].topValues;
-      analysis.companyNatureAnalysis = natureData;
+    // 4.5 企业性质分析（优先精确匹配）
+    let natureField: string | undefined = headers.find((h: string) => h === '公司性质')
+    if (!natureField) {
+      natureField = headers.find((h: string) => h.includes('性质'))
     }
     
-    // 4.6 公司规模分析
-    const scaleField = headers.find(h => h.includes('规模'));
+    if (natureField && analysis.fieldStats[natureField]?.topValues) {
+      const natureData = analysis.fieldStats[natureField].topValues;
+      console.log(`[FileController] 企业性质分析: 找到${natureData.length}种类型`);
+      analysis.companyNatureAnalysis = natureData;
+    } else {
+      console.warn(`[FileController] 企业性质分析: 未找到数据`, { 
+        natureField, 
+        hasTopValues: natureField ? !!analysis.fieldStats[natureField]?.topValues : false 
+      });
+    }
+    
+    // 4.6 公司规模分析（优先精确匹配）
+    let scaleField: string | undefined = headers.find((h: string) => h === '公司规模')
+    if (!scaleField) {
+      scaleField = headers.find((h: string) => h.includes('规模'))
+    }
+    
     if (scaleField && analysis.fieldStats[scaleField]?.topValues) {
       const scaleData = analysis.fieldStats[scaleField].topValues;
+      console.log(`[FileController] 公司规模分析: 找到${scaleData.length}种类型`);
       analysis.companyScaleAnalysis = scaleData;
+    } else {
+      console.warn(`[FileController] 公司规模分析: 未找到数据`, { 
+        scaleField, 
+        hasTopValues: scaleField ? !!analysis.fieldStats[scaleField]?.topValues : false 
+      });
     }
     
     // 5. 综合评分
@@ -563,28 +663,87 @@ export async function previewFile(req: Request, res: Response) {
       } as ApiResponse);
     }
 
-    // 🔧 关键修复: 使用csv-parser正确解析CSV,处理逗号、引号等特殊情况
+    // 🔧 关键修复：根据文件扩展名选择解析器，支持CSV和Excel双格式
+    const isExcel = filePath.endsWith('.xlsx') || filePath.endsWith('.xls');
     const records: any[] = [];
     let headers: string[] = [];
     
-    await new Promise((resolve, reject) => {
-      fs.createReadStream(filePath, { encoding: 'utf-8' })
-        .pipe(csv())
-        .on('headers', (headerList) => {
-          headers = headerList;
-        })
-        .on('data', (row) => {
-          if (records.length < Number(rows)) {
-            records.push(row);
-          }
-        })
-        .on('end', () => {
-          resolve(true);
-        })
-        .on('error', (error) => {
-          reject(error);
+    if (isExcel) {
+      // 📊 Excel格式解析
+      console.log(`[FileController] 预览Excel文件，使用ExcelJS解析`);
+      const ExcelJSModule = await import('exceljs');
+      // 🔧 关键修复：ExcelJS动态导入后需要访问.default属性
+      const ExcelJS = ExcelJSModule.default || ExcelJSModule;
+      const workbook = new ExcelJS.Workbook();
+      
+      try {
+        await workbook.xlsx.readFile(filePath);
+        const worksheet = workbook.worksheets[0]; // 读取第一个工作表
+        
+        if (!worksheet) {
+          return res.json({
+            success: true,
+            data: {
+              headers: [],
+              rows: []
+            }
+          } as ApiResponse);
+        }
+        
+        // 提取表头（第1行）
+        const headerRow = worksheet.getRow(1);
+        headers = [];
+        headerRow.eachCell((cell, colNumber) => {
+          headers.push(String(cell.value || '').trim());
         });
-    });
+        
+        // 提取数据行（第2行起），限制预览行数
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return; // 跳过表头
+          if (records.length >= Number(rows)) return; // 限制预览行数
+          
+          const record: any = {};
+          headers.forEach((header, index) => {
+            const cellValue = row.getCell(index + 1).value;
+            record[header] = cellValue ? String(cellValue).trim() : '';
+          });
+          
+          // 过滤全空行
+          const hasData = Object.values(record).some(v => v && v !== '');
+          if (hasData) {
+            records.push(record);
+          }
+        });
+      } catch (error: any) {
+        console.error('[FileController] Excel预览解析失败:', error);
+        return res.status(500).json({
+          success: false,
+          error: `Excel文件预览失败: ${error.message}`
+        } as ApiResponse);
+      }
+    } else {
+      // 📄 CSV格式解析
+      console.log(`[FileController] 预览CSV文件，使用csv-parser解析`);
+      
+      await new Promise((resolve, reject) => {
+        fs.createReadStream(filePath, { encoding: 'utf-8' })
+          .pipe(csv())
+          .on('headers', (headerList) => {
+            headers = headerList;
+          })
+          .on('data', (row) => {
+            if (records.length < Number(rows)) {
+              records.push(row);
+            }
+          })
+          .on('end', () => {
+            resolve(true);
+          })
+          .on('error', (error) => {
+            reject(error);
+          });
+      });
+    }
 
     console.log(`[FileController] Preview: parsed ${records.length} records with headers:`, headers);
 

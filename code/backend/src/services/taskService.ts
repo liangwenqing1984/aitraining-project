@@ -6,6 +6,7 @@ import { ZhilianCrawler } from './crawler/zhilian';
 import { Job51Crawler } from './crawler/job51';
 import path from 'path';
 import fs from 'fs';
+import ExcelJS from 'exceljs';
 
 const csvDir = path.join(__dirname, '../../data/csv');
 
@@ -139,17 +140,17 @@ class TaskService {
       lastRecordCount: 0
     });
 
-    // 创建CSV文件
-    const filename = `job_data_${taskId}.csv`;
+    // 创建Excel文件(替代CSV)
+    const filename = `job_data_${taskId}.xlsx`;
     const filepath = path.join(csvDir, filename);
-    await this.createCsvFile(filepath);
-    console.log(`[TaskService] CSV文件已创建: ${filepath}`);
+    await this.createExcelFile(filepath);
+    console.log(`[TaskService] Excel文件已创建: ${filepath}`);
 
-    // 更新CSV路径
+    // 更新文件路径
     await db.prepare(`
       UPDATE tasks SET csv_path = $1 WHERE id = $2
     `).run(filepath, taskId);
-    console.log(`[TaskService] CSV路径已更新`);
+    console.log(`[TaskService] 文件路径已更新`);
 
     // 发送初始状态消息
     io.to(`task:${taskId}`).emit('task:status', {
@@ -208,19 +209,24 @@ class TaskService {
             break;
           }
 
-          // 写入CSV
-          await this.appendCsvRow(filepath, job);
+          // 写入Excel
+          await this.appendExcelRow(filepath, job);
           totalRecords++;
-          console.log(`[TaskService] 已采集第 ${totalRecords} 条数据`);
+          
+          // 🔧 优化：减少日志输出频率，每10条输出一次
+          if (totalRecords % 10 === 0 || totalRecords <= 5) {
+            console.log(`[TaskService] 已采集第 ${totalRecords} 条数据`);
+          }
 
-          // 更新进度
+          // 🔧 关键优化：降低数据库更新频率，从每条更新改为每5条或每秒更新
           const now = Date.now();
           const elapsed = (now - lastUpdateTime) / 1000;
           const speed = elapsed > 0
             ? Math.round((totalRecords - lastRecordCount) / elapsed)
             : 0;
 
-          if (elapsed >= 1) {
+          // 🔧 更新条件：时间间隔>=2秒 或 每采集5条数据
+          if (elapsed >= 2 || totalRecords % 5 === 0) {
             lastUpdateTime = now;
             lastRecordCount = totalRecords;
 
@@ -241,17 +247,22 @@ class TaskService {
             // 🔧 关键修复：PostgreSQL的INTEGER字段不接受小数，必须取整
             progressPercent = Math.round(progressPercent);
 
-            // 更新数据库进度
-            await db.prepare(`
-              UPDATE tasks
-              SET progress = $1, current = $2, record_count = $3, updated_at = CURRENT_TIMESTAMP
-              WHERE id = $4
-            `).run(
-              progressPercent,
-              totalRecords,
-              totalRecords,
-              taskId
-            );
+            try {
+              // 更新数据库进度
+              await db.prepare(`
+                UPDATE tasks
+                SET progress = $1, current = $2, record_count = $3, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $4
+              `).run(
+                progressPercent,
+                totalRecords,
+                totalRecords,
+                taskId
+              );
+            } catch (dbError: any) {
+              // 🔧 数据库更新失败不影响数据采集，仅记录日志
+              console.warn(`[TaskService] 数据库进度更新失败（可忽略）: ${dbError.message}`);
+            }
 
             io.to(`task:${taskId}`).emit('task:progress', {
               taskId,
@@ -372,7 +383,147 @@ class TaskService {
     await this.startTask(taskId, config);
   }
 
-  // 创建CSV文件
+  // 创建Excel文件(替代CSV)
+  private async createExcelFile(filepath: string) {
+    const { CSV_FIELDS } = await import('../config/constants');
+    
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('职位数据', {
+      views: [
+        { state: 'frozen', ySplit: 1 }  // 冻结首行
+      ]
+    });
+
+    // 添加表头
+    const headerRow = worksheet.addRow(CSV_FIELDS);
+    
+    // 设置表头样式: 粗体、背景色、居中、边框
+    headerRow.font = { 
+      bold: true, 
+      size: 11, 
+      name: 'Microsoft YaHei',
+      color: { argb: 'FFFFFFFF' }  // 白色文字
+    };
+    headerRow.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FF4472C4' }  // 深蓝色背景
+    };
+    headerRow.alignment = { 
+      horizontal: 'center', 
+      vertical: 'middle', 
+      wrapText: true 
+    };
+    headerRow.height = 25;  // 表头行高
+
+    // 设置表头边框
+    headerRow.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FF000000' } },
+        left: { style: 'thin', color: { argb: 'FF000000' } },
+        bottom: { style: 'thin', color: { argb: 'FF000000' } },
+        right: { style: 'thin', color: { argb: 'FF000000' } }
+      };
+    });
+
+    // 设置列宽(根据字段内容自适应)
+    const columnWidths = [
+      25,  // 企业名称
+      20,  // 职位ID
+      20,  // 职位名称
+      15,  // 职位分类
+      25,  // 职位标签
+      30,  // 职位描述
+      15,  // 薪资范围
+      12,  // 工作城市
+      12,  // 工作经验
+      25,  // 工作地址
+      10,  // 学历
+      15,  // 公司代码
+      12,  // 公司性质
+      20,  // 经营范围
+      15,  // 公司规模
+      15,  // 岗位招聘人数
+      15,  // 岗位更新日期
+      12,  // 工作性质
+      12   // 数据来源
+    ];
+
+    worksheet.columns.forEach((column, index) => {
+      column.width = columnWidths[index] || 15;
+    });
+
+    // 保存工作簿
+    await workbook.xlsx.writeFile(filepath);
+    console.log(`[TaskService] Excel文件已创建: ${filepath}`);
+  }
+
+  // 追加Excel行
+  private async appendExcelRow(filepath: string, job: JobData) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filepath);
+    const worksheet = workbook.getWorksheet(1);
+
+    if (!worksheet) {
+      throw new Error('工作表不存在');
+    }
+
+    // 添加数据行
+    const dataRow = worksheet.addRow([
+      job.companyName,       // 企业名称
+      job.jobId,             // 职位ID
+      job.jobName,           // 职位名称
+      job.jobCategory,       // 职位分类
+      job.jobTags,           // 职位标签
+      job.jobDescription,    // 职位描述
+      job.salaryRange,       // 薪资范围
+      job.workCity,          // 工作城市
+      job.workExperience,    // 工作经验
+      job.workAddress,       // 工作地址
+      job.education,         // 学历
+      job.companyCode,       // 公司代码
+      job.companyNature,     // 公司性质
+      job.businessScope,     // 经营范围
+      job.companyScale,      // 公司规模
+      job.recruitmentCount,  // 岗位招聘人数
+      job.updateDate,        // 岗位更新日期
+      job.workType,          // 工作性质
+      job.dataSource         // 数据来源
+    ]);
+
+    // 设置数据行样式: 固定行高、边框、字体
+    dataRow.height = 20;  // 固定行高
+    dataRow.font = { size: 10, name: 'Microsoft YaHei' };
+    dataRow.alignment = { 
+      vertical: 'middle', 
+      wrapText: true 
+    };
+
+    // 设置单元格边框
+    dataRow.eachCell((cell) => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFD0D7E5' } },
+        left: { style: 'thin', color: { argb: 'FFD0D7E5' } },
+        bottom: { style: 'thin', color: { argb: 'FFD0D7E5' } },
+        right: { style: 'thin', color: { argb: 'FFD0D7E5' } }
+      };
+    });
+
+    // 隔行变色(可选,提升可读性)
+    const rowIndex = dataRow.number;
+    if (rowIndex % 2 === 0) {
+      dataRow.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFF2F2F2' }  // 浅灰色背景
+      };
+    }
+
+    // 保存工作簿
+    await workbook.xlsx.writeFile(filepath);
+  }
+
+  // 创建CSV文件(保留作为备选)
   private async createCsvFile(filepath: string) {
     const { CSV_FIELDS } = await import('../config/constants');
     const header = CSV_FIELDS.join(',') + '\n';
@@ -381,7 +532,7 @@ class TaskService {
     fs.writeFileSync(filepath, bom + header, 'utf-8');
   }
 
-  // 追加CSV行
+  // 追加CSV行(保留作为备选)
   private async appendCsvRow(filepath: string, job: JobData) {
     const row = [
       this.escapeCsv(job.companyName),       // 企业名称

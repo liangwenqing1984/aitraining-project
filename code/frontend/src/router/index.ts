@@ -49,6 +49,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '创建任务' }
       },
       {
+        path: 'crawler/batch-create',
+        name: 'BatchTaskCreator',
+        component: () => import('@/views/crawler/BatchTaskCreator.vue'),
+        meta: { title: '批量创建任务' }
+      },
+      {
         path: 'crawler/monitor/:id',
         name: 'TaskMonitor',
         component: () => import('@/views/crawler/TaskMonitor.vue'),

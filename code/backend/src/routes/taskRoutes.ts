@@ -27,6 +27,9 @@ router.post('/:id/resume', taskController.resumeTask);
 // 删除任务
 router.delete('/:id', taskController.deleteTask);
 
+// 🔧 更新任务配置（不启动任务）
+router.put('/:id/config', taskController.updateTaskConfig);
+
 // 获取省市列表
 router.get('/regions/list', taskController.getRegions);
 

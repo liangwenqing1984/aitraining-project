@@ -4,6 +4,7 @@ export type TaskStatus = 'pending' | 'running' | 'paused' | 'completed' | 'stopp
 // 爬虫任务配置
 export interface TaskConfig {
   sites: ('zhilian' | '51job')[];
+  name?: string;  // 🔧 支持前端传递自定义任务名称
   province?: string;
   city?: string;
   keyword?: string;
