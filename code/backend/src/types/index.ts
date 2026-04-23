@@ -16,6 +16,12 @@ export interface TaskConfig {
   maxPages?: number;
   delay?: [number, number];
   concurrency?: number;
+  
+  // 🔧 断点续传支持：恢复状态（内部使用，不暴露给前端）
+  _resumeState?: {
+    combinationIndex: number;  // 从第几个组合开始
+    currentPage: number;       // 从第几页开始
+  };
 }
 
 // 任务实体

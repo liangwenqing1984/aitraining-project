@@ -165,19 +165,43 @@ class TaskService {
   }
 
   // 执行爬取
-  private async executeCrawling(taskId: string, config: TaskConfig, controller: AbortController) {
+  private async executeCrawling(
+    taskId: string, 
+    config: TaskConfig, 
+    controller: AbortController,
+    resumeState?: { combinationIndex: number; currentPage: number; initialRecordCount: number },
+    existingInterceptor?: ConsoleInterceptor  // 🔧 新增参数：接收已有的拦截器
+  ) {
     // 在try外部声明拦截器
     let consoleInterceptor: ConsoleInterceptor | null = null;
     
     try {
-      // 启动控制台拦截器
-      consoleInterceptor = new ConsoleInterceptor(taskId);
-      consoleInterceptor.start();
+      // 🔧 关键修复：如果已有拦截器则复用，否则创建新的
+      if (existingInterceptor) {
+        consoleInterceptor = existingInterceptor;
+        console.log(`[TaskService] 🔄 使用已有的控制台拦截器`);
+      } else {
+        consoleInterceptor = new ConsoleInterceptor(taskId);
+        consoleInterceptor.start();
+        console.log(`[TaskService] ✅ 创建新的控制台拦截器`);
+      }
       
       // 执行爬取
-      let totalRecords = 0;
+      let totalRecords = resumeState?.initialRecordCount || 0;
       let lastUpdateTime = Date.now();
-      let lastRecordCount = 0;
+      let lastRecordCount = totalRecords;
+      
+      // 🔧 关键修复：如果是重启任务，从已有CSV文件读取初始记录数
+      if (resumeState) {
+        console.log(`[TaskService] 🔄 断点续传模式 - 起始记录数: ${totalRecords}`);
+        console.log(`[TaskService] 📍 从组合索引 ${resumeState.combinationIndex}, 第 ${resumeState.currentPage} 页继续`);
+        
+        io.to(`task:${taskId}`).emit('task:log', {
+          taskId,
+          level: 'info',
+          message: `🔄 断点续传：已采集${totalRecords}条数据，从失败点继续...`
+        });
+      }
       
       // 获取CSV路径和文件名
       const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
@@ -202,8 +226,16 @@ class TaskService {
           ? new ZhilianCrawler()
           : new Job51Crawler();
 
-        console.log(`[TaskService] 开始遍历职位数据...`);
+        console.log(`[TaskService] 🚀 爬虫实例已创建，开始遍历职位数据...`);
+        let iterationCount = 0; // 🔧 诊断：记录迭代次数
+        
         for await (const job of crawler.crawl(config, controller.signal)) {
+          iterationCount++;
+          
+          if (iterationCount === 1) {
+            console.log(`[TaskService] ✅ 首次接收到数据！job=${JSON.stringify({title: job.title, company: job.company})}`);
+          }
+          
           if (controller.signal.aborted) {
             console.log(`[TaskService] 爬取过程中被中止`);
             break;
@@ -225,30 +257,62 @@ class TaskService {
             ? Math.round((totalRecords - lastRecordCount) / elapsed)
             : 0;
 
+          // 🔧 关键修复：计算总组合数，判断是否为多组合场景
+          const keywords = config.keywords && config.keywords.length > 0 
+            ? config.keywords 
+            : (config.keyword ? [config.keyword] : ['']);
+          const cities = config.cities && config.cities.length > 0
+            ? config.cities
+            : (config.city ? [config.city] : ['']);
+          const totalCombinations = keywords.length * cities.length;
+          const isMultiCombination = totalCombinations > 1;
+
           // 🔧 更新条件：时间间隔>=2秒 或 每采集5条数据
-          if (elapsed >= 2 || totalRecords % 5 === 0) {
+          // ⚠️ 注意：即使totalRecords为0，也要定期更新以显示"正在运行"状态
+          const shouldUpdate = elapsed >= 2 || totalRecords % 5 === 0 || (totalRecords === 0 && elapsed >= 5);
+          
+          if (shouldUpdate) {
             lastUpdateTime = now;
             lastRecordCount = totalRecords;
-
-            // 改进的进度计算：基于已采集数据量，使用渐进式估算
-            // 前10条数据显示0-50%，10-50条显示50-80%，50条以上显示80-99%
-            let progressPercent: number;
-            if (totalRecords <= 10) {
-              progressPercent = (totalRecords / 10) * 50;
-            } else if (totalRecords <= 50) {
-              progressPercent = 50 + ((totalRecords - 10) / 40) * 30;
-            } else {
-              progressPercent = 80 + Math.min(19, (totalRecords - 50) / 10);
-            }
             
-            // 确保进度不超过99%
-            progressPercent = Math.min(99, Math.max(0, progressPercent));
+            // 🔧 诊断日志：记录更新触发原因
+            const triggerReason = totalRecords === 0 ? '心跳(无数据)' : 
+                                 (elapsed >= 2 ? `时间间隔(${elapsed.toFixed(1)}s)` : `数据量(${totalRecords}条)`);
+            console.log(`[TaskService] 📊 准备更新进度 - 触发原因: ${triggerReason}, totalRecords=${totalRecords}, isMultiCombination=${isMultiCombination}`);
+
+            // 🔧 关键修复：无论单/多组合，都更新record_count（已采集记录数）
+            // 但progress（进度百分比）的计算方式不同
+            let progressPercent: number;
+            
+            if (isMultiCombination) {
+              // 多组合场景：由爬虫自己更新进度，这里只更新record_count
+              // 读取当前数据库中的进度值（由爬虫维护）
+              try {
+                const taskInfo = await db.prepare('SELECT progress FROM tasks WHERE id = $1').get(taskId) as any;
+                progressPercent = taskInfo?.progress || 0;
+              } catch (e) {
+                progressPercent = 0;
+              }
+            } else {
+              // 单组合场景：基于已采集数据量，使用渐进式估算
+              // 前10条数据显示0-50%，10-50条显示50-80%，50条以上显示80-99%
+              if (totalRecords <= 10) {
+                progressPercent = (totalRecords / 10) * 50;
+              } else if (totalRecords <= 50) {
+                progressPercent = 50 + ((totalRecords - 10) / 40) * 30;
+              } else {
+                progressPercent = 80 + Math.min(19, (totalRecords - 50) / 10);
+              }
+              
+              // 确保进度不超过99%
+              progressPercent = Math.min(99, Math.max(0, progressPercent));
+            }
             
             // 🔧 关键修复：PostgreSQL的INTEGER字段不接受小数，必须取整
             progressPercent = Math.round(progressPercent);
 
             try {
-              // 更新数据库进度
+              // 更新数据库进度和记录数
               await db.prepare(`
                 UPDATE tasks
                 SET progress = $1, current = $2, record_count = $3, updated_at = CURRENT_TIMESTAMP
@@ -272,7 +336,7 @@ class TaskService {
               total: totalRecords > 0 ? totalRecords : 100,
               recordCount: totalRecords,
               speed,
-              message: `已采集 ${totalRecords} 条数据`
+              message: totalRecords > 0 ? `已采集 ${totalRecords} 条数据` : '正在爬取中...'
             });
           }
         }
@@ -327,8 +391,81 @@ class TaskService {
     } catch (error: any) {
       // 任务失败
       console.error(`[TaskService] 任务失败:`, error);
-      console.error(`[TaskService] 错误堆栈:`, error.stack);
-      
+      if (error.stack) {
+        console.error(`[TaskService] 错误堆栈:`, error.stack);
+      }
+
+      // 🔧 关键修复：检测是否为可恢复的浏览器崩溃错误
+      const isBrowserCrash = error.canRecover === true || 
+                             error.message?.includes('BROWSER_CRASH_RECOVERABLE');
+
+      if (isBrowserCrash) {
+        console.log(`[TaskService] 🔄 检测到浏览器崩溃，准备重启并重试...`);
+        
+        // 🔧 关键修复1：读取当前CSV文件的行数作为初始记录数
+        let initialRecordCount = 0;
+        try {
+          const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
+          const filepath = task?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
+          
+          if (fs.existsSync(filepath)) {
+            const fileContent = fs.readFileSync(filepath, 'utf-8');
+            const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
+            // 减去表头行
+            initialRecordCount = Math.max(0, lines.length - 1);
+            console.log(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从CSV文件读取）`);
+          }
+        } catch (readError: any) {
+          console.warn(`[TaskService] ⚠️ 读取CSV文件失败，将从0开始计数:`, readError.message);
+        }
+        
+        // 🔧 关键修复2：提取错误中的位置信息
+        const combinationIndex = error.combinationIndex || 0;
+        const currentPage = error.currentPage || 1;
+        
+        console.log(`[TaskService] 📍 失败位置: 组合索引=${combinationIndex}, 页码=${currentPage}`);
+        
+        // 发送重启日志到前端
+        io.to(`task:${taskId}`).emit('task:log', {
+          taskId,
+          level: 'warning',
+          message: `🔄 浏览器崩溃，正在重启并从第${combinationIndex}个组合、第${currentPage}页继续...`
+        });
+
+        // 🔧 等待3秒后重启浏览器并重试
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        try {
+          // 重新执行爬取任务（从当前位置继续）
+          console.log(`[TaskService] 🚀 重新启动爬虫任务...`);
+          
+          // 🔧 关键修复3：传递恢复状态，包括起始记录数和失败位置
+          const resumeState = {
+            combinationIndex,
+            currentPage,
+            initialRecordCount
+          };
+          
+          // 🔧 关键修复4：将恢复状态注入config，传递给爬虫
+          const configWithResume = {
+            ...config,
+            _resumeState: {
+              combinationIndex,
+              currentPage
+            }
+          };
+          
+          // 🔧 关键修复5：传递当前拦截器，避免重复创建
+          await this.executeCrawling(taskId, configWithResume, controller, resumeState, consoleInterceptor || undefined);
+          return; // 重试成功后直接返回，不执行下方的失败逻辑
+        } catch (retryError: any) {
+          // 如果重试也失败，则标记为最终失败
+          console.error(`[TaskService] ❌ 重试后仍然失败:`, retryError.message);
+          error = retryError; // 使用重试的错误信息
+        }
+      }
+
+      // 标记任务为失败
       await db.prepare(`
         UPDATE tasks SET status = 'failed', error_message = $1, updated_at = CURRENT_TIMESTAMP
         WHERE id = $2
@@ -346,8 +483,13 @@ class TaskService {
       });
       
     } finally {
-      // 停止控制台拦截器
-      consoleInterceptor?.stop();
+      // 🔧 关键修复：只有当前创建的拦截器才需要停止（复用的拦截器由外层管理）
+      if (consoleInterceptor && !existingInterceptor) {
+        consoleInterceptor.stop();
+        console.log(`[TaskService] ✅ 控制台拦截器已停止`);
+      } else if (existingInterceptor) {
+        console.log(`[TaskService] ℹ️  复用外层拦截器，不在这里停止`);
+      }
       
       console.log(`[TaskService] 清理任务资源`);
       this.runningTasks.delete(taskId);

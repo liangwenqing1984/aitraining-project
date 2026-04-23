@@ -31,7 +31,7 @@ export class CsvWriter {
 
   async end(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.writeStream.end((err) => {
+      this.writeStream.end((err: Error | null | undefined) => {
         if (err) reject(err);
         else resolve();
       });

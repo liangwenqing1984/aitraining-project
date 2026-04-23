@@ -1,175 +1,250 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 900" fill="none">
   <defs>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="4" result="blur"/>
+    <!-- 主渐变 -->
+    <linearGradient id="mainGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#1e3a5f"/>
+    </linearGradient>
+    
+    <!-- 网格渐变 -->
+    <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(59,130,246,0.06)" stroke-width="0.5"/>
+    </pattern>
+    
+    <!-- 光晕效果 -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
       <feMerge>
         <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+    
+    <!-- 节点光晕 -->
     <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.4"/>
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.5"/>
       <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
     </radialGradient>
+    
+    <!-- 数据流光效 -->
+    <linearGradient id="dataFlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#60a5fa" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </linearGradient>
   </defs>
 
-  <!-- 黑龙江省简化轮廓 -->
-  <path d="
-    M 310 80 L 340 70 L 380 55 L 420 50 L 460 55 L 500 65 L 530 80
-    L 560 100 L 580 125 L 595 155 L 600 190 L 598 220 L 590 250
-    L 575 280 L 560 305 L 545 330 L 535 355 L 530 380 L 528 405
-    L 525 430 L 520 455 L 510 480 L 495 505 L 480 525 L 465 540
-    L 450 555 L 435 570 L 420 588 L 410 605 L 400 625 L 395 645
-    L 392 665 L 390 690 L 388 715 L 385 740 L 378 762 L 368 780
-    L 355 795 L 340 808 L 325 818 L 310 825 L 295 828 L 280 825
-    L 265 818 L 252 808 L 240 795 L 230 778 L 222 758 L 215 735
-    L 210 710 L 206 685 L 204 660 L 202 635 L 200 610 L 198 585
-    L 195 560 L 190 538 L 182 518 L 172 500 L 160 485 L 148 470
-    L 135 455 L 122 440 L 112 422 L 105 402 L 100 380 L 98 355
-    L 100 330 L 105 305 L 115 280 L 128 258 L 145 238 L 165 220
-    L 188 205 L 210 192 L 230 180 L 248 168 L 262 155 L 275 140
-    L 288 125 L 298 108 L 305 92 Z
-  " fill="rgba(59,130,246,0.05)" stroke="rgba(59,130,246,0.18)" stroke-width="1.5"/>
-
-  <!-- 内层光晕 -->
-  <path d="
-    M 310 80 L 340 70 L 380 55 L 420 50 L 460 55 L 500 65 L 530 80
-    L 560 100 L 580 125 L 595 155 L 600 190 L 598 220 L 590 250
-    L 575 280 L 560 305 L 545 330 L 535 355 L 530 380 L 528 405
-    L 525 430 L 520 455 L 510 480 L 495 505 L 480 525 L 465 540
-    L 450 555 L 435 570 L 420 588 L 410 605 L 400 625 L 395 645
-    L 392 665 L 390 690 L 388 715 L 385 740 L 378 762 L 368 780
-    L 355 795 L 340 808 L 325 818 L 310 825 L 295 828 L 280 825
-    L 265 818 L 252 808 L 240 795 L 230 778 L 222 758 L 215 735
-    L 210 710 L 206 685 L 204 660 L 202 635 L 200 610 L 198 585
-    L 195 560 L 190 538 L 182 518 L 172 500 L 160 485 L 148 470
-    L 135 455 L 122 440 L 112 422 L 105 402 L 100 380 L 98 355
-    L 100 330 L 105 305 L 115 280 L 128 258 L 145 238 L 165 220
-    L 188 205 L 210 192 L 230 180 L 248 168 L 262 155 L 275 140
-    L 288 125 L 298 108 L 305 92 Z
-  " fill="none" stroke="rgba(59,130,246,0.06)" stroke-width="8" filter="url(#glow)"/>
-
-  <!-- 数据网络连线 - 哈尔滨到各城市 -->
-  <line x1="420" y1="280" x2="240" y2="340" stroke="rgba(59,130,246,0.12)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="2s" repeatCount="indefinite"/>
-  </line>
-  <line x1="420" y1="280" x2="520" y2="510" stroke="rgba(59,130,246,0.12)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.5s" repeatCount="indefinite"/>
-  </line>
-  <line x1="420" y1="280" x2="530" y2="220" stroke="rgba(99,102,241,0.1)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="3s" repeatCount="indefinite"/>
-  </line>
-  <line x1="420" y1="280" x2="300" y2="310" stroke="rgba(99,102,241,0.1)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.2s" repeatCount="indefinite"/>
-  </line>
-  <line x1="420" y1="280" x2="350" y2="480" stroke="rgba(99,102,241,0.08)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.8s" repeatCount="indefinite"/>
-  </line>
-  <line x1="420" y1="280" x2="450" y2="430" stroke="rgba(59,130,246,0.1)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.6s" repeatCount="indefinite"/>
-  </line>
-  <line x1="240" y1="340" x2="300" y2="310" stroke="rgba(99,102,241,0.08)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="3.2s" repeatCount="indefinite"/>
-  </line>
-  <line x1="520" y1="510" x2="450" y2="430" stroke="rgba(59,130,246,0.08)" stroke-width="1" stroke-dasharray="4,4">
-    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.4s" repeatCount="indefinite"/>
-  </line>
-
-  <!-- 哈尔滨节点 - 省会最大 -->
-  <circle cx="420" cy="280" r="18" fill="url(#nodeGlow)"/>
-  <circle cx="420" cy="280" r="6" fill="#3b82f6" opacity="0.9">
-    <animate attributeName="r" values="6;8;6" dur="3s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0.9;0.5;0.9" dur="3s" repeatCount="indefinite"/>
+  <!-- 背景层 -->
+  <rect width="800" height="900" fill="url(#mainGradient)"/>
+  
+  <!-- 网格层 -->
+  <rect width="800" height="900" fill="url(#gridPattern)"/>
+  
+  <!-- 大型装饰圆环 -->
+  <circle cx="650" cy="200" r="180" fill="none" stroke="rgba(59,130,246,0.08)" stroke-width="1">
+    <animate attributeName="r" values="180;190;180" dur="8s" repeatCount="indefinite"/>
   </circle>
-  <circle cx="420" cy="280" r="14" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.3">
-    <animate attributeName="r" values="14;22;14" dur="3s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0.3;0;0.3" dur="3s" repeatCount="indefinite"/>
+  <circle cx="650" cy="200" r="140" fill="none" stroke="rgba(59,130,246,0.06)" stroke-width="0.8">
+    <animate attributeName="r" values="140;148;140" dur="6s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="650" cy="200" r="100" fill="none" stroke="rgba(59,130,246,0.04)" stroke-width="0.5">
+    <animate attributeName="r" values="100;106;100" dur="5s" repeatCount="indefinite"/>
+  </circle>
+  
+  <!-- 左下角装饰圆环 -->
+  <circle cx="150" cy="750" r="120" fill="none" stroke="rgba(99,102,241,0.06)" stroke-width="0.8">
+    <animate attributeName="r" values="120;128;120" dur="7s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="150" cy="750" r="80" fill="none" stroke="rgba(99,102,241,0.04)" stroke-width="0.5">
+    <animate attributeName="r" values="80;86;80" dur="6s" repeatCount="indefinite"/>
   </circle>
 
-  <!-- 齐齐哈尔节点 -->
-  <circle cx="240" cy="340" r="12" fill="url(#nodeGlow)"/>
-  <circle cx="240" cy="340" r="4.5" fill="#60a5fa" opacity="0.8">
-    <animate attributeName="r" values="4.5;6;4.5" dur="4s" repeatCount="indefinite"/>
-  </circle>
-  <circle cx="240" cy="340" r="11" fill="none" stroke="#60a5fa" stroke-width="1" opacity="0.2">
-    <animate attributeName="r" values="11;18;11" dur="4s" repeatCount="indefinite"/>
-    <animate attributeName="opacity" values="0.2;0;0.2" dur="4s" repeatCount="indefinite"/>
-  </circle>
-
-  <!-- 牡丹江节点 -->
-  <circle cx="520" cy="510" r="12" fill="url(#nodeGlow)"/>
-  <circle cx="520" cy="510" r="4.5" fill="#60a5fa" opacity="0.8">
-    <animate attributeName="r" values="4.5;6;4.5" dur="3.5s" repeatCount="indefinite"/>
-  </circle>
-
-  <!-- 佳木斯节点 -->
-  <circle cx="530" cy="220" r="10" fill="url(#nodeGlow)"/>
-  <circle cx="530" cy="220" r="4" fill="#818cf8" opacity="0.7">
-    <animate attributeName="r" values="4;5.5;4" dur="4.5s" repeatCount="indefinite"/>
-  </circle>
-
-  <!-- 大庆节点 -->
-  <circle cx="300" cy="310" r="10" fill="url(#nodeGlow)"/>
-  <circle cx="300" cy="310" r="4" fill="#818cf8" opacity="0.7">
-    <animate attributeName="r" values="4;5.5;4" dur="3.8s" repeatCount="indefinite"/>
-  </circle>
-
-  <!-- 绥化节点 -->
-  <circle cx="350" cy="480" r="8" fill="url(#nodeGlow)"/>
-  <circle cx="350" cy="480" r="3.5" fill="#a78bfa" opacity="0.6">
-    <animate attributeName="r" values="3.5;5;3.5" dur="4.2s" repeatCount="indefinite"/>
-  </circle>
-
-  <!-- 鸡西节点 -->
-  <circle cx="450" cy="430" r="8" fill="url(#nodeGlow)"/>
-  <circle cx="450" cy="430" r="3.5" fill="#a78bfa" opacity="0.6">
-    <animate attributeName="r" values="3.5;5;3.5" dur="3.6s" repeatCount="indefinite"/>
-  </circle>
-
-  <!-- 散布的小数据点 -->
-  <circle cx="180" cy="260" r="2" fill="#60a5fa" opacity="0.3"/>
-  <circle cx="550" cy="350" r="1.5" fill="#818cf8" opacity="0.25"/>
-  <circle cx="280" cy="460" r="2" fill="#60a5fa" opacity="0.2"/>
-  <circle cx="480" cy="180" r="1.5" fill="#818cf8" opacity="0.3"/>
-  <circle cx="360" cy="200" r="1.5" fill="#a78bfa" opacity="0.25"/>
-  <circle cx="200" cy="400" r="2" fill="#60a5fa" opacity="0.2"/>
-  <circle cx="500" cy="400" r="1.5" fill="#818cf8" opacity="0.2"/>
-  <circle cx="380" cy="550" r="1.5" fill="#a78bfa" opacity="0.2"/>
-  <circle cx="160" cy="350" r="1.5" fill="#60a5fa" opacity="0.15"/>
-  <circle cx="560" cy="280" r="1.5" fill="#818cf8" opacity="0.15"/>
-  <circle cx="330" cy="150" r="1.5" fill="#60a5fa" opacity="0.2"/>
-  <circle cx="470" cy="600" r="1.5" fill="#a78bfa" opacity="0.15"/>
-
-  <!-- 城市名称标注 -->
-  <text x="432" y="272" fill="rgba(148,163,184,0.5)" font-size="10" font-family="system-ui, sans-serif">哈尔滨</text>
-  <text x="210" y="358" fill="rgba(148,163,184,0.4)" font-size="9" font-family="system-ui, sans-serif">齐齐哈尔</text>
-  <text x="532" y="518" fill="rgba(148,163,184,0.4)" font-size="9" font-family="system-ui, sans-serif">牡丹江</text>
-  <text x="542" y="228" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">佳木斯</text>
-  <text x="268" y="325" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">大庆</text>
-  <text x="318" y="498" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">绥化</text>
-  <text x="418" y="448" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">鸡西</text>
-
-  <!-- 右上角装饰网格 -->
-  <g opacity="0.06" stroke="#60a5fa" stroke-width="0.5">
-    <line x1="620" y1="40" x2="760" y2="40"/>
-    <line x1="620" y1="60" x2="760" y2="60"/>
-    <line x1="620" y1="80" x2="760" y2="80"/>
-    <line x1="620" y1="100" x2="760" y2="100"/>
-    <line x1="620" y1="120" x2="740" y2="120"/>
-    <line x1="620" y1="40" x2="620" y2="120"/>
-    <line x1="640" y1="40" x2="640" y2="120"/>
-    <line x1="660" y1="40" x2="660" y2="120"/>
-    <line x1="680" y1="40" x2="680" y2="120"/>
-    <line x1="700" y1="40" x2="700" y2="120"/>
-    <line x1="720" y1="40" x2="720" y2="120"/>
-    <line x1="740" y1="40" x2="740" y2="120"/>
-    <line x1="760" y1="40" x2="760" y2="100"/>
+  <!-- 数据流线条 - 水平方向 -->
+  <g opacity="0.15">
+    <line x1="0" y1="150" x2="800" y2="150" stroke="url(#dataFlow)" stroke-width="1">
+      <animate attributeName="x1" values="-100;800" dur="12s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="0;900" dur="12s" repeatCount="indefinite"/>
+    </line>
+    <line x1="0" y1="350" x2="800" y2="350" stroke="url(#dataFlow)" stroke-width="0.8">
+      <animate attributeName="x1" values="-150;800" dur="15s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="-50;900" dur="15s" repeatCount="indefinite"/>
+    </line>
+    <line x1="0" y1="550" x2="800" y2="550" stroke="url(#dataFlow)" stroke-width="1">
+      <animate attributeName="x1" values="-80;800" dur="10s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="20;900" dur="10s" repeatCount="indefinite"/>
+    </line>
+    <line x1="0" y1="750" x2="800" y2="750" stroke="url(#dataFlow)" stroke-width="0.8">
+      <animate attributeName="x1" values="-120;800" dur="14s" repeatCount="indefinite"/>
+      <animate attributeName="x2" values="-20;900" dur="14s" repeatCount="indefinite"/>
+    </line>
   </g>
 
-  <!-- 左下角装饰六边形 -->
-  <g opacity="0.05" stroke="#818cf8" stroke-width="0.5" fill="none">
-    <polygon points="80,700 100,690 120,700 120,720 100,730 80,720"/>
-    <polygon points="120,700 140,690 160,700 160,720 140,730 120,720"/>
-    <polygon points="100,730 120,720 140,730 140,750 120,760 100,750"/>
+  <!-- 数据流线条 - 垂直方向 -->
+  <g opacity="0.12">
+    <line x1="200" y1="0" x2="200" y2="900" stroke="url(#dataFlow)" stroke-width="0.8">
+      <animate attributeName="y1" values="-100;900" dur="13s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="0;1000" dur="13s" repeatCount="indefinite"/>
+    </line>
+    <line x1="500" y1="0" x2="500" y2="900" stroke="url(#dataFlow)" stroke-width="1">
+      <animate attributeName="y1" values="-80;900" dur="11s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="20;1000" dur="11s" repeatCount="indefinite"/>
+    </line>
+  </g>
+
+  <!-- 六边形蜂巢结构 -->
+  <g opacity="0.04" stroke="#60a5fa" stroke-width="0.8" fill="none">
+    <polygon points="100,100 130,85 160,100 160,130 130,145 100,130"/>
+    <polygon points="160,100 190,85 220,100 220,130 190,145 160,130"/>
+    <polygon points="130,145 160,130 190,145 190,175 160,190 130,175"/>
+    <polygon points="600,600 630,585 660,600 660,630 630,645 600,630"/>
+    <polygon points="660,600 690,585 720,600 720,630 690,645 660,630"/>
+    <polygon points="630,645 660,630 690,645 690,675 660,690 630,675"/>
+  </g>
+
+  <!-- 主要节点网络 -->
+  <!-- 中心大节点 -->
+  <circle cx="400" cy="450" r="25" fill="url(#nodeGlow)" filter="url(#glow)"/>
+  <circle cx="400" cy="450" r="8" fill="#3b82f6" opacity="0.9">
+    <animate attributeName="r" values="8;10;8" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.9;0.6;0.9" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="400" cy="450" r="18" fill="none" stroke="#3b82f6" stroke-width="1.5" opacity="0.4">
+    <animate attributeName="r" values="18;28;18" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.4;0;0.4" dur="3s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 一级节点 -->
+  <circle cx="250" cy="300" r="15" fill="url(#nodeGlow)"/>
+  <circle cx="250" cy="300" r="5" fill="#60a5fa" opacity="0.85">
+    <animate attributeName="r" values="5;7;5" dur="4s" repeatCount="indefinite"/>
+  </circle>
+  
+  <circle cx="550" cy="350" r="15" fill="url(#nodeGlow)"/>
+  <circle cx="550" cy="350" r="5" fill="#60a5fa" opacity="0.85">
+    <animate attributeName="r" values="5;7;5" dur="3.5s" repeatCount="indefinite"/>
+  </circle>
+  
+  <circle cx="300" cy="600" r="15" fill="url(#nodeGlow)"/>
+  <circle cx="300" cy="600" r="5" fill="#818cf8" opacity="0.8">
+    <animate attributeName="r" values="5;7;5" dur="4.5s" repeatCount="indefinite"/>
+  </circle>
+  
+  <circle cx="500" cy="580" r="15" fill="url(#nodeGlow)"/>
+  <circle cx="500" cy="580" r="5" fill="#818cf8" opacity="0.8">
+    <animate attributeName="r" values="5;7;5" dur="3.8s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 二级节点 -->
+  <circle cx="180" cy="450" r="10" fill="url(#nodeGlow)"/>
+  <circle cx="180" cy="450" r="3.5" fill="#a78bfa" opacity="0.7">
+    <animate attributeName="r" values="3.5;5;3.5" dur="4.2s" repeatCount="indefinite"/>
+  </circle>
+  
+  <circle cx="620" cy="480" r="10" fill="url(#nodeGlow)"/>
+  <circle cx="620" cy="480" r="3.5" fill="#a78bfa" opacity="0.7">
+    <animate attributeName="r" values="3.5;5;3.5" dur="3.6s" repeatCount="indefinite"/>
+  </circle>
+  
+  <circle cx="350" cy="200" r="10" fill="url(#nodeGlow)"/>
+  <circle cx="350" cy="200" r="3.5" fill="#a78bfa" opacity="0.7">
+    <animate attributeName="r" values="3.5;5;3.5" dur="4.8s" repeatCount="indefinite"/>
+  </circle>
+  
+  <circle cx="450" cy="700" r="10" fill="url(#nodeGlow)"/>
+  <circle cx="450" cy="700" r="3.5" fill="#a78bfa" opacity="0.7">
+    <animate attributeName="r" values="3.5;5;3.5" dur="4s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 连接线 -->
+  <g stroke="#3b82f6" stroke-width="1" opacity="0.15" stroke-dasharray="5,5">
+    <line x1="400" y1="450" x2="250" y2="300">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="400" y1="450" x2="550" y2="350">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="2.5s" repeatCount="indefinite"/>
+    </line>
+    <line x1="400" y1="450" x2="300" y2="600">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="2.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="400" y1="450" x2="500" y2="580">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="2.8s" repeatCount="indefinite"/>
+    </line>
+    <line x1="250" y1="300" x2="180" y2="450">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="3s" repeatCount="indefinite"/>
+    </line>
+    <line x1="550" y1="350" x2="620" y2="480">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="2.6s" repeatCount="indefinite"/>
+    </line>
+    <line x1="250" y1="300" x2="350" y2="200">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="3.2s" repeatCount="indefinite"/>
+    </line>
+    <line x1="300" y1="600" x2="450" y2="700">
+      <animate attributeName="stroke-dashoffset" values="0;10" dur="2.4s" repeatCount="indefinite"/>
+    </line>
+  </g>
+
+  <!-- 散布的小数据点 -->
+  <g opacity="0.2">
+    <circle cx="120" cy="200" r="2" fill="#60a5fa">
+      <animate attributeName="opacity" values="0.2;0.5;0.2" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="680" cy="250" r="1.5" fill="#818cf8">
+      <animate attributeName="opacity" values="0.2;0.4;0.2" dur="4s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="150" cy="550" r="2" fill="#60a5fa">
+      <animate attributeName="opacity" values="0.15;0.4;0.15" dur="3.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="650" cy="650" r="1.5" fill="#a78bfa">
+      <animate attributeName="opacity" values="0.2;0.45;0.2" dur="4.5s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="300" cy="150" r="1.5" fill="#60a5fa">
+      <animate attributeName="opacity" values="0.15;0.35;0.15" dur="3.8s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="500" cy="150" r="2" fill="#818cf8">
+      <animate attributeName="opacity" values="0.2;0.5;0.2" dur="4.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="200" cy="700" r="1.5" fill="#a78bfa">
+      <animate attributeName="opacity" values="0.15;0.4;0.15" dur="3.6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="600" cy="750" r="2" fill="#60a5fa">
+      <animate attributeName="opacity" values="0.2;0.45;0.2" dur="4.8s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+
+  <!-- 右上角科技装饰 -->
+  <g opacity="0.08" stroke="#60a5fa" stroke-width="0.8">
+    <rect x="680" y="50" width="80" height="80" rx="4" fill="none"/>
+    <rect x="690" y="60" width="60" height="60" rx="3" fill="none"/>
+    <circle cx="720" cy="90" r="15" fill="none"/>
+    <line x1="680" y1="90" x2="705" y2="90"/>
+    <line x1="735" y1="90" x2="760" y2="90"/>
+    <line x1="720" y1="50" x2="720" y2="75"/>
+    <line x1="720" y1="105" x2="720" y2="130"/>
+  </g>
+
+  <!-- 左下角装饰元素 -->
+  <g opacity="0.06" stroke="#818cf8" stroke-width="0.8">
+    <circle cx="80" cy="820" r="30" fill="none"/>
+    <circle cx="80" cy="820" r="20" fill="none"/>
+    <circle cx="80" cy="820" r="10" fill="none"/>
+    <line x1="50" y1="820" x2="110" y2="820"/>
+    <line x1="80" y1="790" x2="80" y2="850"/>
+  </g>
+
+  <!-- 动态粒子效果 -->
+  <g>
+    <circle cx="350" cy="350" r="1.5" fill="#60a5fa" opacity="0.4">
+      <animate attributeName="cx" values="350;380;350" dur="6s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="350;320;350" dur="6s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="450" cy="500" r="1.5" fill="#818cf8" opacity="0.4">
+      <animate attributeName="cx" values="450;420;450" dur="7s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="500;530;500" dur="7s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="320" cy="520" r="1.5" fill="#a78bfa" opacity="0.4">
+      <animate attributeName="cx" values="320;350;320" dur="6.5s" repeatCount="indefinite"/>
+      <animate attributeName="cy" values="520;490;520" dur="6.5s" repeatCount="indefinite"/>
+    </circle>
   </g>
 </svg>

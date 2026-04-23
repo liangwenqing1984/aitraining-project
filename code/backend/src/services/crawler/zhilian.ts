@@ -10,6 +10,16 @@ export class ZhilianCrawler {
   async *crawl(config: TaskConfig, signal: AbortSignal): AsyncGenerator<JobData> {
     this.signal = signal;
 
+    // 🔧 断点续传：获取恢复状态
+    const resumeState = config._resumeState;
+    const startCombinationIndex = resumeState?.combinationIndex || 0;
+    const startPage = resumeState?.currentPage || 1;
+    
+    if (resumeState) {
+      console.log(`[ZhilianCrawler] 🔄 断点续传模式激活`);
+      console.log(`[ZhilianCrawler] 📍 从组合索引 ${startCombinationIndex}, 第 ${startPage} 页开始`);
+    }
+
     // 获取关键词列表（支持多个）
     const keywords = config.keywords && config.keywords.length > 0 
       ? config.keywords 
@@ -109,15 +119,30 @@ export class ZhilianCrawler {
       // 遍历所有关键词和城市的组合
       console.log(`[ZhilianCrawler] >>>>>> 开始遍历 ${totalCombinationCount} 个组合 <<<<<<`);
       
+      let skippedCombinations = 0;
+      
       for (const keyword of keywords) {
         for (const city of cities) {
           currentCombination++;
+          
+          // 🔧 断点续传：跳过已完成的组合
+          if (currentCombination < startCombinationIndex) {
+            skippedCombinations++;
+            if (skippedCombinations % 10 === 0 || skippedCombinations <= 3) {
+              console.log(`[ZhilianCrawler] ⏭️ 跳过已完成组合 ${currentCombination}/${totalCombinationCount}`);
+            }
+            continue;
+          }
+          
+          // 🔧 断点续传：如果是起始组合，从指定页码开始
+          let currentPage = (currentCombination === startCombinationIndex) ? startPage : 1;
           
           console.log(`[ZhilianCrawler]`);
           console.log(`[ZhilianCrawler] ╔════════════════════════════════════════╗`);
           console.log(`[ZhilianCrawler] ║ 开始处理组合 ${currentCombination}/${totalCombinationCount}`);
           console.log(`[ZhilianCrawler] ║   关键词: "${keyword}"`);
           console.log(`[ZhilianCrawler] ║   城市:   "${city || '不限'}"`);
+          console.log(`[ZhilianCrawler] ║   起始页: ${currentPage}`);
           console.log(`[ZhilianCrawler] ╚════════════════════════════════════════╝`);
           
           if (this.checkAborted()) {
@@ -165,7 +190,7 @@ export class ZhilianCrawler {
           // ❌ 错误方式（路径编码）：https://www.zhaopin.com/sou/jl622/kwUI/p1
           // ✅ 正确方式（查询参数）：https://www.zhaopin.com/sou?jl=622&kw=UI&p=1
           
-          let currentPage = 1;
+          // 🔧 断点续传：currentPage已在循环开始时设置，这里只声明hasNextPage
           let hasNextPage = true;
           
           // 🔧 智能提前终止：跟踪连续无匹配的页数
@@ -1190,7 +1215,51 @@ export class ZhilianCrawler {
             } catch (error: any) {
               const pageEndTime = Date.now();
               const pageDuration = ((pageEndTime - pageStartTime) / 1000).toFixed(2);
-              
+              // 🔧 关键修复：检测浏览器崩溃错误
+const isBrowserCrash = error.message.includes('Connection closed') || 
+                       error.message.includes('Session closed') ||
+                       error.message.includes('Target closed') ||
+                       error.message.includes('Protocol error') ||
+                       error.message.includes('浏览器连接已断开') ||
+                       error.message.includes('BROWSER_RESTART_SCHEDULED');
+
+if (isBrowserCrash) {
+  console.error(`[ZhilianCrawler] 🚨 检测到浏览器崩溃！错误: ${error.message}`);
+  console.error(`[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
+  
+  if (io && taskId) {
+    io.to(`task:${taskId}`).emit('task:log', {
+      taskId,
+      level: 'error',
+      message: `🚨 浏览器进程崩溃，正在清理资源...`
+    });
+  }
+  
+  if (page) {
+    try {
+      await page.close().catch(() => {});
+      console.log(`[ZhilianCrawler] ✅ 页面已强制关闭`);
+    } catch (e) {
+      console.warn(`[ZhilianCrawler] ⚠️ 关闭页面失败:`, e);
+    }
+  }
+  
+  try {
+    if (browser.isConnected()) {
+      await browser.close().catch(() => {});
+      console.log(`[ZhilianCrawler] ✅ 浏览器实例已关闭`);
+    }
+  } catch (closeErr) {
+    console.warn(`[ZhilianCrawler] ⚠️ 关闭浏览器失败:`, closeErr);
+  }
+  
+  const crashError = new Error(`BROWSER_CRASH_RECOVERABLE: ${error.message}`);
+  (crashError as any).canRecover = true;
+  // 🔧 关键修复：附加当前爬取状态，用于断点续传
+  (crashError as any).combinationIndex = currentCombination;
+  (crashError as any).currentPage = currentPage;
+  throw crashError;
+}
               console.error(`[ZhilianCrawler] ❌ 爬取第 ${currentPage} 页时出错:`, error.message);
               if (error.stack) {
                 console.error(`[ZhilianCrawler] 错误堆栈:`, error.stack);
@@ -1208,18 +1277,23 @@ export class ZhilianCrawler {
               console.warn(`[ZhilianCrawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
               break;
             } finally {
-              // 🔧 关键修复：无论成功还是失败，都确保关闭page对象
-              if (page) {
-                try {
-                  if (!page.isClosed()) {
-                    await page.close();
-                    console.log(`[ZhilianCrawler] ✅ 页面已关闭`);
-                  }
-                } catch (closeError: any) {
-                  console.warn(`[ZhilianCrawler] ⚠️ 关闭页面时出错（可能已自动关闭）:`, closeError.message);
-                }
-              }
-            }
+  if (page) {
+    try {
+      const closeTimeout = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error('关闭页面超时（5秒）')), 5000);
+      });
+      
+      await Promise.race([
+        page.close(),
+        closeTimeout
+      ]);
+      
+      console.log(`[ZhilianCrawler] ✅ 页面已关闭`);
+    } catch (closeError: any) {
+      console.warn(`[ZhilianCrawler] ⚠️ 关闭页面时出错（可能已自动关闭）:`, closeError.message);
+    }
+  }
+}
             
             // 如果任务中止或没有下一页，退出循环
             if (this.checkAborted() || !hasNextPage) {
@@ -1239,6 +1313,50 @@ export class ZhilianCrawler {
           
           console.log(`[ZhilianCrawler] ✅ 完成组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
           console.log(`[ZhilianCrawler]`);
+          
+          // 🔧 关键修复：发送组合完成进度到前端并更新数据库
+          if (io && taskId) {
+            // 发送组合进度事件
+            io.to(`task:${taskId}`).emit('task:combinationProgress', {
+              taskId,
+              currentCombination,
+              totalCombinationCount,
+              keyword,
+              city
+            });
+            
+            // 🔧 直接更新数据库进度（多组合场景）
+            const progressPercent = Math.round((currentCombination / totalCombinationCount) * 99);
+            try {
+              await db.prepare(`
+                UPDATE tasks 
+                SET progress = $1, current = $2, updated_at = CURRENT_TIMESTAMP
+                WHERE id = $3
+              `).run(progressPercent, currentCombination, taskId);
+              
+              console.log(`[ZhilianCrawler] 📊 进度更新: ${currentCombination}/${totalCombinationCount} (${progressPercent}%)`);
+            } catch (dbError) {
+              console.warn(`[ZhilianCrawler] ⚠️ 更新进度失败:`, dbError.message);
+            }
+          }
+          
+          // 🔧 主动重启机制：每处理20个组合后主动关闭并重启浏览器
+const COMBINATIONS_PER_BROWSER = 20;
+if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < totalCombinationCount) {
+  console.log(`[ZhilianCrawler] 🔄 已处理 ${currentCombination} 个组合，主动重启浏览器以防止资源泄漏...`);
+  
+  if (io && taskId) {
+    io.to(`task:${taskId}`).emit('task:log', {
+      taskId,
+      level: 'info',
+      message: `🔄 已处理${currentCombination}个组合，正在重启浏览器以优化性能...`
+    });
+  }
+  
+  const restartError = new Error(`BROWSER_RESTART_SCHEDULED: 已处理${currentCombination}个组合`);
+  (restartError as any).shouldRestart = true;
+  throw restartError;
+}
         }
       }
       
