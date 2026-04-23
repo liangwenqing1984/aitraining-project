@@ -1,0 +1,175 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 900" fill="none">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 黑龙江省简化轮廓 -->
+  <path d="
+    M 310 80 L 340 70 L 380 55 L 420 50 L 460 55 L 500 65 L 530 80
+    L 560 100 L 580 125 L 595 155 L 600 190 L 598 220 L 590 250
+    L 575 280 L 560 305 L 545 330 L 535 355 L 530 380 L 528 405
+    L 525 430 L 520 455 L 510 480 L 495 505 L 480 525 L 465 540
+    L 450 555 L 435 570 L 420 588 L 410 605 L 400 625 L 395 645
+    L 392 665 L 390 690 L 388 715 L 385 740 L 378 762 L 368 780
+    L 355 795 L 340 808 L 325 818 L 310 825 L 295 828 L 280 825
+    L 265 818 L 252 808 L 240 795 L 230 778 L 222 758 L 215 735
+    L 210 710 L 206 685 L 204 660 L 202 635 L 200 610 L 198 585
+    L 195 560 L 190 538 L 182 518 L 172 500 L 160 485 L 148 470
+    L 135 455 L 122 440 L 112 422 L 105 402 L 100 380 L 98 355
+    L 100 330 L 105 305 L 115 280 L 128 258 L 145 238 L 165 220
+    L 188 205 L 210 192 L 230 180 L 248 168 L 262 155 L 275 140
+    L 288 125 L 298 108 L 305 92 Z
+  " fill="rgba(59,130,246,0.05)" stroke="rgba(59,130,246,0.18)" stroke-width="1.5"/>
+
+  <!-- 内层光晕 -->
+  <path d="
+    M 310 80 L 340 70 L 380 55 L 420 50 L 460 55 L 500 65 L 530 80
+    L 560 100 L 580 125 L 595 155 L 600 190 L 598 220 L 590 250
+    L 575 280 L 560 305 L 545 330 L 535 355 L 530 380 L 528 405
+    L 525 430 L 520 455 L 510 480 L 495 505 L 480 525 L 465 540
+    L 450 555 L 435 570 L 420 588 L 410 605 L 400 625 L 395 645
+    L 392 665 L 390 690 L 388 715 L 385 740 L 378 762 L 368 780
+    L 355 795 L 340 808 L 325 818 L 310 825 L 295 828 L 280 825
+    L 265 818 L 252 808 L 240 795 L 230 778 L 222 758 L 215 735
+    L 210 710 L 206 685 L 204 660 L 202 635 L 200 610 L 198 585
+    L 195 560 L 190 538 L 182 518 L 172 500 L 160 485 L 148 470
+    L 135 455 L 122 440 L 112 422 L 105 402 L 100 380 L 98 355
+    L 100 330 L 105 305 L 115 280 L 128 258 L 145 238 L 165 220
+    L 188 205 L 210 192 L 230 180 L 248 168 L 262 155 L 275 140
+    L 288 125 L 298 108 L 305 92 Z
+  " fill="none" stroke="rgba(59,130,246,0.06)" stroke-width="8" filter="url(#glow)"/>
+
+  <!-- 数据网络连线 - 哈尔滨到各城市 -->
+  <line x1="420" y1="280" x2="240" y2="340" stroke="rgba(59,130,246,0.12)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="2s" repeatCount="indefinite"/>
+  </line>
+  <line x1="420" y1="280" x2="520" y2="510" stroke="rgba(59,130,246,0.12)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.5s" repeatCount="indefinite"/>
+  </line>
+  <line x1="420" y1="280" x2="530" y2="220" stroke="rgba(99,102,241,0.1)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="3s" repeatCount="indefinite"/>
+  </line>
+  <line x1="420" y1="280" x2="300" y2="310" stroke="rgba(99,102,241,0.1)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.2s" repeatCount="indefinite"/>
+  </line>
+  <line x1="420" y1="280" x2="350" y2="480" stroke="rgba(99,102,241,0.08)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.8s" repeatCount="indefinite"/>
+  </line>
+  <line x1="420" y1="280" x2="450" y2="430" stroke="rgba(59,130,246,0.1)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.6s" repeatCount="indefinite"/>
+  </line>
+  <line x1="240" y1="340" x2="300" y2="310" stroke="rgba(99,102,241,0.08)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="3.2s" repeatCount="indefinite"/>
+  </line>
+  <line x1="520" y1="510" x2="450" y2="430" stroke="rgba(59,130,246,0.08)" stroke-width="1" stroke-dasharray="4,4">
+    <animate attributeName="stroke-dashoffset" values="0;8" dur="2.4s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- 哈尔滨节点 - 省会最大 -->
+  <circle cx="420" cy="280" r="18" fill="url(#nodeGlow)"/>
+  <circle cx="420" cy="280" r="6" fill="#3b82f6" opacity="0.9">
+    <animate attributeName="r" values="6;8;6" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.9;0.5;0.9" dur="3s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="420" cy="280" r="14" fill="none" stroke="#3b82f6" stroke-width="1" opacity="0.3">
+    <animate attributeName="r" values="14;22;14" dur="3s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.3;0;0.3" dur="3s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 齐齐哈尔节点 -->
+  <circle cx="240" cy="340" r="12" fill="url(#nodeGlow)"/>
+  <circle cx="240" cy="340" r="4.5" fill="#60a5fa" opacity="0.8">
+    <animate attributeName="r" values="4.5;6;4.5" dur="4s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="240" cy="340" r="11" fill="none" stroke="#60a5fa" stroke-width="1" opacity="0.2">
+    <animate attributeName="r" values="11;18;11" dur="4s" repeatCount="indefinite"/>
+    <animate attributeName="opacity" values="0.2;0;0.2" dur="4s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 牡丹江节点 -->
+  <circle cx="520" cy="510" r="12" fill="url(#nodeGlow)"/>
+  <circle cx="520" cy="510" r="4.5" fill="#60a5fa" opacity="0.8">
+    <animate attributeName="r" values="4.5;6;4.5" dur="3.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 佳木斯节点 -->
+  <circle cx="530" cy="220" r="10" fill="url(#nodeGlow)"/>
+  <circle cx="530" cy="220" r="4" fill="#818cf8" opacity="0.7">
+    <animate attributeName="r" values="4;5.5;4" dur="4.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 大庆节点 -->
+  <circle cx="300" cy="310" r="10" fill="url(#nodeGlow)"/>
+  <circle cx="300" cy="310" r="4" fill="#818cf8" opacity="0.7">
+    <animate attributeName="r" values="4;5.5;4" dur="3.8s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 绥化节点 -->
+  <circle cx="350" cy="480" r="8" fill="url(#nodeGlow)"/>
+  <circle cx="350" cy="480" r="3.5" fill="#a78bfa" opacity="0.6">
+    <animate attributeName="r" values="3.5;5;3.5" dur="4.2s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 鸡西节点 -->
+  <circle cx="450" cy="430" r="8" fill="url(#nodeGlow)"/>
+  <circle cx="450" cy="430" r="3.5" fill="#a78bfa" opacity="0.6">
+    <animate attributeName="r" values="3.5;5;3.5" dur="3.6s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- 散布的小数据点 -->
+  <circle cx="180" cy="260" r="2" fill="#60a5fa" opacity="0.3"/>
+  <circle cx="550" cy="350" r="1.5" fill="#818cf8" opacity="0.25"/>
+  <circle cx="280" cy="460" r="2" fill="#60a5fa" opacity="0.2"/>
+  <circle cx="480" cy="180" r="1.5" fill="#818cf8" opacity="0.3"/>
+  <circle cx="360" cy="200" r="1.5" fill="#a78bfa" opacity="0.25"/>
+  <circle cx="200" cy="400" r="2" fill="#60a5fa" opacity="0.2"/>
+  <circle cx="500" cy="400" r="1.5" fill="#818cf8" opacity="0.2"/>
+  <circle cx="380" cy="550" r="1.5" fill="#a78bfa" opacity="0.2"/>
+  <circle cx="160" cy="350" r="1.5" fill="#60a5fa" opacity="0.15"/>
+  <circle cx="560" cy="280" r="1.5" fill="#818cf8" opacity="0.15"/>
+  <circle cx="330" cy="150" r="1.5" fill="#60a5fa" opacity="0.2"/>
+  <circle cx="470" cy="600" r="1.5" fill="#a78bfa" opacity="0.15"/>
+
+  <!-- 城市名称标注 -->
+  <text x="432" y="272" fill="rgba(148,163,184,0.5)" font-size="10" font-family="system-ui, sans-serif">哈尔滨</text>
+  <text x="210" y="358" fill="rgba(148,163,184,0.4)" font-size="9" font-family="system-ui, sans-serif">齐齐哈尔</text>
+  <text x="532" y="518" fill="rgba(148,163,184,0.4)" font-size="9" font-family="system-ui, sans-serif">牡丹江</text>
+  <text x="542" y="228" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">佳木斯</text>
+  <text x="268" y="325" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">大庆</text>
+  <text x="318" y="498" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">绥化</text>
+  <text x="418" y="448" fill="rgba(148,163,184,0.35)" font-size="8" font-family="system-ui, sans-serif">鸡西</text>
+
+  <!-- 右上角装饰网格 -->
+  <g opacity="0.06" stroke="#60a5fa" stroke-width="0.5">
+    <line x1="620" y1="40" x2="760" y2="40"/>
+    <line x1="620" y1="60" x2="760" y2="60"/>
+    <line x1="620" y1="80" x2="760" y2="80"/>
+    <line x1="620" y1="100" x2="760" y2="100"/>
+    <line x1="620" y1="120" x2="740" y2="120"/>
+    <line x1="620" y1="40" x2="620" y2="120"/>
+    <line x1="640" y1="40" x2="640" y2="120"/>
+    <line x1="660" y1="40" x2="660" y2="120"/>
+    <line x1="680" y1="40" x2="680" y2="120"/>
+    <line x1="700" y1="40" x2="700" y2="120"/>
+    <line x1="720" y1="40" x2="720" y2="120"/>
+    <line x1="740" y1="40" x2="740" y2="120"/>
+    <line x1="760" y1="40" x2="760" y2="100"/>
+  </g>
+
+  <!-- 左下角装饰六边形 -->
+  <g opacity="0.05" stroke="#818cf8" stroke-width="0.5" fill="none">
+    <polygon points="80,700 100,690 120,700 120,720 100,730 80,720"/>
+    <polygon points="120,700 140,690 160,700 160,720 140,730 120,720"/>
+    <polygon points="100,730 120,720 140,730 140,750 120,760 100,750"/>
+  </g>
+</svg>

@@ -3,9 +3,10 @@ import { onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { fileApi } from '@/api/file'
-import { Plus, Loading, Document, VideoPlay, CircleCheck, DataAnalysis } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Plus, Document, VideoPlay, CircleCheck, DataAnalysis, Download, TrendCharts, Setting, Delete } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Task } from '@/api/task'
+import StatCard from '@/components/StatCard.vue'
 
 const router = useRouter()
 const crawlerStore = useCrawlerStore()
@@ -31,10 +32,9 @@ function goToEdit(taskId: string) {
   router.push(`/crawler/edit/${taskId}`)
 }
 
-// 🔧 新增：下载任务结果文件
+// 下载任务结果文件
 async function downloadTaskFile(taskId: string) {
   try {
-    // 1. 根据taskId获取文件信息
     const res = await fileApi.getFileByTaskId(taskId)
     
     if (!res.data) {
@@ -45,9 +45,7 @@ async function downloadTaskFile(taskId: string) {
     const fileId = res.data.id
     const filename = res.data.filename
     
-    // 2. 下载文件
     const blobRes = await fileApi.downloadFile(fileId)
-    // 🔧 修复：blobRes已经是Blob对象，直接使用
     const url = window.URL.createObjectURL(blobRes as any)
     const link = document.createElement('a')
     link.href = url
@@ -64,10 +62,9 @@ async function downloadTaskFile(taskId: string) {
   }
 }
 
-// 🔧 新增：分析任务数据
+// 分析任务数据
 async function analyzeTask(taskId: string) {
   try {
-    // 1. 根据taskId获取文件信息
     const res = await fileApi.getFileByTaskId(taskId)
     
     if (!res.data) {
@@ -77,7 +74,6 @@ async function analyzeTask(taskId: string) {
     
     const fileId = res.data.id
     
-    // 2. 跳转到分析页面，传递fileId参数
     router.push({
       path: '/analysis',
       query: { fileId }
@@ -112,20 +108,18 @@ function getStatusName(status: string) {
   return names[status] || status
 }
 
-// 🔧 安全的时间格式化函数
+// 安全的时间格式化函数
 function formatDateTime(dateStr: string | null | undefined): string {
   if (!dateStr) return '-'
   
   try {
     const date = new Date(dateStr)
     
-    // 检查日期是否有效
     if (isNaN(date.getTime())) {
       console.warn('[FormatDateTime] Invalid date:', dateStr)
       return '-'
     }
     
-    // 格式化为本地时间字符串
     return date.toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
@@ -141,15 +135,15 @@ function formatDateTime(dateStr: string | null | undefined): string {
   }
 }
 
-// 🔧 新增：解析任务配置并生成关键词详情
+// 解析任务配置并生成关键词详情
 interface KeywordDetailInfo {
   keywords: string[]
   cities: string[]
   companies: string[]
-  displayText: string  // 缩略显示文本（前3个）
+  displayText: string
 }
 
-// 🔧 辅助函数：截断数组并添加省略提示
+// 辅助函数：截断数组并添加省略提示
 function truncateArray(arr: string[], maxCount: number = 3): { items: string[], hasMore: boolean } {
   if (arr.length <= maxCount) {
     return { items: arr, hasMore: false }
@@ -162,14 +156,12 @@ function truncateArray(arr: string[], maxCount: number = 3): { items: string[], 
 
 function getKeywordDetails(task: Task): KeywordDetailInfo {
   try {
-    // config可能是字符串或对象
     const config = typeof task.config === 'string' ? JSON.parse(task.config) : task.config
     
     const keywords = config.keywords || (config.keyword ? [config.keyword] : [])
     const cities = config.cities || (config.city ? [config.city] : [])
     const companies = config.companies || (config.company ? [config.company] : [])
     
-    // 🔧 优化：生成缩略显示文本（每个类别最多显示前3个）
     const parts = []
     
     if (keywords.length > 0) {
@@ -199,62 +191,53 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   }
 }
 
+// 缓存关键词详情，避免模板中重复调用
+const keywordDetailsCache = computed(() => {
+  const cache: Record<string, KeywordDetailInfo> = {}
+  if (Array.isArray(crawlerStore.tasks)) {
+    for (const task of crawlerStore.tasks) {
+      cache[task.id] = getKeywordDetails(task)
+    }
+  }
+  return cache
+})
+
+function getCachedKeywordDetails(task: Task): KeywordDetailInfo {
+  return keywordDetailsCache.value[task.id] || { keywords: [], cities: [], companies: [], displayText: '-' }
+}
+
+// 删除任务 - 带确认弹窗
+async function handleDeleteTask(taskId: string) {
+  try {
+    await ElMessageBox.confirm('确定要删除此任务吗？删除后无法恢复。', '确认删除', {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    await crawlerStore.deleteTask(taskId)
+    ElMessage.success('任务已删除')
+  } catch {
+    // 用户取消
+  }
+}
+
 </script>
 
 <template>
   <div class="crawler-page">
-    <!-- 美化后的统计卡片 -->
+    <!-- 统计卡片 -->
     <el-row :gutter="20" class="stats-row">
-      <!-- 总任务数 -->
-      <el-col :span="6">
-        <div class="stat-card stat-card-total">
-          <div class="stat-icon">
-            <el-icon :size="32"><Document /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ crawlerStore.statistics.total }}</div>
-            <div class="stat-label">总任务数</div>
-          </div>
-        </div>
+      <el-col :xs="12" :sm="12" :md="6">
+        <StatCard :value="crawlerStore.statistics.total" label="总任务数" :icon="Document" theme="primary" />
       </el-col>
-      
-      <!-- 运行中 -->
-      <el-col :span="6">
-        <div class="stat-card stat-card-running">
-          <div class="stat-icon">
-            <el-icon :size="32" class="running-icon"><VideoPlay /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ crawlerStore.statistics.running }}</div>
-            <div class="stat-label">运行中</div>
-          </div>
-        </div>
+      <el-col :xs="12" :sm="12" :md="6">
+        <StatCard :value="crawlerStore.statistics.running" label="运行中" :icon="VideoPlay" theme="warning" />
       </el-col>
-      
-      <!-- 已完成 -->
-      <el-col :span="6">
-        <div class="stat-card stat-card-completed">
-          <div class="stat-icon">
-            <el-icon :size="32"><CircleCheck /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ crawlerStore.statistics.completed }}</div>
-            <div class="stat-label">已完成</div>
-          </div>
-        </div>
+      <el-col :xs="12" :sm="12" :md="6">
+        <StatCard :value="crawlerStore.statistics.completed" label="已完成" :icon="CircleCheck" theme="success" />
       </el-col>
-      
-      <!-- 总数据量 -->
-      <el-col :span="6">
-        <div class="stat-card stat-card-records">
-          <div class="stat-icon">
-            <el-icon :size="32"><DataAnalysis /></el-icon>
-          </div>
-          <div class="stat-content">
-            <div class="stat-value">{{ crawlerStore.statistics.records }}</div>
-            <div class="stat-label">总数据量</div>
-          </div>
-        </div>
+      <el-col :xs="12" :sm="12" :md="6">
+        <StatCard :value="crawlerStore.statistics.records" label="总数据量" :icon="DataAnalysis" theme="info" />
       </el-col>
     </el-row>
 
@@ -264,14 +247,19 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
           <span>任务列表</span>
           <div class="header-actions">
             <el-button type="success" @click="goToBatchCreate">
-              🚀 批量创建（适合大规模企业筛选）
+              批量创建
             </el-button>
             <el-button type="primary" :icon="Plus" @click="goToCreate">创建任务</el-button>
           </div>
         </div>
       </template>
 
-      <el-table :data="crawlerStore.tasks" stripe>
+      <!-- 空状态 -->
+      <el-empty v-if="!crawlerStore.tasks || crawlerStore.tasks.length === 0" description="暂无任务">
+        <el-button type="primary" @click="goToCreate">创建第一个任务</el-button>
+      </el-empty>
+
+      <el-table v-else :data="crawlerStore.tasks" stripe>
         <el-table-column prop="name" label="任务名称" min-width="150" />
         <el-table-column prop="source" label="数据来源" width="120">
           <template #default="{ row }">
@@ -279,7 +267,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
           </template>
         </el-table-column>
         
-        <!-- 🔧 优化：职位关键词列 -->
+        <!-- 职位关键词列 -->
         <el-table-column label="职位关键词" min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <el-popover
@@ -290,21 +278,21 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
             >
               <template #reference>
                 <div class="keyword-summary">
-                  {{ getKeywordDetails(row).displayText }}
+                  {{ getCachedKeywordDetails(row).displayText }}
                 </div>
               </template>
               
               <!-- 悬浮详情内容 -->
               <div class="keyword-detail-popover">
-                <template v-if="getKeywordDetails(row).keywords.length > 0 || getKeywordDetails(row).cities.length > 0 || getKeywordDetails(row).companies.length > 0">
-                  <div v-if="getKeywordDetails(row).keywords.length > 0" class="detail-section">
+                <template v-if="getCachedKeywordDetails(row).keywords.length > 0 || getCachedKeywordDetails(row).cities.length > 0 || getCachedKeywordDetails(row).companies.length > 0">
+                  <div v-if="getCachedKeywordDetails(row).keywords.length > 0" class="detail-section">
                     <div class="detail-label">
-                      <span class="label-icon">💼</span>
-                      职位关键词（{{ getKeywordDetails(row).keywords.length }}个）：
+                      <el-icon class="label-icon"><Document /></el-icon>
+                      职位关键词（{{ getCachedKeywordDetails(row).keywords.length }}个）：
                     </div>
                     <div class="detail-tags">
                       <el-tag 
-                        v-for="(kw, index) in getKeywordDetails(row).keywords" 
+                        v-for="(kw, index) in getCachedKeywordDetails(row).keywords" 
                         :key="'kw-' + index" 
                         size="small" 
                         effect="plain"
@@ -315,16 +303,16 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
                     </div>
                   </div>
                   
-                  <el-divider v-if="getKeywordDetails(row).keywords.length > 0 && (getKeywordDetails(row).cities.length > 0 || getKeywordDetails(row).companies.length > 0)" style="margin: 8px 0" />
+                  <el-divider v-if="getCachedKeywordDetails(row).keywords.length > 0 && (getCachedKeywordDetails(row).cities.length > 0 || getCachedKeywordDetails(row).companies.length > 0)" style="margin: 8px 0" />
                   
-                  <div v-if="getKeywordDetails(row).cities.length > 0" class="detail-section">
+                  <div v-if="getCachedKeywordDetails(row).cities.length > 0" class="detail-section">
                     <div class="detail-label">
-                      <span class="label-icon">🌆</span>
-                      城市（{{ getKeywordDetails(row).cities.length }}个）：
+                      <el-icon class="label-icon"><DataAnalysis /></el-icon>
+                      城市（{{ getCachedKeywordDetails(row).cities.length }}个）：
                     </div>
                     <div class="detail-tags">
                       <el-tag 
-                        v-for="(city, index) in getKeywordDetails(row).cities" 
+                        v-for="(city, index) in getCachedKeywordDetails(row).cities" 
                         :key="'city-' + index" 
                         size="small" 
                         type="success"
@@ -336,16 +324,16 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
                     </div>
                   </div>
                   
-                  <el-divider v-if="getKeywordDetails(row).cities.length > 0 && getKeywordDetails(row).companies.length > 0" style="margin: 8px 0" />
+                  <el-divider v-if="getCachedKeywordDetails(row).cities.length > 0 && getCachedKeywordDetails(row).companies.length > 0" style="margin: 8px 0" />
                   
-                  <div v-if="getKeywordDetails(row).companies.length > 0" class="detail-section">
+                  <div v-if="getCachedKeywordDetails(row).companies.length > 0" class="detail-section">
                     <div class="detail-label">
-                      <span class="label-icon">🏢</span>
-                      目标企业（{{ getKeywordDetails(row).companies.length }}个）：
+                      <el-icon class="label-icon"><Setting /></el-icon>
+                      目标企业（{{ getCachedKeywordDetails(row).companies.length }}个）：
                     </div>
                     <div class="detail-tags">
                       <el-tag 
-                        v-for="(comp, index) in getKeywordDetails(row).companies" 
+                        v-for="(comp, index) in getCachedKeywordDetails(row).companies" 
                         :key="'comp-' + index" 
                         size="small" 
                         type="warning"
@@ -386,47 +374,54 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
+            <div class="action-buttons">
             <!-- 任务控制按钮 -->
-            <el-button v-if="row.status === 'pending'" type="success" link @click="crawlerStore.startTask(row.id)">开始</el-button>
-            <el-button v-if="row.status === 'running'" type="danger" link @click="crawlerStore.stopTask(row.id)">停止</el-button>
-            <el-button v-if="row.status === 'paused'" type="success" link @click="crawlerStore.resumeTask(row.id)">恢复</el-button>
+            <el-button v-if="row.status === 'pending'" type="success" link size="small" @click="crawlerStore.startTask(row.id)">开始</el-button>
+            <el-button v-if="row.status === 'running'" type="danger" link size="small" @click="crawlerStore.stopTask(row.id)">停止</el-button>
+            <el-button v-if="row.status === 'paused'" type="success" link size="small" @click="crawlerStore.resumeTask(row.id)">恢复</el-button>
             
             <!-- 监控/详情按钮 -->
-            <el-button v-if="row.status === 'running' || row.status === 'paused'" type="primary" link @click="goToMonitor(row.id)">监控</el-button>
-            <el-button v-else type="primary" link @click="goToMonitor(row.id)">详情</el-button>
+            <el-button v-if="row.status === 'running' || row.status === 'paused'" type="primary" link size="small" @click="goToMonitor(row.id)">监控</el-button>
+            <el-button v-else type="primary" link size="small" @click="goToMonitor(row.id)">详情</el-button>
             
-            <!-- ✅ 配置按钮：所有状态都可配置（除了正在运行和暂停的任务） -->
+            <!-- 配置按钮 -->
             <el-button 
               v-if="row.status !== 'running' && row.status !== 'paused'" 
               type="warning" 
               link 
+              size="small"
               @click="goToEdit(row.id)"
             >
               配置
             </el-button>
             
-            <!-- 下载和分析按钮（仅completed状态可用） -->
+            <!-- 下载和分析按钮 -->
             <el-button 
               v-if="row.status === 'completed'" 
               type="success" 
               link 
+              size="small"
               @click="downloadTaskFile(row.id)"
             >
-              下载
+              <el-icon class="action-icon"><Download /></el-icon>下载
             </el-button>
             <el-button 
               v-if="row.status === 'completed'" 
               type="warning" 
               link 
+              size="small"
               @click="analyzeTask(row.id)"
             >
-              分析
+              <el-icon class="action-icon"><TrendCharts /></el-icon>分析
             </el-button>
             
-            <!-- 删除按钮 -->
-            <el-button type="info" link @click="crawlerStore.deleteTask(row.id)">删除</el-button>
+            <!-- 删除按钮 - 带确认 -->
+            <el-button type="info" link size="small" @click="handleDeleteTask(row.id)">
+              <el-icon class="action-icon"><Delete /></el-icon>删除
+            </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -441,158 +436,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
 
 /* 统计卡片容器 */
 .stats-row {
-  margin-bottom: 24px;
-}
-
-/* 统计卡片基础样式 - 采用简约现代风格 */
-.stat-card {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 24px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  border: 1px solid #e8eaed;
-  transition: all 0.3s ease;
-  cursor: pointer;
-  position: relative;
-  overflow: hidden;
-}
-
-/* 卡片悬停效果 - 轻微上浮和阴影加深 */
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-  border-color: #d0d3d9;
-}
-
-/* 左侧彩色装饰条 */
-.stat-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  transition: width 0.3s ease;
-}
-
-.stat-card:hover::before {
-  width: 6px;
-}
-
-/* 图标区域 - 浅色背景 */
-.stat-icon {
-  width: 56px;
-  height: 56px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.3s ease;
-}
-
-.stat-card:hover .stat-icon {
-  transform: scale(1.05);
-}
-
-/* 内容区域 */
-.stat-content {
-  flex: 1;
-}
-
-/* 数值样式 - 深色粗体 */
-.stat-value {
-  font-size: 32px;
-  font-weight: 700;
-  line-height: 1;
-  margin-bottom: 6px;
-  color: #1a1a1a;
-  letter-spacing: -0.5px;
-}
-
-/* 标签样式 - 灰色中等字重 */
-.stat-label {
-  font-size: 14px;
-  color: #6b7280;
-  font-weight: 500;
-  letter-spacing: 0.3px;
-}
-
-/* ===== 不同卡片的主题色 ===== */
-
-/* 总任务数 - 蓝色系 */
-.stat-card-total::before {
-  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
-}
-
-.stat-card-total .stat-icon {
-  background: #eff6ff;
-  color: #3b82f6;
-}
-
-.stat-card-total:hover .stat-icon {
-  background: #dbeafe;
-}
-
-/* 运行中 - 橙色系 */
-.stat-card-running::before {
-  background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
-}
-
-.stat-card-running .stat-icon {
-  background: #fffbeb;
-  color: #f59e0b;
-}
-
-.stat-card-running:hover .stat-icon {
-  background: #fef3c7;
-}
-
-/* 已完成 - 绿色系 */
-.stat-card-completed::before {
-  background: linear-gradient(180deg, #10b981 0%, #059669 100%);
-}
-
-.stat-card-completed .stat-icon {
-  background: #ecfdf5;
-  color: #10b981;
-}
-
-.stat-card-completed:hover .stat-icon {
-  background: #d1fae5;
-}
-
-/* 总数据量 - 紫色系 */
-.stat-card-records::before {
-  background: linear-gradient(180deg, #8b5cf6 0%, #7c3aed 100%);
-}
-
-.stat-card-records .stat-icon {
-  background: #f5f3ff;
-  color: #8b5cf6;
-}
-
-.stat-card-records:hover .stat-icon {
-  background: #ede9fe;
-}
-
-/* 运行中图标的脉冲动画 - 更柔和 */
-.running-icon {
-  animation: gentle-pulse 2.5s ease-in-out infinite;
-}
-
-@keyframes gentle-pulse {
-  0%, 100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.85;
-    transform: scale(1.08);
-  }
+  margin-bottom: var(--spacing-lg);
 }
 
 .card-header {
@@ -607,32 +451,23 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   align-items: center;
 }
 
-.loading {
-  animation: rotate 1s linear infinite;
-}
-
-@keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* 🔧 关键词详情样式 - 优化版 */
+/* 关键词详情样式 */
 .keyword-summary {
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  color: #606266;
-  font-size: 13px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  color: var(--color-text-regular);
+  font-size: var(--font-size-sm);
   line-height: 1.6;
   background-color: #fafafa;
   border: 1px solid transparent;
 }
 
 .keyword-summary:hover {
-  background-color: #f0f2f5;
-  border-color: #e4e7ed;
-  color: #303133;
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-border-light);
+  color: var(--color-text-primary);
 }
 
 .keyword-detail-popover {
@@ -651,9 +486,9 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
 }
 
 .detail-label {
-  font-size: 13px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
-  color: #303133;
+  color: var(--color-text-regular);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
@@ -669,7 +504,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding-left: 22px; /* 对齐标签图标 */
+  padding-left: 22px;
 }
 
 /* 职位关键词标签样式 */
@@ -678,7 +513,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   border-color: #d9ecff;
   color: #409eff;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
 }
 
 .keyword-tag:hover {
@@ -691,15 +526,15 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
 .city-tag {
   background-color: #f0f9ff;
   border-color: #e1f3ff;
-  color: #67c23a;
+  color: var(--color-success);
   font-weight: 500;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
 }
 
 .city-tag:hover {
   background-color: #e1f3ff;
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(103, 194, 58, 0.2);
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
 /* 企业标签样式 */
@@ -708,7 +543,7 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
   border-color: #faecd8;
   color: #e6a23c;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
 }
 
 .company-tag:hover {
@@ -719,8 +554,8 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
 
 .detail-empty {
   text-align: center;
-  color: #909399;
-  font-size: 13px;
+  color: var(--color-text-placeholder);
+  font-size: var(--font-size-sm);
   padding: 20px 0;
 }
 
@@ -741,5 +576,20 @@ function getKeywordDetails(task: Task): KeywordDetailInfo {
 
 .keyword-detail-popover::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8;
+}
+
+/* 操作按钮一行显示 */
+.action-buttons {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+/* 操作图标样式 */
+.action-icon {
+  margin-right: 2px;
+  font-size: 13px;
 }
 </style>

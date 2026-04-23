@@ -33,14 +33,18 @@ const userInfo = ref<any>({
 
 const isCollapse = ref(false)
 
+// 是否为子页面（如任务监控、编辑任务）
+const isSubPage = computed(() => {
+  return route.path.startsWith('/crawler/') && route.path !== '/crawler'
+})
+
 const menuItems = [
-  { path: '/home', title: '首页', icon: HomeFilled },  // 🔧 首页放在第一位
+  { path: '/home', title: '首页', icon: HomeFilled },
   { path: '/crawler', title: '数据采集', icon: Monitor },
   { path: '/files', title: '数据管理', icon: Files },
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
   { path: '/docs', title: '文档', icon: Document },
-  { path: '/about', title: '关于', icon: InfoFilled },
-  { path: '/settings', title: '设置', icon: Setting }
+  { path: '/about', title: '关于', icon: InfoFilled }
 ]
 
 const activeMenu = computed(() => {
@@ -76,8 +80,6 @@ const handleMenuSelect = (path: string) => {
 const handleCommand = (command: string) => {
   if (command === 'logout') {
     handleLogout()
-  } else if (command === 'profile') {
-    // 跳转到个人中心
   }
 }
 
@@ -109,6 +111,7 @@ const getCurrentPageTitle = () => {
 </script>
 
 <template>
+  <a href="#main-content" class="sr-only">跳到主内容</a>
   <el-container class="layout-container">
     <!-- 左侧菜单 - 美化版 -->
     <el-aside :width="isCollapse ? '70px' : '240px'" class="sidebar">
@@ -161,7 +164,11 @@ const getCurrentPageTitle = () => {
           <div class="breadcrumb-area">
             <el-breadcrumb separator="/">
               <el-breadcrumb-item :to="{ path: '/home' }">首页</el-breadcrumb-item>
-              <el-breadcrumb-item v-if="route.path !== '/home'">
+              <template v-if="isSubPage">
+                <el-breadcrumb-item :to="{ path: '/crawler' }">数据采集</el-breadcrumb-item>
+                <el-breadcrumb-item>{{ route.meta.title }}</el-breadcrumb-item>
+              </template>
+              <el-breadcrumb-item v-else-if="route.path !== '/home'">
                 {{ getCurrentPageTitle() }}
               </el-breadcrumb-item>
             </el-breadcrumb>
@@ -182,12 +189,6 @@ const getCurrentPageTitle = () => {
             </div>
             <template #dropdown>
               <el-dropdown-menu class="custom-dropdown">
-                <el-dropdown-item command="profile">
-                  <el-icon><User /></el-icon>个人中心
-                </el-dropdown-item>
-                <el-dropdown-item command="settings">
-                  <el-icon><Operation /></el-icon>系统设置
-                </el-dropdown-item>
                 <el-dropdown-item divided command="logout">
                   <el-icon><SwitchButton /></el-icon>退出登录
                 </el-dropdown-item>
@@ -198,7 +199,7 @@ const getCurrentPageTitle = () => {
       </el-header>
 
       <!-- 主内容 -->
-      <el-main class="main">
+      <el-main id="main-content" class="main">
         <router-view />
       </el-main>
     </el-container>
@@ -216,10 +217,10 @@ const getCurrentPageTitle = () => {
   background: #ffffff;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.04);
-  border-right: 1px solid #e8eaed;
+  box-shadow: var(--shadow-sm);
+  border-right: 1px solid var(--color-border);
   position: relative;
-  z-index: 10;
+  z-index: var(--z-sidebar);
 }
 
 /* Logo区域 */

@@ -332,8 +332,8 @@ function getStatusName(status: string) {
   display: flex;
   justify-content: space-around;
   padding: 16px;
-  background: #f5f7fa;
-  border-radius: 8px;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-md);
 }
 
 .progress-item {
@@ -342,14 +342,14 @@ function getStatusName(status: string) {
 
 .progress-item .label {
   display: block;
-  color: #909399;
-  font-size: 13px;
+  color: var(--color-text-placeholder);
+  font-size: var(--font-size-sm);
   margin-bottom: 4px;
 }
 
 .progress-item .value {
   display: block;
-  color: #303133;
+  color: var(--color-text-regular);
   font-size: 20px;
   font-weight: bold;
 }
@@ -368,10 +368,10 @@ function getStatusName(status: string) {
   height: 500px;
   overflow-y: auto;
   background: #f5f5f5;
-  padding: 12px;
-  border-radius: 4px;
+  padding: var(--spacing-sm);
+  border-radius: var(--radius-sm);
   font-family: 'Courier New', monospace;
-  font-size: 13px;
+  font-size: var(--font-size-sm);
 }
 
 .log-item {
@@ -388,7 +388,7 @@ function getStatusName(status: string) {
 
 .log-time {
   color: #999;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
   min-width: 80px;
   flex-shrink: 0;
 }

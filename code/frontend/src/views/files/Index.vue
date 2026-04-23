@@ -347,9 +347,9 @@ function handleSizeChange(size: number) {
         :data="previewData"
         stripe
         border
-        style="width: 100%; margin-top: 16px"
+        style="width: 100%; margin-top: var(--spacing-md)"
         max-height="500"
-        :cell-style="{ fontSize: '12px' }"
+        :cell-style="{ fontSize: 'var(--font-size-sm)' }"
         :header-cell-style="{ background: '#f5f7fa', color: '#606266', fontWeight: 'bold' }"
       >
         <el-table-column
@@ -388,8 +388,8 @@ function handleSizeChange(size: number) {
 }
 
 .cell-content {
-  color: #303133;
-  font-size: 12px;
+  color: var(--color-text-regular);
+  font-size: var(--font-size-sm);
 }
 
 .empty-value {
@@ -405,7 +405,7 @@ function handleSizeChange(size: number) {
 
 /* 美化表格行悬停效果 */
 :deep(.el-table__row:hover) {
-  background-color: #f5f7fa !important;
+  background-color: var(--color-bg-hover) !important;
 }
 
 /* 优化表格边框 */

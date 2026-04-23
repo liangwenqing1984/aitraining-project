@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
@@ -786,8 +786,15 @@ function initCompanyScaleChart() {
 }
 
 // 窗口大小改变时重新渲染图表
-window.addEventListener('resize', () => {
+const handleResize = () => {
   Object.values(charts).forEach(chart => chart?.resize())
+}
+window.addEventListener('resize', handleResize)
+
+// 组件卸载时清理图表实例和事件监听
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
+  Object.values(charts).forEach(chart => chart?.dispose())
 })
 </script>
 
@@ -925,7 +932,9 @@ window.addEventListener('resize', () => {
       </el-row>
     </div>
     
-    <el-empty v-if="!loading && !analysisResult" description="请从任务列表点击'分析'按钮查看数据分析" />
+    <el-empty v-if="!loading && !analysisResult" description="请从任务列表点击'分析'按钮查看数据分析">
+      <el-button type="primary" @click="$router.push('/crawler')">前往任务列表</el-button>
+    </el-empty>
     <el-empty v-if="!loading && analysisResult && availableCharts.length === 0" description="暂无可展示的图表数据" />
   </div>
 </template>
@@ -980,8 +989,8 @@ window.addEventListener('resize', () => {
 }
 
 .stat-card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .stat-icon {
@@ -1059,7 +1068,7 @@ window.addEventListener('resize', () => {
 }
 
 .insight-card:hover {
-  transform: translateX(5px);
+  transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 

@@ -405,7 +405,7 @@ function cancel() {
       </template>
 
       <el-form :model="taskForm" label-width="120px">
-        <!-- 🔧 新增：任务名称输入 -->
+        <!-- 任务名称输入 -->
         <el-form-item label="任务名称">
           <el-input
             v-model="taskName"
@@ -447,7 +447,7 @@ function cancel() {
             </div>
           </div>
           <div class="form-tip">
-            💡 提示：支持批量输入，可一次性输入10个关键词（如："Java开发,前端工程师,产品经理"），最多支持{{ MAX_KEYWORDS }}个关键词
+            提示：支持批量输入，可一次性输入多个关键词（如："Java开发,前端工程师,产品经理"），最多支持{{ MAX_KEYWORDS }}个关键词
           </div>
         </el-form-item>
 
@@ -477,7 +477,7 @@ function cancel() {
             </div>
           </div>
           <div class="form-tip">
-            💡 提示：支持批量输入（如："阿里巴巴,腾讯,字节跳动"），最多100个企业
+            提示：支持批量输入（如："阿里巴巴,腾讯,字节跳动"），最多100个企业
           </div>
         </el-form-item>
 
@@ -549,6 +549,7 @@ function cancel() {
 .create-task-page {
   max-width: 900px;
   margin: 0 auto;
+  padding: 0 var(--spacing-md);
 }
 
 .el-form-item {
@@ -567,8 +568,8 @@ function cancel() {
 }
 
 .form-tip {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-placeholder);
   margin-top: 4px;
   display: block;
 }
