@@ -34,12 +34,12 @@ const userInfo = ref<any>({
 const isCollapse = ref(false)
 
 const menuItems = [
+  { path: '/home', title: '首页', icon: HomeFilled },  // 🔧 首页放在第一位
   { path: '/crawler', title: '数据采集', icon: Monitor },
   { path: '/files', title: '数据管理', icon: Files },
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
-  { path: '/home', title: '首页', icon: HomeFilled },
-  { path: '/about', title: '关于', icon: InfoFilled },
   { path: '/docs', title: '文档', icon: Document },
+  { path: '/about', title: '关于', icon: InfoFilled },
   { path: '/settings', title: '设置', icon: Setting }
 ]
 

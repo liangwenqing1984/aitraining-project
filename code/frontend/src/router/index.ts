@@ -33,14 +33,20 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'Layout',
     component: () => import('@/layouts/MainLayout.vue'),
-    redirect: '/crawler',
+    redirect: '/crawler',  // 🔧 默认重定向到数据采集页面
     meta: { requiresAuth: true },
     children: [
+      {
+        path: 'home',
+        name: 'Home',
+        component: () => import('@/views/crawler/Index.vue'),  // 🔧 首页指向数据采集页面
+        meta: { title: '首页', icon: 'HomeFilled' }
+      },
       {
         path: 'crawler',
         name: 'Crawler',
         component: () => import('@/views/crawler/Index.vue'),
-        meta: { title: '爬虫管理', icon: 'Monitor' }
+        meta: { title: '数据采集', icon: 'Monitor' }
       },
       {
         path: 'crawler/create',
@@ -79,10 +85,10 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '数据分析', icon: 'DataAnalysis' }
       },
       {
-        path: 'home',
-        name: 'Home',
-        component: () => import('@/views/Home.vue'),
-        meta: { title: '首页', icon: 'HomeFilled' }
+        path: 'docs',  // 🔧 添加文档页面路由
+        name: 'Docs',
+        component: () => import('@/views/Docs.vue'),
+        meta: { title: '文档', icon: 'Document' }
       },
       {
         path: 'about',
