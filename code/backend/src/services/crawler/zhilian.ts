@@ -431,15 +431,18 @@ export class ZhilianCrawler {
                       
                       // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
                       if (!title || title.length < 2 || title.length > 150) {
+                        console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [标题长度异常] 长度=${title?.length || 0}, 内容="${(title || '').substring(0, 30)}"`);
                         strategy1Stats.failedExtractions++;
                         return;
                       }
                       if (title.includes('立即沟通') || title.includes('立即投递')) {
+                        console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [包含无效关键词] "${title}"`);
                         strategy1Stats.failedExtractions++;
                         return;
                       }
                       // 🔧 使用全局去重集合
                       if (globalSeenTitles.has(title)) {
+                        console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [标题重复] "${title}"`);
                         strategy1Stats.duplicateCount++;  // ✅ 修复：使用正确的统计对象，移除重复计数
                         strategy1Stats.failedExtractions++;
                         return;
@@ -546,7 +549,7 @@ export class ZhilianCrawler {
                   
                   // 🔧 关键修复：移除硬编码的15个职位限制，提取页面上所有有效职位
                   // 智联招聘每页显示20个职位，不应提前终止
-                  console.log(`[ZhilianCrawler] 策略1提取完成，共找到 ${strategy1Stats.extractedJobs} 个职位 (失败${strategy1Stats.failedExtractions}次)`);
+                  console.log(`[ZhilianCrawler] 策略1提取完成，共找到 ${strategy1Stats.extractedJobs} 个职位 (失败${strategy1Stats.failedExtractions}次, 其中重复${strategy1Stats.duplicateCount || 0}次)`);
                 } else {
                   console.log(`[ZhilianCrawler] ⚠️ 策略1: 未找到任何 div.jobinfo 容器`);
                 }
@@ -898,8 +901,8 @@ export class ZhilianCrawler {
               const stats = resultData.stats || {};
               
               console.log(`[ZhilianCrawler] 📊 多策略解析汇总:`);
-              console.log(`[ZhilianCrawler]    策略1 (div.jobinfo): 提取 ${stats.strategy1?.extractedJobs || 0} 个职位 (失败${stats.strategy1?.failedExtractions || 0}次)`);
-              console.log(`[ZhilianCrawler]    策略2 (卡片容器): 提取 ${stats.strategy2?.extractedJobs || 0} 个职位 (失败${stats.strategy2?.failedExtractions || 0}次)`);
+              console.log(`[ZhilianCrawler]    策略1 (div.jobinfo): 提取 ${stats.strategy1?.extractedJobs || 0} 个职位 (失败${stats.strategy1?.failedExtractions || 0}次, 其中重复${stats.strategy1?.duplicateCount || 0}次)`);
+              console.log(`[ZhilianCrawler]    策略2 (卡片容器): 提取 ${stats.strategy2?.extractedJobs || 0} 个职位 (失败${stats.strategy2?.failedExtractions || 0}次, 其中重复${stats.strategy2?.duplicateCount || 0}次)`);
               console.log(`[ZhilianCrawler]    策略3 (职位链接): 提取 ${stats.strategy3?.extractedJobs || 0} 个职位 (重复${stats.strategy3?.duplicateCount || 0}, 失败${stats.strategy3?.failedExtractions || 0})`);
               console.log(`[ZhilianCrawler]    最终结果: ${jobList.length} 个职位（已去重）`);
               console.log(`[ZhilianCrawler] 使用 Puppeteer 找到 ${jobList.length} 个职位`);
