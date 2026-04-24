@@ -490,15 +490,55 @@ export const useCrawlerStore = defineStore('crawler', () => {
   }
 
   // 清空指定任务的日志
-  function clearTaskLogs(taskId: string) {
-    taskLogs.value.set(taskId, [])
+  function clearLogs(taskId?: string) {
+    const targetTaskId = taskId || currentTask.value?.id
+    if (targetTaskId && taskLogs.value.has(targetTaskId)) {
+      taskLogs.value.set(targetTaskId, [])
+    }
   }
 
-  // 清空当前任务的日志
-  function clearLogs() {
-    if (currentTask.value?.id) {
-      clearTaskLogs(currentTask.value.id)
+  // 🔧 新增: 下载任务日志为文本文件
+  function downloadLogs(taskId?: string) {
+    const targetTaskId = taskId || currentTask.value?.id
+    if (!targetTaskId) {
+      ElMessage.warning('没有可下载的日志')
+      return
     }
+
+    const logs = taskLogs.value.get(targetTaskId)
+    if (!logs || logs.length === 0) {
+      ElMessage.warning('当前任务暂无日志记录')
+      return
+    }
+
+    // 格式化日志内容
+    const logContent = logs.map(log => {
+      const timestamp = log.time || new Date().toLocaleString('zh-CN')
+      const level = log.level ? `[${log.level.toUpperCase()}]` : '[INFO]'
+      return `${timestamp} ${level} ${log.message}`
+    }).join('\n')
+
+    // 创建Blob对象
+    const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' })
+    
+    // 创建下载链接
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    
+    // 生成文件名：task_{taskId}_{timestamp}.log
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    link.download = `task_${targetTaskId.slice(0, 8)}_${timestamp}.log`
+    
+    // 触发下载
+    document.body.appendChild(link)
+    link.click()
+    
+    // 清理
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    
+    ElMessage.success(`已下载 ${logs.length} 条日志`)
   }
 
   // 🔧 新增: 切换当前任务时,确保日志数组存在
@@ -535,7 +575,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
     addLog, // 保持兼容性
     addLogToTask, // 新方法
     clearLogs,
-    clearTaskLogs, // 新方法
+    downloadLogs, // 新方法
     setCurrentTask // 新方法
   }
 })

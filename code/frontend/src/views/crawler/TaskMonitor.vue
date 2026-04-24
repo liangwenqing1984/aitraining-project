@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { taskApi } from '@/api/task'
 import { ElMessage } from 'element-plus'
-import { Connection, CloseBold } from '@element-plus/icons-vue'
+import { Connection, CloseBold, Download } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -369,7 +369,13 @@ function getConnectionStatusText() {
       <template #header>
         <div class="log-header">
           <span>实时日志</span>
-          <el-button type="primary" link @click="crawlerStore.clearLogs">清空</el-button>
+          <div class="log-actions">
+            <el-button type="primary" link @click="crawlerStore.downloadLogs(taskId)">
+              <el-icon><Download /></el-icon>
+              下载日志
+            </el-button>
+            <el-button type="primary" link @click="crawlerStore.clearLogs(taskId)">清空</el-button>
+          </div>
         </div>
       </template>
       <div class="log-container" ref="logContainer">
@@ -476,6 +482,12 @@ function getConnectionStatusText() {
 .log-header {
   display: flex;
   justify-content: space-between;
+  align-items: center;
+}
+
+.log-actions {
+  display: flex;
+  gap: 8px;
   align-items: center;
 }
 
