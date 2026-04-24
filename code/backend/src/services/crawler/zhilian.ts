@@ -330,9 +330,10 @@ export class ZhilianCrawler {
                 }
               }
               
-              // ⚠️ 优化：缩短等待时间，提高爬取速度
+              // ⚠️ 优化：智能等待策略 - 根据页面复杂度动态调整
               console.log(`[ZhilianCrawler] 等待动态内容加载...`);
-              await this.randomDelay(2000, 3000);  // 🔧 从5-8秒优化为2-3秒
+              await this.randomDelay(3000, 4000);  // 🔧 优化：从2-3秒增加到3-4秒，确保懒加载完成
+
               
               // 再次检查页面内容 - 🔧 增加空值检查
               const pageContentAfterWait = await page.evaluate(() => {
@@ -350,9 +351,18 @@ export class ZhilianCrawler {
               if (!pageContentAfterWait.hasJobKeywords) {
                 console.log(`[ZhilianCrawler] 未检测到职位关键词，尝试滚动页面...`);
                 await page.evaluate(async () => {
-                  for (let i = 0; i < 5; i++) {
+                  // 🔧 优化：增加滚动次数和智能检测
+                  let previousCount = 0;
+                  for (let i = 0; i < 8; i++) {  // 🔧 从5次增加到8次
                     window.scrollBy(0, window.innerHeight);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    await new Promise(resolve => setTimeout(resolve, 800));  // 🔧 每次800ms
+                    
+                    // 检查是否还有新职位加载
+                    const currentCount = document.querySelectorAll('.joblist-box__item, jobinfo, [class*="job-item"]').length;
+                    if (currentCount === previousCount && currentCount > 0 && i >= 3) {
+                      break;
+                    }
+                    previousCount = currentCount;
                   }
                 });
                 
@@ -369,6 +379,26 @@ export class ZhilianCrawler {
                   };
                 });
                 console.log(`[ZhilianCrawler] 滚动后最终检查:`, finalCheck);
+              }
+
+              // 🔧 优化3：显式等待职位容器出现，确保DOM完全渲染
+              try {
+                console.log(`[ZhilianCrawler] ⏳ 显式等待职位容器...`);
+                await page.waitForSelector('.joblist-box__item, jobinfo', { 
+                  timeout: 10000,  // 最多等待10秒
+                  visible: true     // 要求元素可见
+                });
+                console.log(`[ZhilianCrawler] ✅ 职位容器已加载`);
+              } catch (e) {
+                console.warn(`[ZhilianCrawler] ⚠️ 职位容器未在10秒内出现，继续尝试解析`);
+                
+                if (io && taskId) {
+                  io.to(`task:${taskId}`).emit('task:log', {
+                    taskId,
+                    level: 'warning',
+                    message: `⚠️ 职位容器加载超时，可能影响解析数量`
+                  });
+                }
               }
 
               // 🔧 关键改进：多策略DOM解析职位数据

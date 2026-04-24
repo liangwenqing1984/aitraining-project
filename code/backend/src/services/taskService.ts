@@ -317,12 +317,17 @@ class TaskService {
           }
 
           // 写入Excel
-          await this.appendExcelRow(filepath, job);
-          totalRecords++;
+          const writeSuccess = await this.appendExcelRow(filepath, job);
           
-          // 🔧 优化：减少日志输出频率，每10条输出一次
-          if (totalRecords % 10 === 0 || totalRecords <= 5) {
-            console.log(`[TaskService] 已采集第 ${totalRecords} 条数据`);
+          if (writeSuccess) {
+            totalRecords++;
+            
+            // 🔧 优化：减少日志输出频率，每10条输出一次
+            if (totalRecords % 10 === 0 || totalRecords <= 5) {
+              console.log(`[TaskService] 已采集第 ${totalRecords} 条数据`);
+            }
+          } else {
+            console.warn(`[TaskService] ⚠️ 职位 ${job.jobId} 写入失败，跳过计数`);
           }
 
           // 🔧 关键优化：降低数据库更新频率，从每条更新改为每5条或每秒更新
@@ -683,68 +688,83 @@ class TaskService {
   }
 
   // 追加Excel行
-  private async appendExcelRow(filepath: string, job: JobData) {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(filepath);
-    const worksheet = workbook.getWorksheet(1);
+  private async appendExcelRow(filepath: string, job: JobData): Promise<boolean> {
+    try {
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filepath);
+      const worksheet = workbook.getWorksheet(1);
 
-    if (!worksheet) {
-      throw new Error('工作表不存在');
-    }
+      if (!worksheet) {
+        throw new Error('工作表不存在');
+      }
 
-    // 添加数据行
-    const dataRow = worksheet.addRow([
-      job.companyName,       // 企业名称
-      job.jobId,             // 职位ID
-      job.jobName,           // 职位名称
-      job.jobCategory,       // 职位分类
-      job.jobTags,           // 职位标签
-      job.jobDescription,    // 职位描述
-      job.salaryRange,       // 薪资范围
-      job.workCity,          // 工作城市
-      job.workExperience,    // 工作经验
-      job.workAddress,       // 工作地址
-      job.education,         // 学历
-      job.companyCode,       // 公司代码
-      job.companyNature,     // 公司性质
-      job.businessScope,     // 经营范围
-      job.companyScale,      // 公司规模
-      job.recruitmentCount,  // 岗位招聘人数
-      job.updateDate,        // 岗位更新日期
-      job.workType,          // 工作性质
-      job.dataSource         // 数据来源
-    ]);
+      // 添加数据行
+      const dataRow = worksheet.addRow([
+        job.companyName,       // 企业名称
+        job.jobId,             // 职位ID
+        job.jobName,           // 职位名称
+        job.jobCategory,       // 职位分类
+        job.jobTags,           // 职位标签
+        job.jobDescription,    // 职位描述
+        job.salaryRange,       // 薪资范围
+        job.workCity,          // 工作城市
+        job.workExperience,    // 工作经验
+        job.workAddress,       // 工作地址
+        job.education,         // 学历
+        job.companyCode,       // 公司代码
+        job.companyNature,     // 公司性质
+        job.businessScope,     // 经营范围
+        job.companyScale,      // 公司规模
+        job.recruitmentCount,  // 岗位招聘人数
+        job.updateDate,        // 岗位更新日期
+        job.workType,          // 工作性质
+        job.dataSource         // 数据来源
+      ]);
 
-    // 设置数据行样式: 固定行高、边框、字体
-    dataRow.height = 20;  // 固定行高
-    dataRow.font = { size: 10, name: 'Microsoft YaHei' };
-    dataRow.alignment = { 
-      vertical: 'middle', 
-      wrapText: true 
-    };
-
-    // 设置单元格边框
-    dataRow.eachCell((cell) => {
-      cell.border = {
-        top: { style: 'thin', color: { argb: 'FFD0D7E5' } },
-        left: { style: 'thin', color: { argb: 'FFD0D7E5' } },
-        bottom: { style: 'thin', color: { argb: 'FFD0D7E5' } },
-        right: { style: 'thin', color: { argb: 'FFD0D7E5' } }
+      // 设置数据行样式: 固定行高、边框、字体
+      dataRow.height = 20;  // 固定行高
+      dataRow.font = { size: 10, name: 'Microsoft YaHei' };
+      dataRow.alignment = { 
+        vertical: 'middle', 
+        wrapText: true 
       };
-    });
 
-    // 隔行变色(可选,提升可读性)
-    const rowIndex = dataRow.number;
-    if (rowIndex % 2 === 0) {
-      dataRow.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFF2F2F2' }  // 浅灰色背景
-      };
+      // 设置单元格边框
+      dataRow.eachCell((cell) => {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FFD0D7E5' } },
+          left: { style: 'thin', color: { argb: 'FFD0D7E5' } },
+          bottom: { style: 'thin', color: { argb: 'FFD0D7E5' } },
+          right: { style: 'thin', color: { argb: 'FFD0D7E5' } }
+        };
+      });
+
+      // 隔行变色(可选,提升可读性)
+      const rowIndex = dataRow.number;
+      if (rowIndex % 2 === 0) {
+        dataRow.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF2F2F2' }  // 浅灰色背景
+        };
+      }
+
+      // 保存工作簿
+      await workbook.xlsx.writeFile(filepath);
+      
+      return true; // 写入成功
+      
+    } catch (error: any) {
+      // 🔧 关键修复：Excel写入失败时记录错误，但不中断爬取流程
+      console.error(`[TaskService] ❌ Excel写入失败: ${error.message}`);
+      console.error(`[TaskService] 失败的职位数据:`, {
+        jobId: job.jobId,
+        jobName: job.jobName,
+        companyName: job.companyName
+      });
+      
+      return false; // 写入失败
     }
-
-    // 保存工作簿
-    await workbook.xlsx.writeFile(filepath);
   }
 
   // 创建CSV文件(保留作为备选)
