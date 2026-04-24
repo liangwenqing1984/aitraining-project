@@ -793,8 +793,8 @@ export class ZhilianCrawler {
                     
                     // 🔧 使用全局去重集合检查重复
                     if (globalSeenTitles.has(title)) {
-                      strategy3Stats.duplicateCount++;
-                      strategy3Stats.duplicateCount++;
+                      console.log(`[ZhilianCrawler] ⚠️ 策略3跳过: [标题重复] "${title}"`);
+                      strategy3Stats.duplicateCount++;  // ✅ 修复：移除重复计数，只累加一次
                       duplicateCount++;
                       return;
                     }
