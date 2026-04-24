@@ -440,6 +440,7 @@ export class ZhilianCrawler {
                       }
                       // 🔧 使用全局去重集合
                       if (globalSeenTitles.has(title)) {
+                      strategy3Stats.duplicateCount++;
                         strategy1Stats.failedExtractions++;
                         return;
                       }
@@ -604,6 +605,7 @@ export class ZhilianCrawler {
 
                           // 🔧 使用全局去重集合
                           if (globalSeenTitles.has(title)) {
+                      strategy3Stats.duplicateCount++;
                             strategy2Stats.failedExtractions++;
                             return;
                           }
@@ -721,17 +723,25 @@ export class ZhilianCrawler {
                             companyScale,     // ✅ 新增：公司规模
                             businessScope     // ✅ 新增：行业范围
                           });
+                          
+                          strategy2Stats.extractedJobs++;  // 🔧 统计成功提取的职位数
                         } catch (e) {
+                          strategy2Stats.failedExtractions++;  // 🔧 统计失败的提取
                           // 忽略单个卡片错误
                         }
                       });
                       
                       // 🔧 关键修复：移除硬编码的15个职位限制
-                      console.log(`[ZhilianCrawler] 策略2提取完成，共找到 ${jobList.length} 个职位`);
+                      console.log(`[ZhilianCrawler] 策略2提取完成，共找到 ${strategy2Stats.extractedJobs} 个职位 (失败${strategy2Stats.failedExtractions}次)`);
+                      break;  // 🔧 策略2成功后跳出选择器循环
                     }
                   } catch (e) {
                     // Ignore error
                   }
+                }
+                
+                if (!foundCards) {  // 🔧 如果所有选择器都未匹配到容器
+                  console.log(`[ZhilianCrawler] ⚠️ 策略2: 未找到任何匹配的职位卡片容器`);
                 }
                 
                 // 🔧 关键修复：移除硬编码的15个职位限制，继续尝试策略3以补充更多职位
@@ -740,25 +750,43 @@ export class ZhilianCrawler {
                 // ========== 策略3: 基于职位链接提取（最可靠）==========
                 const jobLinks = Array.from(document.querySelectorAll('a[href*="/jobdetail/"], a[href*="/job/"]'));
                 
+                // 🔧 诊断日志：记录策略3的匹配情况
+                const strategy3Stats = {
+                  foundLinks: jobLinks.length,
+                  extractedJobs: 0,
+                  duplicateCount: 0,
+                  failedExtractions: 0
+                };
+                
                 // 🔧 移除局部seenHrefs和seenTitles，使用全局去重集合
                 let duplicateCount = 0;
                 
                 jobLinks.forEach((link: any) => {
                   try {
                     const href = link.href || '';
-                    if (!href) return;
+                    if (!href) {
+                      strategy3Stats.failedExtractions++;
+                      return;
+                    }
                     // 🔧 使用全局去重集合检查href
-                    if (globalSeenHrefs.has(href)) return;
+                    if (globalSeenHrefs.has(href)) {
+                      strategy3Stats.duplicateCount++;
+                      return;
+                    }
                     
                     const title = (link.textContent || '').trim();
                     
                     // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
-                    if (!title || title.length < 2 || title.length > 150) return;
+                    if (!title || title.length < 2 || title.length > 150) {
+                      strategy3Stats.failedExtractions++;
+                      return;
+                    }
                     if (title.includes('立即沟通') || title.includes('立即投递') || 
                         title.includes('收藏') || title.includes('分享')) return;
                     
                     // 🔧 使用全局去重集合检查重复
                     if (globalSeenTitles.has(title)) {
+                      strategy3Stats.duplicateCount++;
                       duplicateCount++;
                       return;
                     }
@@ -842,14 +870,36 @@ export class ZhilianCrawler {
                       businessScope
                     });
                     
+                    strategy3Stats.extractedJobs++;  // 🔧 统计成功提取
+                    
                   } catch (e) {
+                    strategy3Stats.failedExtractions++;  // 🔧 统计失败
                     // Ignore error
                   }
                 });
                 
-                return jobList;
+                console.log(`[ZhilianCrawler] 策略3提取完成，共找到 ${strategy3Stats.extractedJobs} 个职位 (链接总数${strategy3Stats.foundLinks}, 重复${strategy3Stats.duplicateCount}, 失败${strategy3Stats.failedExtractions})`);
+                
+                // 🔧 返回职位列表和统计信息
+              return {
+                jobs: jobList,
+                stats: {
+                  strategy1: strategy1Stats || { foundContainers: 0, extractedJobs: 0, failedExtractions: 0 },
+                  strategy2: strategy2Stats || { extractedJobs: 0, failedExtractions: 0 },
+                  strategy3: strategy3Stats || { foundLinks: 0, extractedJobs: 0, duplicateCount: 0, failedExtractions: 0 }
+                }
+              };
               });
 
+              // 🔧 解构返回结果
+              const jobs = result.jobs || [];
+              const stats = result.stats || {};
+              
+              console.log(`[ZhilianCrawler] 📊 多策略解析汇总:`);
+              console.log(`[ZhilianCrawler]    策略1 (div.jobinfo): 提取 ${stats.strategy1?.extractedJobs || 0} 个职位 (失败${stats.strategy1?.failedExtractions || 0}次)`);
+              console.log(`[ZhilianCrawler]    策略2 (卡片容器): 提取 ${stats.strategy2?.extractedJobs || 0} 个职位 (失败${stats.strategy2?.failedExtractions || 0}次)`);
+              console.log(`[ZhilianCrawler]    策略3 (职位链接): 提取 ${stats.strategy3?.extractedJobs || 0} 个职位 (重复${stats.strategy3?.duplicateCount || 0}, 失败${stats.strategy3?.failedExtractions || 0})`);
+              console.log(`[ZhilianCrawler]    最终结果: ${jobs.length} 个职位（已去重）`);
               console.log(`[ZhilianCrawler] 使用 Puppeteer 找到 ${jobs.length} 个职位`);
               
               // 🔧 关键优化：当解析数量异常时，自动保存HTML快照用于离线分析
