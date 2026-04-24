@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { taskApi } from '@/api/task'
 import { ElMessage } from 'element-plus'
+import { Connection, CloseBold } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -118,8 +119,25 @@ async function loadHistoricalLogs() {
   }
 }
 
+// 🔧 修复：记录组件是否仍然挂载
+let isComponentMounted = true
+
 onUnmounted(() => {
-  crawlerStore.unsubscribeTask(taskId)
+  isComponentMounted = false
+  
+  // 🔧 关键修复：只有在任务已完成/失败/中止时才取消订阅
+  // 如果任务仍在运行，保持WebSocket连接，让用户在其他页面也能看到进度
+  const task = crawlerStore.tasks.find(t => t.id === taskId)
+  const shouldUnsubscribe = !task || 
+                           ['completed', 'failed', 'cancelled', 'stopped'].includes(task.status)
+  
+  if (shouldUnsubscribe) {
+    console.log('[TaskMonitor] ✅ 任务已结束，取消WebSocket订阅')
+    crawlerStore.unsubscribeTask(taskId)
+  } else {
+    console.log('[TaskMonitor] ⚠️ 任务仍在运行，保持WebSocket连接 (status:', task?.status, ')')
+    // 不取消订阅，让Socket继续接收进度更新
+  }
 })
 
 // 自动滚动日志 - 🔧 修复: 监听taskLogs Map而不是logs计算属性
@@ -185,6 +203,30 @@ function getStatusName(status: string) {
   }
   return names[status] || status
 }
+
+// 🔧 新增：WebSocket连接状态相关函数
+function getConnectionStatusType() {
+  if (crawlerStore.isConnected) {
+    return 'success'
+  } else if (crawlerStore.reconnectAttempts > 0 && crawlerStore.reconnectAttempts < crawlerStore.maxReconnectAttempts) {
+    return 'warning'
+  } else {
+    return 'danger'
+  }
+}
+
+function getConnectionStatusText() {
+  if (crawlerStore.isConnected) {
+    return '实时连接'
+  } else if (crawlerStore.reconnectAttempts > 0 && crawlerStore.reconnectAttempts < crawlerStore.maxReconnectAttempts) {
+    return `重连中 (${crawlerStore.reconnectAttempts}/${crawlerStore.maxReconnectAttempts})`
+  } else if (crawlerStore.reconnectAttempts >= crawlerStore.maxReconnectAttempts) {
+    return '连接失败'
+  } else {
+    return '未连接'
+  }
+}
+
 </script>
 
 <template>
@@ -217,9 +259,28 @@ function getStatusName(status: string) {
           <template #header>
             <div class="card-header">
               <span>{{ crawlerStore.currentTask.name }}</span>
-              <el-tag :type="getStatusType(crawlerStore.currentTask.status)">
-                {{ getStatusName(crawlerStore.currentTask.status) }}
-              </el-tag>
+              <div class="header-tags">
+                <!-- 🔧 新增：WebSocket连接状态指示器 -->
+                <el-tooltip 
+                  :content="getConnectionStatusText()" 
+                  placement="top"
+                >
+                  <el-tag 
+                    :type="getConnectionStatusType()" 
+                    size="small"
+                    effect="dark"
+                    class="connection-status-tag"
+                  >
+                    <el-icon v-if="crawlerStore.isConnected" class="is-loading"><Connection /></el-icon>
+                    <el-icon v-else><CloseBold /></el-icon>
+                    {{ getConnectionStatusText() }}
+                  </el-tag>
+                </el-tooltip>
+                
+                <el-tag :type="getStatusType(crawlerStore.currentTask.status)">
+                  {{ getStatusName(crawlerStore.currentTask.status) }}
+                </el-tag>
+              </div>
             </div>
           </template>
 
@@ -355,6 +416,24 @@ function getStatusName(status: string) {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* 🔧 新增：头部标签容器样式 */
+.header-tags {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.connection-status-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.connection-status-tag .el-icon {
+  font-size: 14px;
 }
 
 .header-actions {

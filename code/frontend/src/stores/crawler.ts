@@ -10,6 +10,11 @@ export const useCrawlerStore = defineStore('crawler', () => {
   const currentTask = ref<Task | null>(null)
   const isConnected = ref(false)
   
+  // 🔧 新增：WebSocket重连状态管理
+  const reconnectAttempts = ref(0)
+  const maxReconnectAttempts = 5
+  const isManualDisconnect = ref(false)  // 标记是否为用户手动断开
+  
   // 🔧 修复: 使用Map存储每个任务的独立日志,而不是全局共享数组
   const taskLogs = ref<Map<string, Array<{ time: string; level: string; message: string }>>>(new Map())
   
@@ -41,22 +46,93 @@ export const useCrawlerStore = defineStore('crawler', () => {
     records: Array.isArray(tasks.value) ? tasks.value.reduce((sum, t) => sum + (t.recordCount || 0), 0) : 0
   }))
 
+  // 🔧 新增：重新订阅所有运行中的任务
+  function resubscribeRunningTasks() {
+    if (!socket.value || !socket.value.connected) return
+    
+    const runningTaskIds = tasks.value
+      .filter(t => t.status === 'running' || t.status === 'paused')
+      .map(t => t.id)
+    
+    if (runningTaskIds.length > 0) {
+      console.log(`[WebSocket] 🔄 重新订阅 ${runningTaskIds.length} 个运行中的任务`)
+      runningTaskIds.forEach(taskId => {
+        socket.value?.emit('task:subscribe', { taskId })
+      })
+    }
+  }
+
   // 连接WebSocket
   function connectSocket() {
     if (socket.value?.connected) return
 
+    console.log('[WebSocket] 🚀 正在建立连接...')
+    
     socket.value = io('http://localhost:3004', {
-      transports: ['websocket']
+      transports: ['websocket'],
+      reconnection: true,           // 🔧 启用自动重连
+      reconnectionDelay: 1000,      // 初始重连延迟1秒
+      reconnectionDelayMax: 5000,   // 最大重连延迟5秒
+      reconnectionAttempts: 0       // 无限重试（我们手动控制）
     })
 
     socket.value.on('connect', () => {
       isConnected.value = true
-      console.log('WebSocket connected')
+      reconnectAttempts.value = 0  // 重置重连计数
+      isManualDisconnect.value = false
+      console.log('[WebSocket] ✅ 连接成功')
+      
+      // 🔧 关键：连接成功后重新订阅所有运行中的任务
+      resubscribeRunningTasks()
+      
+      ElMessage.success({
+        message: '实时连接已恢复',
+        duration: 2000
+      })
     })
 
-    socket.value.on('disconnect', () => {
+    socket.value.on('disconnect', (reason) => {
       isConnected.value = false
-      console.log('WebSocket disconnected')
+      console.warn('[WebSocket] ⚠️ 连接断开:', reason)
+      
+      // 如果不是手动断开，显示提示
+      if (!isManualDisconnect.value) {
+        ElMessage.warning({
+          message: `连接已断开 (${reason})，正在尝试重连...`,
+          duration: 3000
+        })
+      }
+    })
+
+    // 🔧 新增：监听重连事件
+    socket.value.on('reconnect', (attemptNumber) => {
+      console.log(`[WebSocket] 🔄 重连成功 (第${attemptNumber}次尝试)`)
+      reconnectAttempts.value = 0
+    })
+
+    socket.value.on('reconnect_attempt', (attemptNumber) => {
+      reconnectAttempts.value = attemptNumber
+      console.log(`[WebSocket] 🔄 尝试重连... (${attemptNumber}/${maxReconnectAttempts})`)
+    })
+
+    socket.value.on('reconnect_error', (error) => {
+      console.error('[WebSocket] ❌ 重连失败:', error.message)
+      
+      if (reconnectAttempts.value >= maxReconnectAttempts) {
+        ElMessage.error({
+          message: '重连失败次数过多，请检查网络连接或刷新页面',
+          duration: 5000
+        })
+      }
+    })
+
+    socket.value.on('reconnect_failed', () => {
+      console.error('[WebSocket] ❌ 重连失败，已达最大尝试次数')
+      ElMessage.error({
+        message: '无法连接到服务器，请检查后端服务是否正常运行',
+        duration: 0,  // 不自动关闭
+        showClose: true
+      })
     })
 
     socket.value.on('task:progress', (data: any) => {
@@ -112,9 +188,11 @@ export const useCrawlerStore = defineStore('crawler', () => {
 
   // 断开连接
   function disconnectSocket() {
+    isManualDisconnect.value = true  // 标记为手动断开
     socket.value?.disconnect()
     socket.value = null
     isConnected.value = false
+    console.log('[WebSocket] 🔌 手动断开连接')
   }
 
   // 订阅任务
@@ -438,6 +516,8 @@ export const useCrawlerStore = defineStore('crawler', () => {
     logs, // 保持兼容性,现在是计算属性
     taskLogs, // 暴露完整的日志Map
     isConnected,
+    reconnectAttempts,  // 🔧 新增：重连尝试次数
+    maxReconnectAttempts,  // 🔧 新增：最大重连次数
     runningTasks,
     statistics,
     connectSocket,

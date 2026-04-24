@@ -298,6 +298,9 @@ class TaskService {
           ? new ZhilianCrawler()
           : new Job51Crawler();
 
+        // 🔧 关键修复：设置爬虫的taskId，使其能够更新数据库进度
+        (crawler as any).taskId = taskId;
+        
         console.log(`[TaskService] 🚀 爬虫实例已创建，开始遍历职位数据...`);
         let iterationCount = 0; // 🔧 诊断：记录迭代次数
         
@@ -305,7 +308,7 @@ class TaskService {
           iterationCount++;
           
           if (iterationCount === 1) {
-            console.log(`[TaskService] ✅ 首次接收到数据！job=${JSON.stringify({title: job.title, company: job.company})}`);
+            console.log(`[TaskService] ✅ 首次接收到数据！job=${JSON.stringify({jobName: job.jobName, companyName: job.companyName})}`);
           }
           
           if (controller.signal.aborted) {
@@ -400,6 +403,11 @@ class TaskService {
               console.warn(`[TaskService] 数据库进度更新失败（可忽略）: ${dbError.message}`);
             }
 
+            // 🔧 调试：检查WebSocket房间内的客户端数量
+            const room = io.sockets.adapter.rooms.get(`task:${taskId}`);
+            const clientCount = room ? room.size : 0;
+            console.log(`[TaskService] 📡 准备推送进度 - 房间内客户端数: ${clientCount}, progress: ${progressPercent}%, records: ${totalRecords}`);
+
             io.to(`task:${taskId}`).emit('task:progress', {
               taskId,
               status: 'running',
@@ -410,6 +418,8 @@ class TaskService {
               speed,
               message: totalRecords > 0 ? `已采集 ${totalRecords} 条数据` : '正在爬取中...'
             });
+            
+            console.log(`[TaskService] ✅ 进度消息已发送`);
           }
         }
 

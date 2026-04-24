@@ -510,6 +510,14 @@ function initExperienceChart() {
   charts.experience = echarts.init(dom)
   const data = experienceDistributionData.value
   
+  // 🔧 修复：确保数据不为空
+  if (!data || data.length === 0) {
+    console.warn('[Analysis] 经验分布数据为空，跳过图表初始化')
+    return
+  }
+  
+  const maxValue = Math.max(...data.map((d: any) => d.value))
+  
   const option = {
     title: {
       text: '📊 经验要求分布',
@@ -517,7 +525,10 @@ function initExperienceChart() {
       textStyle: { fontSize: 16, fontWeight: 'bold' }
     },
     tooltip: {
-      trigger: 'item'
+      trigger: 'item',
+      formatter: (params: any) => {
+        return `${params.name}<br/>${params.value}个岗位`
+      }
     },
     legend: {
       data: ['岗位数量'],
@@ -526,12 +537,26 @@ function initExperienceChart() {
     radar: {
       indicator: data.map((item: any) => ({
         name: item.name.length > 8 ? item.name.substring(0, 8) + '...' : item.name,
-        max: Math.max(...data.map((d: any) => d.value)) * 1.2
+        max: maxValue * 1.2,
+        // 🔧 修复：为每个维度单独设置min为0，避免刻度问题
+        min: 0
       })),
       shape: 'polygon',
       splitNumber: 4,
       axisName: {
-        color: '#666'
+        color: '#666',
+        fontSize: 11
+      },
+      // 🔧 修复：优化刻度线配置
+      axisTick: {
+        show: true,
+        lineStyle: {
+          color: '#ddd'
+        }
+      },
+      // 🔧 修复：优化刻度标签，避免重叠
+      axisLabel: {
+        show: false  // 隐藏径向刻度标签，避免与轴名称重叠
       },
       splitLine: {
         lineStyle: {

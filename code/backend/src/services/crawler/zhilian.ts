@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer';
 import { JobData, TaskConfig } from '../../types';
 import { ZHILIAN_CITY_CODES } from '../../config/constants';
 import { io } from '../../app';
+import { db } from '../../config/database';
 
 export class ZhilianCrawler {
   private signal: AbortSignal | null = null;
