@@ -542,6 +542,8 @@ export class ZhilianCrawler {
                       
                       strategy1Stats.extractedJobs++;
                     } catch (e) {
+                      const errorMsg = e instanceof Error ? e.message : String(e);
+                      console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [DOM提取异常] 错误="${errorMsg.substring(0, 100)}"`);
                       strategy1Stats.failedExtractions++;
                       // Ignore error
                     }
@@ -729,6 +731,8 @@ export class ZhilianCrawler {
                           
                           strategy2Stats.extractedJobs++;  // 🔧 统计成功提取的职位数
                         } catch (e) {
+                          const errorMsg = e instanceof Error ? e.message : String(e);
+                          console.log(`[ZhilianCrawler] ⚠️ 策略2跳过: [DOM提取异常] 错误="${errorMsg.substring(0, 100)}"`);
                           strategy2Stats.failedExtractions++;  // 🔧 统计失败的提取
                           // 忽略单个卡片错误
                         }
