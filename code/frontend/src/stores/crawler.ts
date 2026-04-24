@@ -497,48 +497,55 @@ export const useCrawlerStore = defineStore('crawler', () => {
     }
   }
 
-  // 🔧 新增: 下载任务日志为文本文件
-  function downloadLogs(taskId?: string) {
+  // 🔧 新增: 下载任务日志为文本文件（从后端API读取完整日志）
+  async function downloadLogs(taskId?: string) {
     const targetTaskId = taskId || currentTask.value?.id
     if (!targetTaskId) {
       ElMessage.warning('没有可下载的日志')
       return
     }
 
-    const logs = taskLogs.value.get(targetTaskId)
-    if (!logs || logs.length === 0) {
-      ElMessage.warning('当前任务暂无日志记录')
-      return
+    try {
+      // 1. 从后端API获取完整日志
+      const res = await taskApi.getTaskLogs(targetTaskId, 10000)  // 最多获取10000条
+      
+      if (!res.data || !res.data.logs || res.data.logs.length === 0) {
+        ElMessage.warning('该任务暂无日志记录')
+        return
+      }
+
+      // 2. 格式化日志内容
+      const logContent = res.data.logs.map(log => {
+        const timestamp = log.timestamp || new Date().toISOString()
+        const level = log.level ? `[${log.level.toUpperCase()}]` : '[INFO]'
+        return `${timestamp} ${level} ${log.message}`
+      }).join('\n')
+
+      // 3. 创建Blob对象
+      const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' })
+      
+      // 4. 创建下载链接
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      
+      // 5. 生成文件名：使用完整任务ID
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      link.download = `task_${targetTaskId}_${timestamp}.log`
+      
+      // 6. 触发下载
+      document.body.appendChild(link)
+      link.click()
+      
+      // 7. 清理
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+      
+      ElMessage.success(`已下载 ${res.data.logs.length} 条日志（共${res.data.totalLines}条）`)
+    } catch (error: any) {
+      console.error('[Download Logs] Error:', error)
+      ElMessage.error(error.response?.data?.error || '日志下载失败')
     }
-
-    // 格式化日志内容
-    const logContent = logs.map(log => {
-      const timestamp = log.time || new Date().toLocaleString('zh-CN')
-      const level = log.level ? `[${log.level.toUpperCase()}]` : '[INFO]'
-      return `${timestamp} ${level} ${log.message}`
-    }).join('\n')
-
-    // 创建Blob对象
-    const blob = new Blob([logContent], { type: 'text/plain;charset=utf-8' })
-    
-    // 创建下载链接
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    
-    // 生成文件名：task_{taskId}_{timestamp}.log
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    link.download = `task_${targetTaskId.slice(0, 8)}_${timestamp}.log`
-    
-    // 触发下载
-    document.body.appendChild(link)
-    link.click()
-    
-    // 清理
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-    
-    ElMessage.success(`已下载 ${logs.length} 条日志`)
   }
 
   // 🔧 新增: 切换当前任务时,确保日志数组存在
