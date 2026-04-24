@@ -441,6 +441,7 @@ export class ZhilianCrawler {
                       // 🔧 使用全局去重集合
                       if (globalSeenTitles.has(title)) {
                       strategy3Stats.duplicateCount++;
+                      strategy3Stats.duplicateCount++;
                         strategy1Stats.failedExtractions++;
                         return;
                       }
@@ -605,6 +606,7 @@ export class ZhilianCrawler {
 
                           // 🔧 使用全局去重集合
                           if (globalSeenTitles.has(title)) {
+                      strategy3Stats.duplicateCount++;
                       strategy3Stats.duplicateCount++;
                             strategy2Stats.failedExtractions++;
                             return;
@@ -787,6 +789,7 @@ export class ZhilianCrawler {
                     // 🔧 使用全局去重集合检查重复
                     if (globalSeenTitles.has(title)) {
                       strategy3Stats.duplicateCount++;
+                      strategy3Stats.duplicateCount++;
                       duplicateCount++;
                       return;
                     }
@@ -891,20 +894,21 @@ export class ZhilianCrawler {
               };
               });
 
-              // 🔧 解构返回结果
-              const jobs = result.jobs || [];
-              const stats = result.stats || {};
+              // 🔧 解构返回结果（result是包含jobs和stats的对象）
+              const resultData = jobs;  // jobs是从page.evaluate返回的对象
+              const jobList = resultData.jobs || [];
+              const stats = resultData.stats || {};
               
               console.log(`[ZhilianCrawler] 📊 多策略解析汇总:`);
               console.log(`[ZhilianCrawler]    策略1 (div.jobinfo): 提取 ${stats.strategy1?.extractedJobs || 0} 个职位 (失败${stats.strategy1?.failedExtractions || 0}次)`);
               console.log(`[ZhilianCrawler]    策略2 (卡片容器): 提取 ${stats.strategy2?.extractedJobs || 0} 个职位 (失败${stats.strategy2?.failedExtractions || 0}次)`);
               console.log(`[ZhilianCrawler]    策略3 (职位链接): 提取 ${stats.strategy3?.extractedJobs || 0} 个职位 (重复${stats.strategy3?.duplicateCount || 0}, 失败${stats.strategy3?.failedExtractions || 0})`);
-              console.log(`[ZhilianCrawler]    最终结果: ${jobs.length} 个职位（已去重）`);
-              console.log(`[ZhilianCrawler] 使用 Puppeteer 找到 ${jobs.length} 个职位`);
+              console.log(`[ZhilianCrawler]    最终结果: ${jobList.length} 个职位（已去重）`);
+              console.log(`[ZhilianCrawler] 使用 Puppeteer 找到 ${jobList.length} 个职位`);
               
               // 🔧 关键优化：当解析数量异常时，自动保存HTML快照用于离线分析
-              if (jobs.length < 18 && io && taskId) {
-                console.warn(`[ZhilianCrawler] ⚠️ 警告：本页仅解析到 ${jobs.length} 个职位，预期20个，保存HTML快照...`);
+              if (jobList.length < 18 && io && taskId) {
+                console.warn(`[ZhilianCrawler] ⚠️ 警告：本页仅解析到 ${jobList.length} 个职位，预期20个，保存HTML快照...`);
                 
                 try {
                   const html = await page.content();
@@ -927,23 +931,23 @@ export class ZhilianCrawler {
                   io.to(`task:${taskId}`).emit('task:log', {
                     taskId,
                     level: 'warning',
-                    message: `⚠️ 第${currentPage}页仅解析到${jobs.length}个职位(预期20个)，HTML快照已保存至debug目录`
+                    message: `⚠️ 第${currentPage}页仅解析到${jobList.length}个职位(预期20个)，HTML快照已保存至debug目录`
                   });
                 } catch (saveError) {
                   console.error(`[ZhilianCrawler] 保存HTML快照失败:`, saveError.message);
                 }
-              } else if (jobs.length >= 18 && jobs.length < 20) {
-                console.log(`[ZhilianCrawler] ℹ️  提示：本页解析到 ${jobs.length}/20 个职位，略低于预期`);
+              } else if (jobList.length >= 18 && jobList.length < 20) {
+                console.log(`[ZhilianCrawler] ℹ️  提示：本页解析到 ${jobList.length}/20 个职位，略低于预期`);
               } else {
-                console.log(`[ZhilianCrawler] ✅ 本页解析正常：${jobs.length}/20 个职位`);
+                console.log(`[ZhilianCrawler] ✅ 本页解析正常：${jobList.length}/20 个职位`);
               }
               
               // 🔧 关键修复：给每个job对象添加当前的keyword，以便后续填充到jobCategory
-              jobs.forEach(job => {
+              jobList.forEach(job => {
                 job.keyword = cleanKeyword;  // 添加当前搜索的关键词
               });
               
-              console.log(`[ZhilianCrawler] ✅ 已为 ${jobs.length} 个职位添加keyword字段: "${cleanKeyword}"`);
+              console.log(`[ZhilianCrawler] ✅ 已为 ${jobList.length} 个职位添加keyword字段: "${cleanKeyword}"`);
 
               // 🔧 优化：使用高效的企业过滤算法
               let filteredJobs = jobs;
@@ -953,7 +957,7 @@ export class ZhilianCrawler {
                 const beforeFilter = Date.now();
                 
                 // 使用Set进行O(1)查找，大幅提升性能
-                filteredJobs = jobs.filter(job => {
+                filteredJobs = jobList.filter(job => {
                   const companyName = job.company.toLowerCase();
                   
                   // 策略1：直接匹配
@@ -974,7 +978,7 @@ export class ZhilianCrawler {
                 });
                 
                 const filterDuration = Date.now() - beforeFilter;
-                console.log(`[ZhilianCrawler] 🏢 企业过滤完成: ${jobs.length} → ${filteredJobs.length} (耗时${filterDuration}ms, 匹配${matchedCompanyCount}次)`);
+                console.log(`[ZhilianCrawler] 🏢 企业过滤完成: ${jobList.length} → ${filteredJobs.length} (耗时${filterDuration}ms, 匹配${matchedCompanyCount}次)`);
                 
                 // 🔧 智能提前终止：更新连续无匹配计数器
                 if (companies.length > 0) {
@@ -1009,12 +1013,12 @@ export class ZhilianCrawler {
                 io.to(`task:${taskId}`).emit('task:log', {
                   taskId,
                   level: 'info',
-                  message: `📊 第 ${currentPage} 页解析完成 | 找到 ${jobs.length} 条职位 | 过滤后 ${filteredJobs.length} 条`
+                  message: `📊 第 ${currentPage} 页解析完成 | 找到 ${jobList.length} 条职位 | 过滤后 ${filteredJobs.length} 条`
                 });
               }
 
               // 如果没有找到职位
-              if (jobs.length === 0) {
+              if (jobList.length === 0) {
                 console.warn(`[ZhilianCrawler] ⚠️ 第${currentPage}页未找到职位，可能原因：`);
                 console.warn(`[ZhilianCrawler]    1. 网站结构已变化`);
                 console.warn(`[ZhilianCrawler]    2. 被反爬虫机制拦截`);
@@ -1353,7 +1357,7 @@ export class ZhilianCrawler {
                 io.to(`task:${taskId}`).emit('task:log', {
                   taskId,
                   level: 'success',
-                  message: `✅ 第 ${currentPage} 页处理完成 | 耗时 ${pageDuration}秒 | 解析 ${jobs.length} 条 | 过滤后 ${filteredJobs.length} 条${hasNextPage ? ' | 继续下一页' : ' | 已是最后一页'}`
+                  message: `✅ 第 ${currentPage} 页处理完成 | 耗时 ${pageDuration}秒 | 解析 ${jobList.length} 条 | 过滤后 ${filteredJobs.length} 条${hasNextPage ? ' | 继续下一页' : ' | 已是最后一页'}`
                 });
               }
 
