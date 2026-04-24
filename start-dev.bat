@@ -23,6 +23,12 @@ if exist node_modules\.cache (
     echo   Cleaning TypeScript cache...
     rmdir /s /q node_modules\.cache 2>nul
 )
+REM 🔧 清理tsx缓存和临时文件
+if exist .tsx (
+    echo   Cleaning tsx cache...
+    rmdir /s /q .tsx 2>nul
+)
+del /q *.tsbuildinfo 2>nul
 echo [OK] Cache cleaned
 echo.
 

@@ -23,6 +23,12 @@ if (Test-Path "node_modules\\.cache") {
     Write-Host "  清理TypeScript缓存..." -ForegroundColor Gray
     Remove-Item -Recurse -Force "node_modules\\.cache" -ErrorAction SilentlyContinue
 }
+# 🔧 清理tsx缓存和临时文件
+if (Test-Path ".tsx") {
+    Write-Host "  清理tsx缓存..." -ForegroundColor Gray
+    Remove-Item -Recurse -Force ".tsx" -ErrorAction SilentlyContinue
+}
+Get-ChildItem -Filter "*.tsbuildinfo" -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
 Write-Host "[OK] 编译缓存清理完成" -ForegroundColor Green
 Write-Host ""
 
