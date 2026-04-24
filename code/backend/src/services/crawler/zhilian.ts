@@ -440,8 +440,7 @@ export class ZhilianCrawler {
                       }
                       // 🔧 使用全局去重集合
                       if (globalSeenTitles.has(title)) {
-                      strategy3Stats.duplicateCount++;
-                      strategy3Stats.duplicateCount++;
+                        strategy1Stats.duplicateCount++;  // ✅ 修复：使用正确的统计对象，移除重复计数
                         strategy1Stats.failedExtractions++;
                         return;
                       }
@@ -606,8 +605,7 @@ export class ZhilianCrawler {
 
                           // 🔧 使用全局去重集合
                           if (globalSeenTitles.has(title)) {
-                      strategy3Stats.duplicateCount++;
-                      strategy3Stats.duplicateCount++;
+                            strategy2Stats.duplicateCount++;  // ✅ 修复：使用正确的统计对象，移除重复计数
                             strategy2Stats.failedExtractions++;
                             return;
                           }
