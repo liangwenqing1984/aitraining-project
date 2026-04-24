@@ -240,14 +240,14 @@ export class ZhilianCrawler {
               // 🚀 优化：拦截不必要的资源以加速页面加载
               await page.setRequestInterception(true);
               page.on('request', (request) => {
-                // 只允许必要的资源类型
-                const allowedTypes = ['document', 'script', 'xhr', 'fetch', 'websocket'];
+                // 🔧 优化：允许样式表和字体，确保页面正常渲染和JS执行
+                const allowedTypes = ['document', 'script', 'xhr', 'fetch', 'websocket', 'stylesheet', 'font'];
                 const resourceType = request.resourceType();
                 
                 if (allowedTypes.includes(resourceType)) {
                   request.continue();
                 } else {
-                  // 阻止图片、样式表、字体、媒体等资源
+                  // 阻止图片、媒体、manifest等非关键资源
                   request.abort();
                 }
               });
@@ -1216,65 +1216,93 @@ export class ZhilianCrawler {
             } catch (error: any) {
               const pageEndTime = Date.now();
               const pageDuration = ((pageEndTime - pageStartTime) / 1000).toFixed(2);
+              
               // 🔧 关键修复：检测浏览器崩溃错误
-const isBrowserCrash = error.message.includes('Connection closed') || 
-                       error.message.includes('Session closed') ||
-                       error.message.includes('Target closed') ||
-                       error.message.includes('Protocol error') ||
-                       error.message.includes('浏览器连接已断开') ||
-                       error.message.includes('BROWSER_RESTART_SCHEDULED');
+              const isBrowserCrash = error.message.includes('Connection closed') || 
+                                     error.message.includes('Session closed') ||
+                                     error.message.includes('Target closed') ||
+                                     error.message.includes('Protocol error') ||
+                                     error.message.includes('浏览器连接已断开') ||
+                                     error.message.includes('BROWSER_RESTART_SCHEDULED');
 
-if (isBrowserCrash) {
-  console.error(`[ZhilianCrawler] 🚨 检测到浏览器崩溃！错误: ${error.message}`);
-  console.error(`[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
-  
-  if (io && taskId) {
-    io.to(`task:${taskId}`).emit('task:log', {
-      taskId,
-      level: 'error',
-      message: `🚨 浏览器进程崩溃，正在清理资源...`
-    });
-  }
-  
-  if (page) {
-    try {
-      await page.close().catch(() => {});
-      console.log(`[ZhilianCrawler] ✅ 页面已强制关闭`);
-    } catch (e) {
-      console.warn(`[ZhilianCrawler] ⚠️ 关闭页面失败:`, e);
-    }
-  }
-  
-  try {
-    if (browser.isConnected()) {
-      await browser.close().catch(() => {});
-      console.log(`[ZhilianCrawler] ✅ 浏览器实例已关闭`);
-    }
-  } catch (closeErr) {
-    console.warn(`[ZhilianCrawler] ⚠️ 关闭浏览器失败:`, closeErr);
-  }
-  
-  const crashError = new Error(`BROWSER_CRASH_RECOVERABLE: ${error.message}`);
-  (crashError as any).canRecover = true;
-  // 🔧 关键修复：附加当前爬取状态，用于断点续传
-  (crashError as any).combinationIndex = currentCombination;
-  (crashError as any).currentPage = currentPage;
-  throw crashError;
-}
-              console.error(`[ZhilianCrawler] ❌ 爬取第 ${currentPage} 页时出错:`, error.message);
-              if (error.stack) {
-                console.error(`[ZhilianCrawler] 错误堆栈:`, error.stack);
+              if (isBrowserCrash) {
+                console.error(`[ZhilianCrawler] 🚨 检测到浏览器崩溃！错误: ${error.message}`);
+                console.error(`[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
+                
+                if (io && taskId) {
+                  io.to(`task:${taskId}`).emit('task:log', {
+                    taskId,
+                    level: 'error',
+                    message: `🚨 浏览器进程崩溃，正在清理资源...`
+                  });
+                }
+                
+                if (page) {
+                  try {
+                    await page.close().catch(() => {});
+                    console.log(`[ZhilianCrawler] ✅ 页面已强制关闭`);
+                  } catch (e) {
+                    console.warn(`[ZhilianCrawler] ⚠️ 关闭页面失败:`, e);
+                  }
+                }
+                
+                try {
+                  if (browser.isConnected()) {
+                    await browser.close().catch(() => {});
+                    console.log(`[ZhilianCrawler] ✅ 浏览器实例已关闭`);
+                  }
+                } catch (closeErr) {
+                  console.warn(`[ZhilianCrawler] ⚠️ 关闭浏览器失败:`, closeErr);
+                }
+                
+                const crashError = new Error(`BROWSER_CRASH_RECOVERABLE: ${error.message}`);
+                (crashError as any).canRecover = true;
+                // 🔧 关键修复：附加当前爬取状态，用于断点续传
+                (crashError as any).combinationIndex = currentCombination;
+                (crashError as any).currentPage = currentPage;
+                throw crashError;
+              }
+
+              // 🔧 优化：根据错误类型记录不同的日志级别
+              const isPageLoadError = error.message.includes('未能提取到职位标题') || 
+                                      error.message.includes('页面可能加载不完整') ||
+                                      error.message.includes('TimeoutError');
+              
+              if (isPageLoadError) {
+                console.warn(`[ZhilianCrawler] ⚠️ 第 ${currentPage} 页加载不完整或超时: ${error.message}`);
+                
+                if (io && taskId) {
+                  io.to(`task:${taskId}`).emit('task:log', {
+                    taskId,
+                    level: 'warning',
+                    message: `⚠️ 第 ${currentPage} 页加载不稳定，可能影响数据完整性`
+                  });
+                }
+              } else {
+                console.error(`[ZhilianCrawler] ❌ 爬取第 ${currentPage} 页时出错:`, error.message);
+                if (error.stack) {
+                  console.error(`[ZhilianCrawler] 错误堆栈:`, error.stack);
+                }
+                
+                if (io && taskId) {
+                  io.to(`task:${taskId}`).emit('task:log', {
+                    taskId,
+                    level: 'error',
+                    message: `❌ 第 ${currentPage} 页请求失败 | 耗时 ${pageDuration}秒 | 错误: ${error.message}`
+                  });
+                }
               }
               
-              // 记录详细错误日志到前端
-              if (io && taskId) {
-                io.to(`task:${taskId}`).emit('task:log', {
-                  taskId,
-                  level: 'error',
-                  message: `❌ 第 ${currentPage} 页请求失败 | 耗时 ${pageDuration}秒 | URL: ${url} | 错误: ${error.message}`
-                });
+              // 🔧 关键修复：确保页面被关闭，避免资源泄漏
+              if (page) {
+                try {
+                  await page.close();
+                  console.log(`[ZhilianCrawler] ✅ 异常页面已关闭`);
+                } catch (e) {
+                  // 忽略关闭错误
+                }
               }
-              
+
               console.warn(`[ZhilianCrawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
               break;
             } finally {
@@ -1416,18 +1444,21 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
     return this.signal?.aborted || false;
   }
 
-  // ✅ 优化：访问职位详情页获取完整信息（复用浏览器实例，增加重试机制）
+  // ✅ 优化：访问职位详情页获取完整信息（复用浏览器实例，增加智能重试机制）
   private async fetchJobDetail(browser: any, jobUrl: string, basicInfo: any): Promise<JobData> {
     let page: any = null;
     let retryCount = 0;
-    const maxRetries = 2;
+    const maxRetries = 3;  // 🔧 优化：从2次增加到3次重试
     
     while (retryCount <= maxRetries) {
       try {
         if (retryCount > 0) {
           console.log(`[ZhilianCrawler] 🔄 第 ${retryCount} 次重试抓取详情页: ${jobUrl.substring(0, 60)}...`);
-          // 重试前增加随机延迟，避免频繁请求
-          await this.randomDelay(2000, 4000);
+          
+          // 🔧 优化：根据重试次数动态调整延迟时间
+          const delayMin = 2000 + (retryCount - 1) * 1000;  // 第1次重试2-4秒，第2次3-5秒，第3次4-6秒
+          const delayMax = 4000 + (retryCount - 1) * 2000;
+          await this.randomDelay(delayMin, delayMax);
           
           // 🔧 重试前检查浏览器连接
           if (!browser.isConnected()) {
