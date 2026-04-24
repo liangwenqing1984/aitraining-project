@@ -950,7 +950,7 @@ export class ZhilianCrawler {
               console.log(`[ZhilianCrawler] ✅ 已为 ${jobList.length} 个职位添加keyword字段: "${cleanKeyword}"`);
 
               // 🔧 优化：使用高效的企业过滤算法
-              let filteredJobs = jobs;
+              let filteredJobs = jobList;
               let matchedCompanyCount = 0;
               
               if (companies.length > 0 && companyMatchSet && companyMatchMap) {
