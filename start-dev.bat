@@ -64,4 +64,12 @@ echo   - Backend uses tsx watch mode, auto-recompiles on code changes
 echo   - To force recompile, close this window and rerun the script
 echo   - Check "Backend Server" window for backend logs
 echo.
+
+timeout /t 5 /nobreak >nul
+
+echo Opening browser...
+start "" "http://localhost:3000"
+echo [OK] Browser opened to http://localhost:3000
+echo.
+
 pause
