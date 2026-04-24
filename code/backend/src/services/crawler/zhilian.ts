@@ -4,6 +4,8 @@ import { JobData, TaskConfig } from '../../types';
 import { ZHILIAN_CITY_CODES } from '../../config/constants';
 import { io } from '../../app';
 import { db } from '../../config/database';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class ZhilianCrawler {
   private signal: AbortSignal | null = null;
@@ -351,23 +353,15 @@ export class ZhilianCrawler {
               if (!pageContentAfterWait.hasJobKeywords) {
                 console.log(`[ZhilianCrawler] 未检测到职位关键词，尝试滚动页面...`);
                 await page.evaluate(async () => {
-                  // 🔧 优化：增加滚动次数和智能检测
-                  let previousCount = 0;
-                  for (let i = 0; i < 8; i++) {  // 🔧 从5次增加到8次
+                  // 滚动页面触发懒加载
+                  for (let i = 0; i < 8; i++) {
                     window.scrollBy(0, window.innerHeight);
-                    await new Promise(resolve => setTimeout(resolve, 800));  // 🔧 每次800ms
-                    
-                    // 检查是否还有新职位加载
-                    const currentCount = document.querySelectorAll('.joblist-box__item, jobinfo, [class*="job-item"]').length;
-                    if (currentCount === previousCount && currentCount > 0 && i >= 3) {
-                      break;
-                    }
-                    previousCount = currentCount;
+                    await new Promise(resolve => setTimeout(resolve, 800));
                   }
                 });
                 
-                // 滚动后再等待1-2秒
-                await this.randomDelay(1000, 2000);  // 🔧 从3-5秒优化为1-2秒
+                // 滚动后等待DOM渲染
+                await this.randomDelay(1000, 2000);
                 
                 // 最终检查 - 🔧 增加空值检查
                 const finalCheck = await page.evaluate(() => {
@@ -417,56 +411,41 @@ export class ZhilianCrawler {
                   return [];
                 }
                 
-                // ========== 策略1: 从 jobinfo 标签中提取（如果存在）==========
-                const jobInfoElements = Array.from(document.querySelectorAll('jobinfo'));
+                // ========== 策略1: 从 .jobinfo 容器中提取（智联招聘实际结构）==========
+                const jobInfoElements = Array.from(document.querySelectorAll('div.jobinfo'));
                 
                 if (jobInfoElements.length > 0) {
+                  console.log(`[ZhilianCrawler] 策略1: 找到 ${jobInfoElements.length} 个 div.jobinfo 容器`);
                   jobInfoElements.forEach((jobInfo: any) => {
                     try {
-                      const titleEl = jobInfo.querySelector('.jobname a, .job-name, [class*="jobname"] a, a[href*="/job/"]');
+                      // 🔧 关键修复：使用正确的选择器 .jobinfo__name (实际存在的类名)
+                      const titleEl = jobInfo.querySelector('.jobinfo__name, .job-name, [class*="jobname"] a, a[href*="/job/"]');
                       const title = titleEl ? (titleEl.textContent || '').trim() : '';
                       
-                      if (!title || title.length < 4 || title.length > 100) return;
+                      // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
+                      if (!title || title.length < 2 || title.length > 150) return;
                       if (title.includes('立即沟通') || title.includes('立即投递')) return;
                       // 🔧 使用全局去重集合
                       if (globalSeenTitles.has(title)) return;
                       globalSeenTitles.add(title);
                       
-                      // ✅ 提取企业信息 - 优化选择器,精确提取企业名称
+                      // ✅ 提取企业信息 - 修复:使用正确的选择器
                       let company = '未知企业';
-                      const companyEl = jobInfo.querySelector('.company a, .company-name a');
                       
-                      if (companyEl) {
-                        // 优先提取a标签中的企业名称
-                        company = (companyEl.textContent || '').trim();
-                      } else {
-                        // 备用方案1: 尝试提取company容器中的第一个span或div子元素
-                        const companyContainer = jobInfo.querySelector('.company, [class*="company"]');
-                        if (companyContainer) {
-                          // 优先查找专门的企业名称子元素
-                          const nameEl = companyContainer.querySelector('span.name, .name, .company-name, a');
-                          if (nameEl) {
-                            company = (nameEl.textContent || '').trim();
-                          } else {
-                            // 最后备用: 提取第一个文本节点(通常是企业名称)
-                            const allTexts = companyContainer.childNodes;
-                            for (let i = 0; i < allTexts.length; i++) {
-                              const node = allTexts[i];
-                              if (node.nodeType === 3) { // 文本节点
-                                const text = node.textContent?.trim();
-                                if (text && text.length > 2 && !text.includes('民营') && !text.includes('国企') && !text.match(/\d+-?\d*人/)) {
-                                  company = text;
-                                  break;
-                                }
-                              } else if (node.nodeType === 1) { // 元素节点
-                                // 检查是否是企业性质/规模标签,跳过这些
-                                const tagText = (node as Element).textContent?.trim() || '';
-                                if (tagText && !tagText.includes('民营') && !tagText.includes('国企') && !tagText.match(/\d+-?\d*人/)) {
-                                  company = tagText;
-                                  break;
-                                }
-                              }
-                            }
+                      // 🔧 关键修复:企业名称不在 .jobinfo 容器内,而是在 .joblist-box__item 中
+                      // 需要从 .jobinfo 向上找到父容器 .joblist-box__item
+                      const joblistItem = jobInfo.closest('.joblist-box__item');
+                      if (joblistItem) {
+                        // 从 .joblist-box__item 中提取企业名称
+                        const companyEl = joblistItem.querySelector('.companyinfo__name');
+                        if (companyEl) {
+                          // .companyinfo__name 本身就是 <a> 标签,直接提取文本
+                          company = (companyEl.textContent || '').trim();
+                        } else {
+                          // 备用方案:尝试其他选择器
+                          const fallbackEl = joblistItem.querySelector('[class*="company"] a, .company-name a');
+                          if (fallbackEl) {
+                            company = (fallbackEl.textContent || '').trim();
                           }
                         }
                       }
@@ -494,6 +473,7 @@ export class ZhilianCrawler {
                       }
                       
                       const salaryEl = jobInfo.querySelector('.salary, [class*="salary"], .zp-salary');
+
                       const salary = salaryEl ? (salaryEl.textContent || '').trim() : '面议';
                       
                       const cityEl = jobInfo.querySelector('.city a, .work-city, [class*="city"]');
@@ -501,7 +481,9 @@ export class ZhilianCrawler {
                       const cityMatch = cityText.match(/(北京|上海|广州|深圳|杭州|成都|武汉|南京|西安|重庆|天津|苏州|郑州|长沙|青岛|大连|厦门|宁波|哈尔滨)/);
                       const city = cityMatch ? cityMatch[1] : '';
                       
-                      const linkEl = jobInfo.querySelector('a[href*="/job/"]');
+                      // 🔧 关键修复：链接在 .jobinfo__top 容器中，不在 .jobinfo 直接子元素
+                      // 链接的 href 是 "http://www.zhaopin.com/jobdetail/..." 而不是 "/job/..."
+                      const linkEl = jobInfo.querySelector('.jobinfo__top a, a[href*="zhaopin.com"]');
                       const link = linkEl ? (linkEl as HTMLAnchorElement).href : '';
                       
                       // ✅ 新增：从标签中提取企业性质、公司规模、行业范围
@@ -575,7 +557,8 @@ export class ZhilianCrawler {
                           if (!titleEl) return;
                           
                           const title = (titleEl.textContent || '').trim();
-                          if (!title || title.length < 4 || title.length > 100) return;
+                          // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
+                          if (!title || title.length < 2 || title.length > 150) return;
                           if (title.includes('立即沟通') || title.includes('收藏')) return;
                           // 🔧 使用全局去重集合
                           if (globalSeenTitles.has(title)) return;
@@ -724,8 +707,8 @@ export class ZhilianCrawler {
                     
                     const title = (link.textContent || '').trim();
                     
-                    // 过滤无效标题
-                    if (!title || title.length < 4 || title.length > 100) return;
+                    // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
+                    if (!title || title.length < 2 || title.length > 150) return;
                     if (title.includes('立即沟通') || title.includes('立即投递') || 
                         title.includes('收藏') || title.includes('分享')) return;
                     
@@ -823,6 +806,42 @@ export class ZhilianCrawler {
               });
 
               console.log(`[ZhilianCrawler] 使用 Puppeteer 找到 ${jobs.length} 个职位`);
+              
+              // 🔧 关键优化：当解析数量异常时，自动保存HTML快照用于离线分析
+              if (jobs.length < 18 && io && taskId) {
+                console.warn(`[ZhilianCrawler] ⚠️ 警告：本页仅解析到 ${jobs.length} 个职位，预期20个，保存HTML快照...`);
+                
+                try {
+                  const html = await page.content();
+                  const debugDir = path.join(__dirname, '../../../../debug');
+                  
+                  // 确保目录存在
+                  if (!fs.existsSync(debugDir)) {
+                    fs.mkdirSync(debugDir, { recursive: true });
+                  }
+                  
+                  // 保存HTML快照
+                  const timestamp = Date.now();
+                  const snapshotFile = path.join(debugDir, `zhilian_failed_task${taskId.substring(0, 8)}_page${currentPage}_${timestamp}.html`);
+                  fs.writeFileSync(snapshotFile, html, 'utf-8');
+                  
+                  console.log(`[ZhilianCrawler] 📸 HTML快照已保存: ${snapshotFile}`);
+                  console.log(`[ZhilianCrawler]    文件大小: ${(html.length / 1024).toFixed(2)} KB`);
+                  
+                  // 通过WebSocket通知前端
+                  io.to(`task:${taskId}`).emit('task:log', {
+                    taskId,
+                    level: 'warning',
+                    message: `⚠️ 第${currentPage}页仅解析到${jobs.length}个职位(预期20个)，HTML快照已保存至debug目录`
+                  });
+                } catch (saveError) {
+                  console.error(`[ZhilianCrawler] 保存HTML快照失败:`, saveError.message);
+                }
+              } else if (jobs.length >= 18 && jobs.length < 20) {
+                console.log(`[ZhilianCrawler] ℹ️  提示：本页解析到 ${jobs.length}/20 个职位，略低于预期`);
+              } else {
+                console.log(`[ZhilianCrawler] ✅ 本页解析正常：${jobs.length}/20 个职位`);
+              }
               
               // 🔧 关键修复：给每个job对象添加当前的keyword，以便后续填充到jobCategory
               jobs.forEach(job => {
