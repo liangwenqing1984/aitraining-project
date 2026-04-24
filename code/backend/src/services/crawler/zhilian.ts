@@ -414,6 +414,13 @@ export class ZhilianCrawler {
                 // ========== 策略1: 从 .jobinfo 容器中提取（智联招聘实际结构）==========
                 const jobInfoElements = Array.from(document.querySelectorAll('div.jobinfo'));
                 
+                // 🔧 诊断日志：记录策略1的匹配情况
+                const strategy1Stats = {
+                  foundContainers: jobInfoElements.length,
+                  extractedJobs: 0,
+                  failedExtractions: 0
+                };
+                
                 if (jobInfoElements.length > 0) {
                   console.log(`[ZhilianCrawler] 策略1: 找到 ${jobInfoElements.length} 个 div.jobinfo 容器`);
                   jobInfoElements.forEach((jobInfo: any) => {
@@ -423,10 +430,19 @@ export class ZhilianCrawler {
                       const title = titleEl ? (titleEl.textContent || '').trim() : '';
                       
                       // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
-                      if (!title || title.length < 2 || title.length > 150) return;
-                      if (title.includes('立即沟通') || title.includes('立即投递')) return;
+                      if (!title || title.length < 2 || title.length > 150) {
+                        strategy1Stats.failedExtractions++;
+                        return;
+                      }
+                      if (title.includes('立即沟通') || title.includes('立即投递')) {
+                        strategy1Stats.failedExtractions++;
+                        return;
+                      }
                       // 🔧 使用全局去重集合
-                      if (globalSeenTitles.has(title)) return;
+                      if (globalSeenTitles.has(title)) {
+                        strategy1Stats.failedExtractions++;
+                        return;
+                      }
                       globalSeenTitles.add(title);
                       
                       // ✅ 提取企业信息 - 修复:使用正确的选择器
@@ -519,14 +535,19 @@ export class ZhilianCrawler {
                         companyScale,
                         businessScope
                       });
+                      
+                      strategy1Stats.extractedJobs++;
                     } catch (e) {
+                      strategy1Stats.failedExtractions++;
                       // Ignore error
                     }
                   });
                   
                   // 🔧 关键修复：移除硬编码的15个职位限制，提取页面上所有有效职位
                   // 智联招聘每页显示20个职位，不应提前终止
-                  console.log(`[ZhilianCrawler] 策略1提取完成，共找到 ${jobList.length} 个职位`);
+                  console.log(`[ZhilianCrawler] 策略1提取完成，共找到 ${strategy1Stats.extractedJobs} 个职位 (失败${strategy1Stats.failedExtractions}次)`);
+                } else {
+                  console.log(`[ZhilianCrawler] ⚠️ 策略1: 未找到任何 div.jobinfo 容器`);
                 }
                 
                 // ========== 策略2: 查找职位卡片容器（常见选择器）==========
@@ -541,6 +562,14 @@ export class ZhilianCrawler {
                   'section[class*="job"]'
                 ];
                 
+                // 🔧 诊断日志：记录策略2的匹配情况
+                const strategy2Stats = {
+                  matchedSelector: '',
+                  foundCards: 0,
+                  extractedJobs: 0,
+                  failedExtractions: 0
+                };
+                
                 let foundCards = false;
                 for (const selector of cardSelectors) {
                   try {
@@ -548,20 +577,36 @@ export class ZhilianCrawler {
                     
                     if (cards.length > 0 && cards.length <= 50) {
                       foundCards = true;
-                      // 🔧 移除局部seenTitles，使用全局去重集合
+                      strategy2Stats.matchedSelector = selector;
+                      strategy2Stats.foundCards = cards.length;
+                      
+                      console.log(`[ZhilianCrawler] 策略2: 使用选择器 "${selector}" 找到 ${cards.length} 个卡片`);
                       
                       cards.forEach((card: any) => {
                         try {
                           // ✅ 优先使用智联招聘实际的CSS类名
                           const titleEl = card.querySelector('.jobinfo__name, .job-name, .job-title, [class*="jobname"] a, a[href*="/job/"]');
-                          if (!titleEl) return;
+                          if (!titleEl) {
+                            strategy2Stats.failedExtractions++;
+                            return;
+                          }
                           
                           const title = (titleEl.textContent || '').trim();
                           // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
-                          if (!title || title.length < 2 || title.length > 150) return;
-                          if (title.includes('立即沟通') || title.includes('收藏')) return;
+                          if (!title || title.length < 2 || title.length > 150) {
+                            strategy2Stats.failedExtractions++;
+                            return;
+                          }
+                          if (title.includes('立即沟通') || title.includes('收藏')) {
+                            strategy2Stats.failedExtractions++;
+                            return;
+                          }
+
                           // 🔧 使用全局去重集合
-                          if (globalSeenTitles.has(title)) return;
+                          if (globalSeenTitles.has(title)) {
+                            strategy2Stats.failedExtractions++;
+                            return;
+                          }
                           globalSeenTitles.add(title);
                           
                           // ✅ 提取企业信息 - 优化选择器，精确提取企业名称
