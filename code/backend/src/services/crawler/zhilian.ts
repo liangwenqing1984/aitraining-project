@@ -416,9 +416,16 @@ export class ZhilianCrawler {
                 
                 // 🔧 诊断日志：记录策略1的匹配情况
                 const strategy1Stats = {
-                  foundContainers: jobInfoElements.length,
                   extractedJobs: 0,
-                  failedExtractions: 0
+                  failedExtractions: 0,
+                  duplicateCount: 0,
+                  // 🔧 新增：详细失败原因统计
+                  failReasons: {
+                    titleLengthInvalid: 0,      // 标题长度异常
+                    invalidKeyword: 0,          // 包含无效关键词
+                    titleDuplicate: 0,          // 标题重复
+                    domExtractionError: 0       // DOM提取异常
+                  }
                 };
                 
                 if (jobInfoElements.length > 0) {
@@ -432,19 +439,22 @@ export class ZhilianCrawler {
                       // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
                       if (!title || title.length < 2 || title.length > 150) {
                         console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [标题长度异常] 长度=${title?.length || 0}, 内容="${(title || '').substring(0, 30)}"`);
-                        strategy1Stats.failedExtractions++;
+                        strategy1Stats.failReasons.titleLengthInvalid++;
+strategy1Stats.failedExtractions++;
                         return;
                       }
                       if (title.includes('立即沟通') || title.includes('立即投递')) {
                         console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [包含无效关键词] "${title}"`);
-                        strategy1Stats.failedExtractions++;
+                        strategy1Stats.failReasons.invalidKeyword++;
+strategy1Stats.failedExtractions++;
                         return;
                       }
                       // 🔧 使用全局去重集合
                       if (globalSeenTitles.has(title)) {
                         console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [标题重复] "${title}"`);
-                        strategy1Stats.duplicateCount++;  // ✅ 修复：使用正确的统计对象，移除重复计数
-                        strategy1Stats.failedExtractions++;
+                        strategy1Stats.duplicateCount++;
+                        strategy1Stats.failReasons.titleDuplicate++;
+strategy1Stats.failedExtractions++;
                         return;
                       }
                       globalSeenTitles.add(title);
@@ -544,7 +554,8 @@ export class ZhilianCrawler {
                     } catch (e) {
                       const errorMsg = e instanceof Error ? e.message : String(e);
                       console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [DOM提取异常] 错误="${errorMsg.substring(0, 100)}"`);
-                      strategy1Stats.failedExtractions++;
+                      strategy1Stats.failReasons.domExtractionError++;
+strategy1Stats.failedExtractions++;
                       // Ignore error
                     }
                   });
