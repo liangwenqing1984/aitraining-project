@@ -12,6 +12,9 @@ router.get('/', taskController.getTasks);
 // 获取任务详情
 router.get('/:id', taskController.getTask);
 
+// 🔧 获取任务日志(新增)
+router.get('/:id/logs', taskController.getTaskLogs);
+
 // 启动任务
 router.post('/:id/start', taskController.startTask);
 

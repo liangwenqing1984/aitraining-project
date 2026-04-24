@@ -2,6 +2,34 @@ import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { isAuthenticated } from '@/utils/auth'
 
+/**
+ * 检查是否已登录(支持本地登录和 OAuth2 登录)
+ */
+function checkAuthentication(): boolean {
+  // 1. 检查 OAuth2 登录(Cookie)
+  if (isAuthenticated()) {
+    return true;
+  }
+  
+  // 2. 检查本地登录(localStorage)
+  const localUserInfo = localStorage.getItem('user_info');
+  const isLocalAuthenticated = localStorage.getItem('is_authenticated');
+  
+  if (localUserInfo && isLocalAuthenticated === 'true') {
+    try {
+      JSON.parse(localUserInfo); // 验证 JSON 格式
+      return true;
+    } catch (e) {
+      console.error('[Router] 本地用户信息解析失败:', e);
+      // 清除无效数据
+      localStorage.removeItem('user_info');
+      localStorage.removeItem('is_authenticated');
+    }
+  }
+  
+  return false;
+}
+
 const routes: RouteRecordRaw[] = [
   // 登录页面（不需要认证）
   {
@@ -116,14 +144,17 @@ router.beforeEach((to, from, next) => {
   
   const requiresAuth = to.meta.requiresAuth !== false; // 默认需要认证
   
-  if (requiresAuth && !isAuthenticated()) {
+  // 使用统一的认证检查(支持本地登录和 OAuth2)
+  const authenticated = checkAuthentication();
+  
+  if (requiresAuth && !authenticated) {
     // 未登录，跳转到登录页
     console.log('[Router] 未登录，跳转到登录页');
     next({
       path: '/login',
       query: { redirect: to.fullPath } // 保存原目标路径
     });
-  } else if (to.path === '/login' && isAuthenticated()) {
+  } else if (to.path === '/login' && authenticated) {
     // 已登录用户访问登录页，跳转到首页
     console.log('[Router] 已登录，跳转到首页');
     next('/');

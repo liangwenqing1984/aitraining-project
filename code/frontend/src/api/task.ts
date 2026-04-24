@@ -81,6 +81,21 @@ export const taskApi = {
     return api.put(`/tasks/${id}/config`, config) as any
   },
 
+  // 🔧 获取任务日志(新增)
+  getTaskLogs(id: string, limit?: number): Promise<ApiResponse<{ 
+    taskId: string
+    logs: Array<{
+      timestamp: string
+      level: 'info' | 'warning' | 'error'
+      message: string
+    }>
+    totalLines: number
+    hasMore: boolean
+  }>> {
+    const params = limit ? { limit } : {}
+    return api.get(`/tasks/${id}/logs`, { params }) as any
+  },
+
   getRegions(): Promise<ApiResponse> {
     return api.get('/tasks/regions/list') as any
   }

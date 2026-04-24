@@ -444,6 +444,79 @@ export async function getRegions(req: Request, res: Response) {
   } as ApiResponse);
 }
 
+// 🔧 获取任务日志(新增)
+export async function getTaskLogs(req: Request, res: Response) {
+  try {
+    const { id: taskId } = req.params;
+    const { limit = 1000 } = req.query;  // 默认返回最近1000条
+    
+    console.log(`[TaskController] 📋 获取任务日志: ${taskId}, limit: ${limit}`);
+    
+    // 构建日志文件路径
+    const logDir = require('path').join(__dirname, '../../data/logs');
+    const logFilePath = require('path').join(logDir, `task_${taskId}.log`);
+    
+    // 检查日志文件是否存在
+    if (!require('fs').existsSync(logFilePath)) {
+      console.log(`[TaskController] ⚠️ 日志文件不存在: ${logFilePath}`);
+      return res.json({
+        success: true,
+        data: {
+          taskId,
+          logs: [],
+          totalLines: 0,
+          hasMore: false
+        }
+      } as ApiResponse);
+    }
+    
+    // 读取日志文件
+    const fs = require('fs');
+    const logContent = fs.readFileSync(logFilePath, 'utf-8');
+    const lines: string[] = logContent.split('\n').filter((line: string) => line.trim());
+    
+    // 解析日志行
+    const parsedLogs = lines
+      .filter((line: string) => line.match(/^\[\d{4}-\d{2}-\d{2}T/))  // 只保留带时间戳的日志行
+      .map((line: string) => {
+        const match = line.match(/^\[(.*?)\] \[(INFO|WARN|ERROR)\] (.*)$/);
+        if (match) {
+          return {
+            timestamp: match[1],
+            level: match[2].toLowerCase(),
+            message: match[3]
+          };
+        }
+        return null;
+      })
+      .filter((log: any) => log !== null);
+    
+    // 限制返回数量(从后往前取最近的N条)
+    const limitNum = parseInt(limit as string);
+    const recentLogs = parsedLogs.slice(-limitNum);
+    
+    console.log(`[TaskController] ✅ 成功读取 ${recentLogs.length}/${parsedLogs.length} 条日志`);
+    
+    res.json({
+      success: true,
+      data: {
+        taskId,
+        logs: recentLogs,
+        totalLines: parsedLogs.length,
+        hasMore: parsedLogs.length > limitNum
+      }
+    } as ApiResponse);
+  } catch (error: any) {
+    console.error('[TaskController] ❌ 获取任务日志失败:', error.message);
+    console.error('[TaskController] 错误堆栈:', error.stack);
+    
+    res.status(500).json({
+      success: false,
+      error: error.message || '服务器内部错误'
+    } as ApiResponse);
+  }
+}
+
 // 生成任务名称
 function generateTaskName(config: TaskConfig): string {
   const parts: string[] = [];

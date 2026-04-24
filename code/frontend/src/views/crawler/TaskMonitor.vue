@@ -63,6 +63,9 @@ onMounted(async () => {
   console.log('[TaskMonitor] onMounted - 当前任务日志数量:', crawlerStore.logs.length)
   console.log('[TaskMonitor] onMounted - logs数组引用:', crawlerStore.logs)
   
+  // 🔧 新增: 加载历史日志(从后端读取)
+  await loadHistoricalLogs()
+  
   // 加载任务配置
   if (crawlerStore.currentTask) {
     try {
@@ -81,6 +84,39 @@ onMounted(async () => {
     ElMessage.warning('任务不存在或数据加载失败')
   }
 })
+
+// 🔧 新增: 加载历史日志
+async function loadHistoricalLogs() {
+  try {
+    console.log('[TaskMonitor] 📋 开始加载历史日志...')
+    const res: any = await taskApi.getTaskLogs(taskId)
+    
+    if (res.success && res.data) {
+      const historicalLogs = res.data.logs || []
+      console.log(`[TaskMonitor] ✅ 成功加载 ${historicalLogs.length} 条历史日志`)
+      
+      // 将历史日志添加到 store 中
+      historicalLogs.forEach((log: any) => {
+        crawlerStore.addLogToTask(
+          taskId, 
+          log.level, 
+          log.message,
+          new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour12: false })
+        )
+      })
+      
+      // 滚动到底部
+      nextTick(() => {
+        if (logContainer.value) {
+          logContainer.value.scrollTop = logContainer.value.scrollHeight
+        }
+      })
+    }
+  } catch (error) {
+    console.error('[TaskMonitor] ❌ 加载历史日志失败:', error)
+    // 不显示错误提示,因为可能是新任务还没有日志
+  }
+}
 
 onUnmounted(() => {
   crawlerStore.unsubscribeTask(taskId)

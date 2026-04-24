@@ -385,14 +385,14 @@ export const useCrawlerStore = defineStore('crawler', () => {
   }
 
   // 🔧 新增: 为指定任务添加日志
-  function addLogToTask(taskId: string, level: string, message: string) {
+  function addLogToTask(taskId: string, level: string, message: string, customTime?: string) {
     if (!taskLogs.value.has(taskId)) {
       taskLogs.value.set(taskId, [])
     }
     
     const taskLogList = taskLogs.value.get(taskId)!
     taskLogList.push({
-      time: new Date().toLocaleTimeString(),
+      time: customTime || new Date().toLocaleTimeString('zh-CN', { hour12: false }),
       level,
       message
     })

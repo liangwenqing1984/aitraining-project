@@ -9,6 +9,13 @@ import fs from 'fs';
 import ExcelJS from 'exceljs';
 
 const csvDir = path.join(__dirname, '../../data/csv');
+const logDir = path.join(__dirname, '../../data/logs');  // 🔧 新增:日志目录
+
+// 确保日志目录存在
+if (!fs.existsSync(logDir)) {
+  fs.mkdirSync(logDir, { recursive: true });
+  console.log('[TaskService] ✅ 日志目录已创建:', logDir);
+}
 
 // 控制台输出拦截器类
 class ConsoleInterceptor {
@@ -17,6 +24,8 @@ class ConsoleInterceptor {
   private originalConsoleWarn: any;
   private originalConsoleError: any;
   private originalConsoleInfo: any;
+  private logFilePath: string;  // 🔧 新增:日志文件路径
+  private writeStream: fs.WriteStream | null = null;  // 🔧 新增:文件写入流
 
   constructor(taskId: string) {
     this.taskId = taskId;
@@ -24,25 +33,51 @@ class ConsoleInterceptor {
     this.originalConsoleWarn = console.warn;
     this.originalConsoleError = console.error;
     this.originalConsoleInfo = console.info;
+    
+    // 🔧 初始化日志文件路径
+    this.logFilePath = path.join(logDir, `task_${taskId}.log`);
   }
 
   // 启动拦截
   start() {
     const self = this;
     
+    // 🔧 创建日志文件写入流(追加模式)
+    this.writeStream = fs.createWriteStream(this.logFilePath, { 
+      flags: 'a',  // append mode
+      encoding: 'utf-8'
+    });
+    
+    // 写入日志头部
+    const startTime = new Date().toISOString();
+    this.writeStream.write(`\n${'='.repeat(80)}\n`);
+    this.writeStream.write(`任务ID: ${this.taskId}\n`);
+    this.writeStream.write(`开始时间: ${startTime}\n`);
+    this.writeStream.write(`${'='.repeat(80)}\n\n`);
+    
+    console.log(`[ConsoleInterceptor] 📝 日志文件已创建: ${this.logFilePath}`);
+    
     // 拦截 console.log
     console.log = function(...args: any[]) {
       self.originalConsoleLog.apply(console, args);
-      // 同时推送到前端
-      const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
-      ).join(' ');
       
+      // 🔧 写入日志文件
+      const timestamp = new Date().toISOString();
+      const message = args.map(arg => 
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+      ).join(' ');
+      const logLine = `[${timestamp}] [INFO] ${message}\n`;
+      if (self.writeStream) {
+        self.writeStream.write(logLine);
+      }
+      
+      // 同时推送到前端
       if (io && self.taskId) {
         io.to(`task:${self.taskId}`).emit('task:log', {
           taskId: self.taskId,
           level: 'info',
-          message: message
+          message: message,
+          timestamp: timestamp  // 🔧 添加时间戳
         });
       }
     };
@@ -50,15 +85,23 @@ class ConsoleInterceptor {
     // 拦截 console.warn
     console.warn = function(...args: any[]) {
       self.originalConsoleWarn.apply(console, args);
+      
+      // 🔧 写入日志文件
+      const timestamp = new Date().toISOString();
       const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
       ).join(' ');
+      const logLine = `[${timestamp}] [WARN] ${message}\n`;
+      if (self.writeStream) {
+        self.writeStream.write(logLine);
+      }
       
       if (io && self.taskId) {
         io.to(`task:${self.taskId}`).emit('task:log', {
           taskId: self.taskId,
           level: 'warning',
-          message: message
+          message: message,
+          timestamp: timestamp
         });
       }
     };
@@ -66,15 +109,23 @@ class ConsoleInterceptor {
     // 拦截 console.error
     console.error = function(...args: any[]) {
       self.originalConsoleError.apply(console, args);
+      
+      // 🔧 写入日志文件
+      const timestamp = new Date().toISOString();
       const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
       ).join(' ');
+      const logLine = `[${timestamp}] [ERROR] ${message}\n`;
+      if (self.writeStream) {
+        self.writeStream.write(logLine);
+      }
       
       if (io && self.taskId) {
         io.to(`task:${self.taskId}`).emit('task:log', {
           taskId: self.taskId,
           level: 'error',
-          message: message
+          message: message,
+          timestamp: timestamp
         });
       }
     };
@@ -82,29 +133,50 @@ class ConsoleInterceptor {
     // 拦截 console.info
     console.info = function(...args: any[]) {
       self.originalConsoleInfo.apply(console, args);
+      
+      // 🔧 写入日志文件
+      const timestamp = new Date().toISOString();
       const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
       ).join(' ');
+      const logLine = `[${timestamp}] [INFO] ${message}\n`;
+      if (self.writeStream) {
+        self.writeStream.write(logLine);
+      }
       
       if (io && self.taskId) {
         io.to(`task:${self.taskId}`).emit('task:log', {
           taskId: self.taskId,
           level: 'info',
-          message: message
+          message: message,
+          timestamp: timestamp
         });
       }
     };
 
-    console.log(`[ConsoleInterceptor] 已启动日志拦截，任务ID: ${this.taskId}`);
+    console.log(`[ConsoleInterceptor] ✅ 已启动日志拦截，任务ID: ${this.taskId}`);
   }
 
   // 停止拦截，恢复原始console
   stop() {
+    // 🔧 关闭文件写入流
+    if (this.writeStream) {
+      const endTime = new Date().toISOString();
+      this.writeStream.write(`\n${'='.repeat(80)}\n`);
+      this.writeStream.write(`结束时间: ${endTime}\n`);
+      this.writeStream.write(`${'='.repeat(80)}\n`);
+      
+      this.writeStream.end(() => {
+        console.log(`[ConsoleInterceptor] 📝 日志文件已保存: ${this.logFilePath}`);
+      });
+      this.writeStream = null;
+    }
+    
     console.log = this.originalConsoleLog;
     console.warn = this.originalConsoleWarn;
     console.error = this.originalConsoleError;
     console.info = this.originalConsoleInfo;
-    console.log(`[ConsoleInterceptor] 已停止日志拦截，任务ID: ${this.taskId}`);
+    console.log(`[ConsoleInterceptor] ⏹️ 已停止日志拦截，任务ID: ${this.taskId}`);
   }
 }
 

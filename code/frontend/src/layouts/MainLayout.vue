@@ -28,7 +28,8 @@ const userInfo = ref<any>({
   name: '用户',
   avatar: '',
   userId: '',
-  userLoginName: ''
+  userLoginName: '',
+  loginType: 'oauth2'  // 登录类型: oauth2 或 local
 })
 
 const isCollapse = ref(false)
@@ -85,21 +86,58 @@ const handleCommand = (command: string) => {
 
 // 🔧 处理登出
 const handleLogout = () => {
-  console.log('[MainLayout] 用户登出')
-  authLogout()
+  console.log('[MainLayout] 用户登出, 登录类型:', userInfo.value.loginType);
+  
+  // 如果是本地登录,清除 localStorage
+  if (userInfo.value.loginType === 'local') {
+    localStorage.removeItem('user_info');
+    localStorage.removeItem('is_authenticated');
+    console.log('[MainLayout] 已清除本地登录信息');
+    
+    // 跳转到登录页
+    window.location.href = '/login';
+    return;
+  }
+  
+  // OAuth2 登录,调用 auth 服务的登出
+  authLogout();
 }
 
 // 🔧 加载用户信息
 onMounted(() => {
-  const info = getUserInfo()
+  // 优先检查本地登录的用户信息
+  const localUserInfo = localStorage.getItem('user_info');
+  const isAuthenticated = localStorage.getItem('is_authenticated');
+  
+  if (localUserInfo && isAuthenticated === 'true') {
+    // 本地登录
+    try {
+      const info = JSON.parse(localUserInfo);
+      userInfo.value = {
+        name: info.name || '用户',
+        avatar: '',
+        userId: info.username,
+        userLoginName: info.username,
+        loginType: 'local'
+      };
+      console.log('[MainLayout] 本地登录用户信息已加载:', userInfo.value);
+      return;
+    } catch (e) {
+      console.error('[MainLayout] 解析本地用户信息失败:', e);
+    }
+  }
+  
+  // OAuth2 登录
+  const info = getUserInfo();
   if (info) {
     userInfo.value = {
       name: info.cnName || info.userLoginName || '用户',
       avatar: info.userProfilePhoto || '',
       userId: info.userId,
-      userLoginName: info.userLoginName
-    }
-    console.log('[MainLayout] 用户信息已加载:', userInfo.value)
+      userLoginName: info.userLoginName,
+      loginType: 'oauth2'
+    };
+    console.log('[MainLayout] OAuth2 用户信息已加载:', userInfo.value);
   }
 })
 
