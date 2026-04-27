@@ -1082,18 +1082,19 @@ strategy1Stats.failedExtractions++;
                   this.log('info', `[ZhilianCrawler] 尝试继续爬取第${currentPage + 1}页...`);
                 }
               } else {
-                // ✅ 优化：使用并发控制加速详情页抓取
-                const concurrency = config.concurrency != null ? config.concurrency : 2; // 默认并发数为2，平衡速度与稳定性
+                // ✅ 使用并发控制加速详情页抓取（支持WAF检测自动降级）
+                const concurrency = config.concurrency != null ? config.concurrency : 2;
+                let wafDetected = false;  // 🔧 跟踪WAF拦截状态
                 this.log('info', `[ZhilianCrawler] 🚀启用${concurrency <= 1 ? '串行' : '并发'}模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}`);
-                
+
                 if (concurrency <= 1) {
                   // 🔧 串行模式：逐个处理，最安全但速度最慢（适合已被WAF标记的IP）
                   this.log('info', `[ZhilianCrawler] ⚡ 使用串行模式处理（最安全，避免WAF拦截）`);
-                  
+
                   for (let i = 0; i < filteredJobs.length && !this.checkAborted(); i++) {
                     const job = filteredJobs[i];
                     this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] 🔄 串行抓取: ${job.title}`);
-                    
+
                     let jobData;
                     if (job.link) {
                       try {
@@ -1101,18 +1102,24 @@ strategy1Stats.failedExtractions++;
                         this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ✅ 成功: ${jobData.companyName}`);
                       } catch (error: any) {
                         this.log('error', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ❌ 失败: ${error.message}`);
+                        if (error.message?.includes('WAF_DETECTED')) {
+                          wafDetected = true;
+                          this.log('warn', `[ZhilianCrawler] 🛡️ WAF拦截已确认，后续延迟加倍`);
+                        }
                         jobData = this.generateBasicJob(job, config);
                       }
                     } else {
                       this.log('warn', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ⚠️ 无链接`);
                       jobData = this.generateBasicJob(job, config);
                     }
-                    
+
                     yield jobData;
-                    
-                    // 🔧 串行模式下，每个职位间增加随机延迟（模拟人类浏览，降低WAF风险）
+
+                    // 🔧 串行延迟：WAF命中后增加到4-8秒，否则2-4秒
                     if (i < filteredJobs.length - 1) {
-                      const delay = 2000 + Math.random() * 2000;  // 2-4秒随机延迟（平衡速度与防封）
+                      const delay = wafDetected
+                        ? 4000 + Math.random() * 4000   // 4-8秒（WAF模式）
+                        : 2000 + Math.random() * 2000;  // 2-4秒（正常模式）
                       this.log('info', `[ZhilianCrawler] ⏳ 等待 ${(delay/1000).toFixed(1)} 秒后处理下一个...`);
                       await new Promise(resolve => setTimeout(resolve, delay));
                     }
@@ -1227,7 +1234,19 @@ strategy1Stats.failedExtractions++;
                                   browser.newPage(),
                                   createPageTimeout
                                 ]);
-                                
+
+                                // 🔧 随机化页面指纹（并发路径）
+                                const vw = 1366 + Math.floor(Math.random() * 554);
+                                const vh = 768 + Math.floor(Math.random() * 312);
+                                await page.setViewport({ width: vw, height: vh });
+                                const uas = [
+                                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+                                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
+                                ];
+                                await page.setUserAgent(uas[Math.floor(Math.random() * uas.length)]);
+
                                 this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ✅ 标签页创建成功`);
                                 return page;
                               } catch (createError: any) {
@@ -1286,24 +1305,66 @@ strategy1Stats.failedExtractions++;
                     // 🔧 按顺序提取结果并yield
                     const successCount = batchResults.filter(r => r.status === 'fulfilled' && r.value.success).length;
                     const failCount = batchResults.filter(r => r.status === 'fulfilled' && !r.value.success).length;
-                    const browserDisconnected = batchResults.some(r => 
+                    const browserDisconnected = batchResults.some(r =>
                       r.status === 'fulfilled' && r.value.error === 'BROWSER_DISCONNECTED'
                     );
-                    
+
                     this.log('info', `[ZhilianCrawler] 📊 批次完成: 成功${successCount}条, 失败${failCount}条`);
-                    
-                    // 🔧 如果检测到浏览器断开，立即停止
-                    if (browserDisconnected) {
-                      this.log('error', `[ZhilianCrawler] 💥 检测到浏览器断开，停止爬取`);
-                      // 仍然yield已成功的数据
+
+                    // 🔧 检测WAF拦截：任意详情页被WAF拦截，立即停止并发
+                    const wafInBatch = batchResults.some(r =>
+                      r.status === 'fulfilled' && r.value.error?.includes('WAF_DETECTED')
+                    );
+                    if (wafInBatch) {
+                      wafDetected = true;
+                      this.log('warn', `[ZhilianCrawler] 🛡️ 检测到智联WAF安全验证！自动降级为串行模式处理剩余职位`);
+                      if (io && taskId) {
+                        io.to(`task:${taskId}`).emit('task:log', {
+                          taskId,
+                          level: 'warning',
+                          message: '🛡️ 检测到WAF安全验证，已自动切换为串行模式（速度降低但更安全）'
+                        });
+                      }
                       for (const result of batchResults) {
                         if (result.status === 'fulfilled' && result.value.data) {
                           yield result.value.data;
                         }
                       }
-                      break; // 退出批次循环
+                      // 🔧 剩余职位用串行+长延迟处理
+                      for (let i = batchEnd; i < filteredJobs.length && !this.checkAborted(); i++) {
+                        const job = filteredJobs[i];
+                        this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] 🔄 WAF串行: ${job.title}`);
+                        const wafDelay = 5000 + Math.random() * 5000;
+                        this.log('info', `[ZhilianCrawler] ⏳ WAF模式等待 ${(wafDelay/1000).toFixed(1)} 秒...`);
+                        await new Promise(resolve => setTimeout(resolve, wafDelay));
+                        let jobData;
+                        if (job.link) {
+                          try {
+                            jobData = await this.fetchJobDetail(browser, job.link, job);
+                            this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ✅ 成功: ${jobData.companyName}`);
+                          } catch (error: any) {
+                            this.log('error', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ❌ 失败: ${error.message}`);
+                            jobData = this.generateBasicJob(job, config);
+                          }
+                        } else {
+                          jobData = this.generateBasicJob(job, config);
+                        }
+                        yield jobData;
+                      }
+                      break;
                     }
-                    
+
+                    // 🔧 如果检测到浏览器断开，立即停止
+                    if (browserDisconnected) {
+                      this.log('error', `[ZhilianCrawler] 💥 检测到浏览器断开，停止爬取`);
+                      for (const result of batchResults) {
+                        if (result.status === 'fulfilled' && result.value.data) {
+                          yield result.value.data;
+                        }
+                      }
+                      break;
+                    }
+
                     for (const result of batchResults) {
                       if (result.status === 'fulfilled' && result.value.data) {
                         yield result.value.data;
@@ -1702,17 +1763,26 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         // 🔧 设置资源拦截，减少内存占用
         await page.setRequestInterception(true);
         page.on('request', (request: any) => {
-          // 阻止图片、字体、媒体等资源加载，加快页面加载速度
-          if (['image', 'stylesheet', 'font', 'media'].includes(request.resourceType())) {
+          // 🔧 只拦截非必要资源，保留CSS加载避免WAF识别
+          if (['image', 'font', 'media'].includes(request.resourceType())) {
             request.abort();
           } else {
             request.continue();
           }
         });
-        
-        // 设置视口和用户代理
-        await page.setViewport({ width: 1920, height: 1080 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+
+        // 🔧 随机化浏览器指纹，降低WAF检测率
+        const viewportWidth = 1366 + Math.floor(Math.random() * 554);   // 1366-1920
+        const viewportHeight = 768 + Math.floor(Math.random() * 312);   // 768-1080
+        await page.setViewport({ width: viewportWidth, height: viewportHeight });
+
+        const userAgents = [
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0',
+        ];
+        await page.setUserAgent(userAgents[Math.floor(Math.random() * userAgents.length)]);
         
         // 导航到详情页
         this.log('info', `[ZhilianCrawler] 🌐 正在导航至详情页...`);
@@ -1724,7 +1794,15 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         // 等待动态内容加载
         this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
+        // 🔧 WAF专项检测：Security Verification页面直接放弃
+        const isWaf = await page.evaluate(() => {
+          return (document.title || '').includes('Security Verification');
+        });
+        if (isWaf) {
+          throw new Error('WAF_DETECTED: 智联招聘安全验证拦截');
+        }
+
         // 提取职位详情
         this.log('info', `[ZhilianCrawler] 🔍 正在提取页面数据...`);
         const detail = await page.evaluate(() => {
@@ -1952,50 +2030,60 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
           title: document.querySelector('.summary-planes__title')?.textContent?.trim() || '',
           company: document.querySelector('.company-name')?.textContent?.trim() || '',
           
-          // 🔧 新增：反爬检测指标
+          // 🔧 反爬检测指标
+          isSecurityVerification: (document.title || '').includes('Security Verification'),
           hasErrorPage: !!document.querySelector('.error-page, .captcha, #verifyCode, [class*="verify"], [class*="captcha"], [class*="robot"]'),
           hasLoginPrompt: !!document.querySelector('[class*="login"], [class*="登录"], .need-login'),
           pageTitle: document.title || '',
-          htmlContent: document.documentElement.outerHTML.substring(0, 500)  // 截取前500字符用于诊断
+          htmlContent: document.documentElement.outerHTML.substring(0, 500)
         };
       });
-      
+
       this.log('info', `[ZhilianCrawler] 📊 页面健康检查: body长度=${pageHealth.bodyLength}, 有标题=${pageHealth.hasTitle}, 有公司=${pageHealth.hasCompany}`);
-      
-      // 🔧 反爬检测：如果检测到错误页面或验证码
+
+      // 🔧 WAF专项检测：Security Verification页面直接放弃（刷新无效）
+      if (pageHealth.isSecurityVerification) {
+        this.log('error', `[ZhilianCrawler] 🚨 检测到WAF安全验证！页面标题="${pageHealth.pageTitle}"`);
+        this.log('error', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);
+        throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');
+      }
+
+      // 🔧 反爬检测：验证码或登录页面
       if (pageHealth.hasErrorPage || pageHealth.hasLoginPrompt) {
-        this.log('error', `[ZhilianCrawler] 🚨 检测到反爬拦截！页面标题="${pageHealth.pageTitle}", 包含错误/验证码元素`);
+        this.log('error', `[ZhilianCrawler] 🚨 检测到反爬拦截！页面标题="${pageHealth.pageTitle}"`);
         this.log('error', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);
         throw new Error('ANTI_BOT_DETECTED: 检测到反爬拦截（验证码/错误页面）');
       }
-      
-      // 🔧 内容过少检测：可能是空页面或错误页面（从100提高到1000）
+
+      // 🔧 内容过少检测（非WAF场景才尝试刷新，因为WAF已被上面分支拦截）
       if (pageHealth.bodyLength < 1000) {
-        this.log('warn', `[ZhilianCrawler] ⚠️ 页面内容过少(${pageHealth.bodyLength}字节)，可能加载不完整或被拦截`);
+        this.log('warn', `[ZhilianCrawler] ⚠️ 页面内容过少(${pageHealth.bodyLength}字节)`);
         this.log('warn', `[ZhilianCrawler] 📄 页面标题: "${pageHealth.pageTitle}"`);
-        this.log('warn', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 500)}...`);
-        
-        // 尝试刷新一次
+
         this.log('info', `[ZhilianCrawler] 🔄 尝试刷新页面...`);
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
         await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        // 再次检查
+
         const retryHealth = await page.evaluate(() => ({
           bodyLength: document.body ? document.body.textContent?.length || 0 : 0,
           hasTitle: !!document.querySelector('.summary-planes__title, .job-title'),
           hasCompany: !!document.querySelector('.company-name, .company-info'),
+          isSecurityVerification: (document.title || '').includes('Security Verification'),
           pageTitle: document.title || ''
         }));
-        
-        this.log('info', `[ZhilianCrawler] 📊 刷新后检查: body长度=${retryHealth.bodyLength}, 有标题=${retryHealth.hasTitle}, 有公司=${retryHealth.hasCompany}, 标题="${retryHealth.pageTitle}"`);
-        
+
+        this.log('info', `[ZhilianCrawler] 📊 刷新后检查: body=${retryHealth.bodyLength}B, title="${retryHealth.pageTitle}"`);
+
+        if (retryHealth.isSecurityVerification) {
+          this.log('error', `[ZhilianCrawler] 🚨 刷新后触发WAF安全验证，放弃`);
+          throw new Error('WAF_DETECTED: 刷新后触发智联招聘安全验证');
+        }
+
         if (retryHealth.bodyLength < 1000 || (!retryHealth.hasTitle && !retryHealth.hasCompany)) {
           this.log('error', `[ZhilianCrawler] ❌ 刷新后仍然无法加载，放弃此详情页`);
-          this.log('error', `[ZhilianCrawler] 📄 刷新后HTML片段: ${(await page.content()).substring(0, 500)}...`);
           throw new Error('PAGE_LOAD_FAILED: 页面内容过少，刷新后仍无效');
         }
-        
+
         this.log('info', `[ZhilianCrawler] ✅ 刷新后页面加载成功`);
       }
       
