@@ -51,6 +51,50 @@ temp/
 uploads/
 data/csv/*.csv
 code/backend/data/csv/*.csv
+code/backend/data/csv/*.xlsx
+
+# 根目录临时诊断报告
+/*_REPORT.md
+/*_SUMMARY.md
+/*_ANALYSIS_*.md
+/*_DIAGNOSIS.md
+/*_INVESTIGATION.md
+/*_FIX*.md
+/TASK_*_ANALYSIS.md
+/ROOT_CAUSE_*.md
+/DIAGNOSTIC_*.md
+/*_DIAGNOSIS.md
+/*_OPTIMIZATION.md
+/*_STRATEGY.md
+/*-fix.md
+/*-log-fix.md
+/*-optimization.md
+
+# 临时分析/诊断脚本
+code/backend/analyze-*.js
+code/backend/deep-analyze-*.js
+code/backend/capture-*.js
+code/backend/check-*.js
+code/backend/diagnose-*.js
+code/backend/fix-*.js
+code/backend/manual-*.js
+code/backend/query-*.js
+code/backend/test-*.js
+
+# 备份文件
+*.backup
+*.before-*
+
+# 根目录临时脚本
+/apply-*.js
+/enhance-*.js
+/fix-*.js
+/create-*.py
+/create-*.js
+/update-*.py
+/test-*.ps1
+/test-*.js
+/test-*.html
 
 # 调试文件
 debug/
