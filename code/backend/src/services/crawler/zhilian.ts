@@ -2032,8 +2032,8 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
           
           // 🔧 反爬检测指标
           isSecurityVerification: (document.title || '').includes('Security Verification'),
-          hasErrorPage: !!document.querySelector('.error-page, .captcha, #verifyCode, [class*="verify"], [class*="captcha"], [class*="robot"]'),
-          hasLoginPrompt: !!document.querySelector('[class*="login"], [class*="登录"], .need-login'),
+          hasErrorPage: !!document.querySelector('.error-page, #verifyCode, .robot-check, [class*="robot"]'),
+          hasLoginPrompt: !!document.querySelector('.need-login, .login-prompt, [data-require="login"]'),
           pageTitle: document.title || '',
           htmlContent: document.documentElement.outerHTML.substring(0, 500)
         };
