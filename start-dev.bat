@@ -7,10 +7,9 @@ echo.
 
 echo [1/5] Cleaning residual processes...
 taskkill /f /im node.exe >nul 2>&1
-taskkill /f /im chrome.exe >nul 2>&1
-taskkill /f /im chromium.exe >nul 2>&1
+:: Skip Chrome cleanup to preserve user browser sessions
 timeout /t 2 /nobreak >nul
-echo [OK] Processes cleaned
+echo [OK] Processes cleaned (Node.js only)
 echo.
 
 echo [2/5] Cleaning backend build cache...

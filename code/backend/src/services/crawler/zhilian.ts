@@ -8,6 +8,23 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export class ZhilianCrawler {
+  private logger: any = null;  // 🔧 新增：日志记录器
+  
+  // 🔧 新增：设置日志记录器
+  setLogger(logger: any) {
+    this.logger = logger;
+  }
+  
+  // 🔧 辅助方法：根据是否有logger选择输出方式
+  private log(level: string, ...args: any[]) {
+    if (this.logger) {
+      (this.logger as any)[level](...args);
+    } else {
+      console[level](...args);
+    }
+  }
+
+
   private signal: AbortSignal | null = null;
 
   async *crawl(config: TaskConfig, signal: AbortSignal): AsyncGenerator<JobData> {
@@ -19,8 +36,8 @@ export class ZhilianCrawler {
     const startPage = resumeState?.currentPage || 1;
     
     if (resumeState) {
-      console.log(`[ZhilianCrawler] 🔄 断点续传模式激活`);
-      console.log(`[ZhilianCrawler] 📍 从组合索引 ${startCombinationIndex}, 第 ${startPage} 页开始`);
+      this.log('info', `[ZhilianCrawler] 🔄 断点续传模式激活`);
+      this.log('info', `[ZhilianCrawler] 📍 从组合索引 ${startCombinationIndex}, 第 ${startPage} 页开始`);
     }
 
     // 获取关键词列表（支持多个）
@@ -28,11 +45,11 @@ export class ZhilianCrawler {
       ? config.keywords 
       : (config.keyword ? [config.keyword] : ['']);
     
-    console.log(`[ZhilianCrawler] ========== 原始配置检查 ==========`);
-    console.log(`[ZhilianCrawler] config.keywords:`, JSON.stringify(config.keywords));
-    console.log(`[ZhilianCrawler] config.keyword:`, JSON.stringify(config.keyword));
-    console.log(`[ZhilianCrawler] 最终使用的keywords数组:`, JSON.stringify(keywords));
-    console.log(`[ZhilianCrawler] ====================================`);
+    this.log('info', `[ZhilianCrawler] ========== 原始配置检查 ==========`);
+    this.log('info', `[ZhilianCrawler] config.keywords:`, JSON.stringify(config.keywords));
+    this.log('info', `[ZhilianCrawler] config.keyword:`, JSON.stringify(config.keyword));
+    this.log('info', `[ZhilianCrawler] 最终使用的keywords数组:`, JSON.stringify(keywords));
+    this.log('info', `[ZhilianCrawler] ====================================`);
     
     // 获取城市列表（支持多个）
     const cities = config.cities && config.cities.length > 0
@@ -47,7 +64,7 @@ export class ZhilianCrawler {
     let companyMatchMap: Map<string, string[]> | null = null;  // 小写->原始名称映射
     
     if (companies.length > 0) {
-      console.log(`[ZhilianCrawler] 🏢 启用企业筛选模式，共 ${companies.length} 家目标企业`);
+      this.log('info', `[ZhilianCrawler] 🏢 启用企业筛选模式，共 ${companies.length} 家目标企业`);
       
       // 构建小写映射表，支持大小写不敏感匹配
       companyMatchMap = new Map();
@@ -67,25 +84,25 @@ export class ZhilianCrawler {
         }
       }
       
-      console.log(`[ZhilianCrawler] ✅ 企业匹配索引构建完成: ${companyMatchSet.size} 个索引项`);
+      this.log('info', `[ZhilianCrawler] ✅ 企业匹配索引构建完成: ${companyMatchSet.size} 个索引项`);
     }
 
     let totalCombinationCount = keywords.length * cities.length;
     let currentCombination = 0;
 
-    console.log(`[ZhilianCrawler] 开始爬取`);
-    console.log(`[ZhilianCrawler] ========== 关键词和城市配置 ==========`);
-    console.log(`[ZhilianCrawler] 关键词列表: [${keywords.join(', ')}] (共${keywords.length}个)`);
-    console.log(`[ZhilianCrawler] 城市列表: [${cities.join(', ')}] (共${cities.length}个)`);
-    console.log(`[ZhilianCrawler] 企业列表: ${companies.length > 0 ? '[' + companies.slice(0, 10).join(', ') + (companies.length > 10 ? `...等${companies.length}家` : '') + ']' : '不限'} (共${companies.length}个)`);
-    console.log(`[ZhilianCrawler] 总组合数: ${totalCombinationCount} (${keywords.length} × ${cities.length})`);
-    console.log(`[ZhilianCrawler] =============================================`);
+    this.log('info', `[ZhilianCrawler] 开始爬取`);
+    this.log('info', `[ZhilianCrawler] ========== 关键词和城市配置 ==========`);
+    this.log('info', `[ZhilianCrawler] 关键词列表: [${keywords.join(', ')}] (共${keywords.length}个)`);
+    this.log('info', `[ZhilianCrawler] 城市列表: [${cities.join(', ')}] (共${cities.length}个)`);
+    this.log('info', `[ZhilianCrawler] 企业列表: ${companies.length > 0 ? '[' + companies.slice(0, 10).join(', ') + (companies.length > 10 ? `...等${companies.length}家` : '') + ']' : '不限'} (共${companies.length}个)`);
+    this.log('info', `[ZhilianCrawler] 总组合数: ${totalCombinationCount} (${keywords.length} × ${cities.length})`);
+    this.log('info', `[ZhilianCrawler] =============================================`);
 
     // 启动浏览器 - 使用自定义临时目录避免冲突
     const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
     const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\zhilian_${Date.now()}`;
     
-    console.log(`[ZhilianCrawler] 使用临时目录: ${userDataDir}`);
+    this.log('info', `[ZhilianCrawler] 使用临时目录: ${userDataDir}`);
     
     // 🔧 优化：增加更多稳定性参数
     const browser = await puppeteer.launch({
@@ -116,11 +133,11 @@ export class ZhilianCrawler {
       timeout: 30000  // 30秒启动超时
     });
     
-    console.log(`[ZhilianCrawler] ✅ 浏览器启动成功`);
+    this.log('info', `[ZhilianCrawler] ✅ 浏览器启动成功`);
 
     try {
       // 遍历所有关键词和城市的组合
-      console.log(`[ZhilianCrawler] >>>>>> 开始遍历 ${totalCombinationCount} 个组合 <<<<<<`);
+      this.log('info', `[ZhilianCrawler] >>>>>> 开始遍历 ${totalCombinationCount} 个组合 <<<<<<`);
       
       let skippedCombinations = 0;
       
@@ -132,7 +149,7 @@ export class ZhilianCrawler {
           if (currentCombination < startCombinationIndex) {
             skippedCombinations++;
             if (skippedCombinations % 10 === 0 || skippedCombinations <= 3) {
-              console.log(`[ZhilianCrawler] ⏭️ 跳过已完成组合 ${currentCombination}/${totalCombinationCount}`);
+              this.log('info', `[ZhilianCrawler] ⏭️ 跳过已完成组合 ${currentCombination}/${totalCombinationCount}`);
             }
             continue;
           }
@@ -140,16 +157,16 @@ export class ZhilianCrawler {
           // 🔧 断点续传：如果是起始组合，从指定页码开始
           let currentPage = (currentCombination === startCombinationIndex) ? startPage : 1;
           
-          console.log(`[ZhilianCrawler]`);
-          console.log(`[ZhilianCrawler] ╔════════════════════════════════════════╗`);
-          console.log(`[ZhilianCrawler] ║ 开始处理组合 ${currentCombination}/${totalCombinationCount}`);
-          console.log(`[ZhilianCrawler] ║   关键词: "${keyword}"`);
-          console.log(`[ZhilianCrawler] ║   城市:   "${city || '不限'}"`);
-          console.log(`[ZhilianCrawler] ║   起始页: ${currentPage}`);
-          console.log(`[ZhilianCrawler] ╚════════════════════════════════════════╝`);
+          this.log('info', `[ZhilianCrawler]`);
+          this.log('info', `[ZhilianCrawler] ╔════════════════════════════════════════╗`);
+          this.log('info', `[ZhilianCrawler] ║ 开始处理组合 ${currentCombination}/${totalCombinationCount}`);
+          this.log('info', `[ZhilianCrawler] ║   关键词: "${keyword}"`);
+          this.log('info', `[ZhilianCrawler] ║   城市:   "${city || '不限'}"`);
+          this.log('info', `[ZhilianCrawler] ║   起始页: ${currentPage}`);
+          this.log('info', `[ZhilianCrawler] ╚════════════════════════════════════════╝`);
           
           if (this.checkAborted()) {
-            console.log(`[ZhilianCrawler] ⚠️ 任务已中止，停止后续组合处理`);
+            this.log('info', `[ZhilianCrawler] ⚠️ 任务已中止，停止后续组合处理`);
             return;
           }
 
@@ -158,7 +175,7 @@ export class ZhilianCrawler {
           
           // 如果城市代码为空,记录警告但不中断任务
           if (city && !cityCode) {
-            console.warn(`[ZhilianCrawler] ⚠️ 城市"${city}"未在映射表中找到,将使用全国搜索`);
+            this.log('warn', `[ZhilianCrawler] ⚠️ 城市"${city}"未在映射表中找到,将使用全国搜索`);
             
             // 发送警告日志到前端
             const taskId = this.getTaskId();
@@ -171,7 +188,7 @@ export class ZhilianCrawler {
             }
           }
           
-          console.log(`[ZhilianCrawler] 开始爬取组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city || '不限'}", 城市代码="${cityCode || '无(全国)'}"`);
+          this.log('info', `[ZhilianCrawler] 开始爬取组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city || '不限'}", 城市代码="${cityCode || '无(全国)'}"`);
 
           // 发送日志到前端
           const taskId = this.getTaskId();
@@ -186,8 +203,8 @@ export class ZhilianCrawler {
           // 🔧 修复：清理关键词，去除首尾空格和不可见字符
           const cleanKeyword = keyword.trim().replace(/\s+/g, ' ');
           
-          console.log(`[ZhilianCrawler] 原始关键词: "${keyword}"`);
-          console.log(`[ZhilianCrawler] 清理后关键词: "${cleanKeyword}"`);
+          this.log('info', `[ZhilianCrawler] 原始关键词: "${keyword}"`);
+          this.log('info', `[ZhilianCrawler] 清理后关键词: "${cleanKeyword}"`);
           
           // 🔧 关键修复：使用查询参数方式构建URL，避免智联的路径编码问题
           // ❌ 错误方式（路径编码）：https://www.zhaopin.com/sou/jl622/kwUI/p1
@@ -211,8 +228,8 @@ export class ZhilianCrawler {
             const url = `https://www.zhaopin.com/sou?${searchParams.toString()}`;
             const pageStartTime = Date.now();
             
-            console.log(`[ZhilianCrawler] 正在爬取第 ${currentPage} 页: ${url}`);
-            console.log(`[ZhilianCrawler] 使用查询参数方式，避免路径编码问题`);
+            this.log('info', `[ZhilianCrawler] 正在爬取第 ${currentPage} 页: ${url}`);
+            this.log('info', `[ZhilianCrawler] 使用查询参数方式，避免路径编码问题`);
             
             // 发送详细日志到前端
             if (io && taskId) {
@@ -233,7 +250,7 @@ export class ZhilianCrawler {
                 await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
                 await page.setViewport({ width: 1920, height: 1080 });
               } catch (setupError: any) {
-                console.error(`[ZhilianCrawler] ❌ 页面初始化失败:`, setupError.message);
+                this.log('error', `[ZhilianCrawler] ❌ 页面初始化失败:`, setupError.message);
                 // 如果页面初始化就失败，直接关闭并抛出
                 try { await page.close(); } catch (e) {}
                 throw new Error(`页面初始化失败: ${setupError.message}`);
@@ -262,7 +279,7 @@ export class ZhilianCrawler {
               while (!loadSuccess && retryCount <= maxRetries) {
                 try {
                   if (retryCount > 0) {
-                    console.log(`[ZhilianCrawler] 第 ${retryCount} 次重试加载...`);
+                    this.log('info', `[ZhilianCrawler] 第 ${retryCount} 次重试加载...`);
                     if (io && taskId) {
                       io.to(`task:${taskId}`).emit('task:log', {
                         taskId,
@@ -279,11 +296,11 @@ export class ZhilianCrawler {
                   });
 
                   loadSuccess = true;
-                  console.log(`[ZhilianCrawler] 页面加载完成，URL: ${page.url()}`);
+                  this.log('info', `[ZhilianCrawler] 页面加载完成，URL: ${page.url()}`);
                   
                 } catch (loadError: any) {
                   retryCount++;
-                  console.warn(`[ZhilianCrawler] ⚠️ 第 ${retryCount} 次加载失败:`, loadError.message);
+                  this.log('warn', `[ZhilianCrawler] ⚠️ 第 ${retryCount} 次加载失败:`, loadError.message);
                   
                   if (retryCount > maxRetries) {
                     throw new Error(`页面加载失败，已重试 ${maxRetries} 次: ${loadError.message}`);
@@ -295,7 +312,7 @@ export class ZhilianCrawler {
                 }
               }
 
-              console.log(`[ZhilianCrawler] 页面加载完成，URL: ${page.url()}`);
+              this.log('info', `[ZhilianCrawler] 页面加载完成，URL: ${page.url()}`);
               
               // 发送页面加载成功日志
               if (io && taskId) {
@@ -308,7 +325,7 @@ export class ZhilianCrawler {
               
               // 检查是否被重定向或显示错误页面
               const pageTitle = await page.title();
-              console.log(`[ZhilianCrawler] 页面标题: ${pageTitle}`);
+              this.log('info', `[ZhilianCrawler] 页面标题: ${pageTitle}`);
               
               // 检查是否有登录提示或验证码 - 🔧 增加空值检查
               const pageContent = await page.evaluate(() => {
@@ -319,7 +336,7 @@ export class ZhilianCrawler {
                   bodyLength: bodyText.length || 0
                 };
               });
-              console.log(`[ZhilianCrawler] 页面内容检查:`, pageContent);
+              this.log('info', `[ZhilianCrawler] 页面内容检查:`, pageContent);
               
               // 发送反爬检测日志
               if (pageContent.hasLogin || pageContent.hasVerify) {
@@ -333,7 +350,7 @@ export class ZhilianCrawler {
               }
               
               // ⚠️ 优化：智能等待策略 - 根据页面复杂度动态调整
-              console.log(`[ZhilianCrawler] 等待动态内容加载...`);
+              this.log('info', `[ZhilianCrawler] 等待动态内容加载...`);
               await this.randomDelay(3000, 4000);  // 🔧 优化：从2-3秒增加到3-4秒，确保懒加载完成
 
               
@@ -347,11 +364,11 @@ export class ZhilianCrawler {
                                   bodyText.includes('Java') || false
                 };
               });
-              console.log(`[ZhilianCrawler] 等待后页面内容:`, pageContentAfterWait);
+              this.log('info', `[ZhilianCrawler] 等待后页面内容:`, pageContentAfterWait);
 
               // 如果仍然没有职位关键词，尝试滚动页面触发懒加载
               if (!pageContentAfterWait.hasJobKeywords) {
-                console.log(`[ZhilianCrawler] 未检测到职位关键词，尝试滚动页面...`);
+                this.log('info', `[ZhilianCrawler] 未检测到职位关键词，尝试滚动页面...`);
                 await page.evaluate(async () => {
                   // 滚动页面触发懒加载
                   for (let i = 0; i < 8; i++) {
@@ -372,19 +389,19 @@ export class ZhilianCrawler {
                                     bodyText.includes('工程师') || false
                   };
                 });
-                console.log(`[ZhilianCrawler] 滚动后最终检查:`, finalCheck);
+                this.log('info', `[ZhilianCrawler] 滚动后最终检查:`, finalCheck);
               }
 
               // 🔧 优化3：显式等待职位容器出现，确保DOM完全渲染
               try {
-                console.log(`[ZhilianCrawler] ⏳ 显式等待职位容器...`);
+                this.log('info', `[ZhilianCrawler] ⏳ 显式等待职位容器...`);
                 await page.waitForSelector('.joblist-box__item, jobinfo', { 
                   timeout: 10000,  // 最多等待10秒
                   visible: true     // 要求元素可见
                 });
-                console.log(`[ZhilianCrawler] ✅ 职位容器已加载`);
+                this.log('info', `[ZhilianCrawler] ✅ 职位容器已加载`);
               } catch (e) {
-                console.warn(`[ZhilianCrawler] ⚠️ 职位容器未在10秒内出现，继续尝试解析`);
+                this.log('warn', `[ZhilianCrawler] ⚠️ 职位容器未在10秒内出现，继续尝试解析`);
                 
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
@@ -396,7 +413,7 @@ export class ZhilianCrawler {
               }
 
               // 🔧 关键改进：多策略DOM解析职位数据
-              console.log('[ZhilianCrawler] 开始使用多策略DOM解析职位数据...');
+              this.log('info', '[ZhilianCrawler] 开始使用多策略DOM解析职位数据...');
               
               // @ts-ignore - 此代码在浏览器环境中运行
               const jobs = await page.evaluate(() => {
@@ -429,7 +446,7 @@ export class ZhilianCrawler {
                 };
                 
                 if (jobInfoElements.length > 0) {
-                  console.log(`[ZhilianCrawler] 策略1: 找到 ${jobInfoElements.length} 个 div.jobinfo 容器`);
+                  console.log('info', `[ZhilianCrawler] 策略1: 找到 ${jobInfoElements.length} 个 div.jobinfo 容器`);
                   jobInfoElements.forEach((jobInfo: any) => {
                     try {
                       // 🔧 关键修复：使用正确的选择器 .jobinfo__name (实际存在的类名)
@@ -438,20 +455,20 @@ export class ZhilianCrawler {
                       
                       // 🔧 优化：放宽标题长度限制，从 < 4 改为 < 2，避免过滤短职位名称
                       if (!title || title.length < 2 || title.length > 150) {
-                        console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [标题长度异常] 长度=${title?.length || 0}, 内容="${(title || '').substring(0, 30)}"`);
+                        console.log('info', `[ZhilianCrawler] ⚠️ 策略1跳过: [标题长度异常] 长度=${title?.length || 0}, 内容="${(title || '').substring(0, 30)}"`);
                         strategy1Stats.failReasons.titleLengthInvalid++;
 strategy1Stats.failedExtractions++;
                         return;
                       }
                       if (title.includes('立即沟通') || title.includes('立即投递')) {
-                        console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [包含无效关键词] "${title}"`);
+                        console.log('info', `[ZhilianCrawler] ⚠️ 策略1跳过: [包含无效关键词] "${title}"`);
                         strategy1Stats.failReasons.invalidKeyword++;
 strategy1Stats.failedExtractions++;
                         return;
                       }
                       // 🔧 使用全局去重集合
                       if (globalSeenTitles.has(title)) {
-                        console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [标题重复] "${title}"`);
+                        console.log('info', `[ZhilianCrawler] ⚠️ 策略1跳过: [标题重复] "${title}"`);
                         strategy1Stats.duplicateCount++;
                         strategy1Stats.failReasons.titleDuplicate++;
 strategy1Stats.failedExtractions++;
@@ -553,7 +570,7 @@ strategy1Stats.failedExtractions++;
                       strategy1Stats.extractedJobs++;
                     } catch (e) {
                       const errorMsg = e instanceof Error ? e.message : String(e);
-                      console.log(`[ZhilianCrawler] ⚠️ 策略1跳过: [DOM提取异常] 错误="${errorMsg.substring(0, 100)}"`);
+                      console.log('info', `[ZhilianCrawler] ⚠️ 策略1跳过: [DOM提取异常] 错误="${errorMsg.substring(0, 100)}"`);
                       strategy1Stats.failReasons.domExtractionError++;
 strategy1Stats.failedExtractions++;
                       // Ignore error
@@ -562,9 +579,9 @@ strategy1Stats.failedExtractions++;
                   
                   // 🔧 关键修复：移除硬编码的15个职位限制，提取页面上所有有效职位
                   // 智联招聘每页显示20个职位，不应提前终止
-                  console.log(`[ZhilianCrawler] 策略1提取完成，共找到 ${strategy1Stats.extractedJobs} 个职位 (失败${strategy1Stats.failedExtractions}次, 其中重复${strategy1Stats.duplicateCount || 0}次)`);
+                  console.log('info', `[ZhilianCrawler] 策略1提取完成，共找到 ${strategy1Stats.extractedJobs} 个职位 (失败${strategy1Stats.failedExtractions}次, 其中重复${strategy1Stats.duplicateCount || 0}次)`);
                 } else {
-                  console.log(`[ZhilianCrawler] ⚠️ 策略1: 未找到任何 div.jobinfo 容器`);
+                  console.log('info', `[ZhilianCrawler] ⚠️ 策略1: 未找到任何 div.jobinfo 容器`);
                 }
                 
                 // ========== 策略2: 查找职位卡片容器（常见选择器）==========
@@ -597,7 +614,7 @@ strategy1Stats.failedExtractions++;
                       strategy2Stats.matchedSelector = selector;
                       strategy2Stats.foundCards = cards.length;
                       
-                      console.log(`[ZhilianCrawler] 策略2: 使用选择器 "${selector}" 找到 ${cards.length} 个卡片`);
+                      console.log('info', `[ZhilianCrawler] 策略2: 使用选择器 "${selector}" 找到 ${cards.length} 个卡片`);
                       
                       cards.forEach((card: any) => {
                         try {
@@ -743,14 +760,14 @@ strategy1Stats.failedExtractions++;
                           strategy2Stats.extractedJobs++;  // 🔧 统计成功提取的职位数
                         } catch (e) {
                           const errorMsg = e instanceof Error ? e.message : String(e);
-                          console.log(`[ZhilianCrawler] ⚠️ 策略2跳过: [DOM提取异常] 错误="${errorMsg.substring(0, 100)}"`);
+                          console.log('info', `[ZhilianCrawler] ⚠️ 策略2跳过: [DOM提取异常] 错误="${errorMsg.substring(0, 100)}"`);
                           strategy2Stats.failedExtractions++;  // 🔧 统计失败的提取
                           // 忽略单个卡片错误
                         }
                       });
                       
                       // 🔧 关键修复：移除硬编码的15个职位限制
-                      console.log(`[ZhilianCrawler] 策略2提取完成，共找到 ${strategy2Stats.extractedJobs} 个职位 (失败${strategy2Stats.failedExtractions}次)`);
+                      console.log('info', `[ZhilianCrawler] 策略2提取完成，共找到 ${strategy2Stats.extractedJobs} 个职位 (失败${strategy2Stats.failedExtractions}次)`);
                       break;  // 🔧 策略2成功后跳出选择器循环
                     }
                   } catch (e) {
@@ -759,11 +776,11 @@ strategy1Stats.failedExtractions++;
                 }
                 
                 if (!foundCards) {  // 🔧 如果所有选择器都未匹配到容器
-                  console.log(`[ZhilianCrawler] ⚠️ 策略2: 未找到任何匹配的职位卡片容器`);
+                  console.log('info', `[ZhilianCrawler] ⚠️ 策略2: 未找到任何匹配的职位卡片容器`);
                 }
                 
                 // 🔧 关键修复：移除硬编码的15个职位限制，继续尝试策略3以补充更多职位
-                console.log(`[ZhilianCrawler] 当前已提取 ${jobList.length} 个职位，继续尝试其他策略...`);
+                console.log('info', `[ZhilianCrawler] 当前已提取 ${jobList.length} 个职位，继续尝试其他策略...`);
                 
                 // ========== 策略3: 基于职位链接提取（最可靠）==========
                 const jobLinks = Array.from(document.querySelectorAll('a[href*="/jobdetail/"], a[href*="/job/"]'));
@@ -804,7 +821,7 @@ strategy1Stats.failedExtractions++;
                     
                     // 🔧 使用全局去重集合检查重复
                     if (globalSeenTitles.has(title)) {
-                      console.log(`[ZhilianCrawler] ⚠️ 策略3跳过: [标题重复] "${title}"`);
+                      console.log('info', `[ZhilianCrawler] ⚠️ 策略3跳过: [标题重复] "${title}"`);
                       strategy3Stats.duplicateCount++;  // ✅ 修复：移除重复计数，只累加一次
                       duplicateCount++;
                       return;
@@ -897,7 +914,7 @@ strategy1Stats.failedExtractions++;
                   }
                 });
                 
-                console.log(`[ZhilianCrawler] 策略3提取完成，共找到 ${strategy3Stats.extractedJobs} 个职位 (链接总数${strategy3Stats.foundLinks}, 重复${strategy3Stats.duplicateCount}, 失败${strategy3Stats.failedExtractions})`);
+                console.log('info', `[ZhilianCrawler] 策略3提取完成，共找到 ${strategy3Stats.extractedJobs} 个职位 (链接总数${strategy3Stats.foundLinks}, 重复${strategy3Stats.duplicateCount}, 失败${strategy3Stats.failedExtractions})`);
                 
                 // 🔧 返回职位列表和统计信息
               return {
@@ -915,16 +932,16 @@ strategy1Stats.failedExtractions++;
               const jobList = resultData.jobs || [];
               const stats = resultData.stats || {};
               
-              console.log(`[ZhilianCrawler] 📊 多策略解析汇总:`);
-              console.log(`[ZhilianCrawler]    策略1 (div.jobinfo): 提取 ${stats.strategy1?.extractedJobs || 0} 个职位 (失败${stats.strategy1?.failedExtractions || 0}次, 其中重复${stats.strategy1?.duplicateCount || 0}次)`);
-              console.log(`[ZhilianCrawler]    策略2 (卡片容器): 提取 ${stats.strategy2?.extractedJobs || 0} 个职位 (失败${stats.strategy2?.failedExtractions || 0}次, 其中重复${stats.strategy2?.duplicateCount || 0}次)`);
-              console.log(`[ZhilianCrawler]    策略3 (职位链接): 提取 ${stats.strategy3?.extractedJobs || 0} 个职位 (重复${stats.strategy3?.duplicateCount || 0}, 失败${stats.strategy3?.failedExtractions || 0})`);
-              console.log(`[ZhilianCrawler]    最终结果: ${jobList.length} 个职位（已去重）`);
-              console.log(`[ZhilianCrawler] 使用 Puppeteer 找到 ${jobList.length} 个职位`);
+              this.log('info', `[ZhilianCrawler] 📊 多策略解析汇总:`);
+              this.log('info', `[ZhilianCrawler]    策略1 (div.jobinfo): 提取 ${stats.strategy1?.extractedJobs || 0} 个职位 (失败${stats.strategy1?.failedExtractions || 0}次, 其中重复${stats.strategy1?.duplicateCount || 0}次)`);
+              this.log('info', `[ZhilianCrawler]    策略2 (卡片容器): 提取 ${stats.strategy2?.extractedJobs || 0} 个职位 (失败${stats.strategy2?.failedExtractions || 0}次, 其中重复${stats.strategy2?.duplicateCount || 0}次)`);
+              this.log('info', `[ZhilianCrawler]    策略3 (职位链接): 提取 ${stats.strategy3?.extractedJobs || 0} 个职位 (重复${stats.strategy3?.duplicateCount || 0}, 失败${stats.strategy3?.failedExtractions || 0})`);
+              this.log('info', `[ZhilianCrawler]    最终结果: ${jobList.length} 个职位（已去重）`);
+              this.log('info', `[ZhilianCrawler] 使用 Puppeteer 找到 ${jobList.length} 个职位`);
               
               // 🔧 关键优化：当解析数量异常时，自动保存HTML快照用于离线分析
               if (jobList.length < 18 && io && taskId) {
-                console.warn(`[ZhilianCrawler] ⚠️ 警告：本页仅解析到 ${jobList.length} 个职位，预期20个，保存HTML快照...`);
+                this.log('warn', `[ZhilianCrawler] ⚠️ 警告：本页仅解析到 ${jobList.length} 个职位，预期20个，保存HTML快照...`);
                 
                 try {
                   const html = await page.content();
@@ -940,8 +957,8 @@ strategy1Stats.failedExtractions++;
                   const snapshotFile = path.join(debugDir, `zhilian_failed_task${taskId.substring(0, 8)}_page${currentPage}_${timestamp}.html`);
                   fs.writeFileSync(snapshotFile, html, 'utf-8');
                   
-                  console.log(`[ZhilianCrawler] 📸 HTML快照已保存: ${snapshotFile}`);
-                  console.log(`[ZhilianCrawler]    文件大小: ${(html.length / 1024).toFixed(2)} KB`);
+                  this.log('info', `[ZhilianCrawler] 📸 HTML快照已保存: ${snapshotFile}`);
+                  this.log('info', `[ZhilianCrawler]    文件大小: ${(html.length / 1024).toFixed(2)} KB`);
                   
                   // 通过WebSocket通知前端
                   io.to(`task:${taskId}`).emit('task:log', {
@@ -950,12 +967,12 @@ strategy1Stats.failedExtractions++;
                     message: `⚠️ 第${currentPage}页仅解析到${jobList.length}个职位(预期20个)，HTML快照已保存至debug目录`
                   });
                 } catch (saveError) {
-                  console.error(`[ZhilianCrawler] 保存HTML快照失败:`, saveError.message);
+                  this.log('error', `[ZhilianCrawler] 保存HTML快照失败:`, saveError.message);
                 }
               } else if (jobList.length >= 18 && jobList.length < 20) {
-                console.log(`[ZhilianCrawler] ℹ️  提示：本页解析到 ${jobList.length}/20 个职位，略低于预期`);
+                this.log('info', `[ZhilianCrawler] ℹ️  提示：本页解析到 ${jobList.length}/20 个职位，略低于预期`);
               } else {
-                console.log(`[ZhilianCrawler] ✅ 本页解析正常：${jobList.length}/20 个职位`);
+                this.log('info', `[ZhilianCrawler] ✅ 本页解析正常：${jobList.length}/20 个职位`);
               }
               
               // 🔧 关键修复：给每个job对象添加当前的keyword，以便后续填充到jobCategory
@@ -963,7 +980,7 @@ strategy1Stats.failedExtractions++;
                 job.keyword = cleanKeyword;  // 添加当前搜索的关键词
               });
               
-              console.log(`[ZhilianCrawler] ✅ 已为 ${jobList.length} 个职位添加keyword字段: "${cleanKeyword}"`);
+              this.log('info', `[ZhilianCrawler] ✅ 已为 ${jobList.length} 个职位添加keyword字段: "${cleanKeyword}"`);
 
               // 🔧 优化：使用高效的企业过滤算法
               let filteredJobs = jobList;
@@ -994,16 +1011,16 @@ strategy1Stats.failedExtractions++;
                 });
                 
                 const filterDuration = Date.now() - beforeFilter;
-                console.log(`[ZhilianCrawler] 🏢 企业过滤完成: ${jobList.length} → ${filteredJobs.length} (耗时${filterDuration}ms, 匹配${matchedCompanyCount}次)`);
+                this.log('info', `[ZhilianCrawler] 🏢 企业过滤完成: ${jobList.length} → ${filteredJobs.length} (耗时${filterDuration}ms, 匹配${matchedCompanyCount}次)`);
                 
                 // 🔧 智能提前终止：更新连续无匹配计数器
                 if (companies.length > 0) {
                   if (filteredJobs.length === 0) {
                     consecutiveEmptyPages++;
-                    console.warn(`[ZhilianCrawler] ⚠️ 连续 ${consecutiveEmptyPages}/${MAX_CONSECUTIVE_EMPTY_PAGES} 页未匹配到目标企业`);
+                    this.log('warn', `[ZhilianCrawler] ⚠️ 连续 ${consecutiveEmptyPages}/${MAX_CONSECUTIVE_EMPTY_PAGES} 页未匹配到目标企业`);
                     
                     if (consecutiveEmptyPages >= MAX_CONSECUTIVE_EMPTY_PAGES) {
-                      console.log(`[ZhilianCrawler] 🛑 连续${MAX_CONSECUTIVE_EMPTY_PAGES}页未匹配到目标企业，提前终止爬取`);
+                      this.log('info', `[ZhilianCrawler] 🛑 连续${MAX_CONSECUTIVE_EMPTY_PAGES}页未匹配到目标企业，提前终止爬取`);
                       if (io && taskId) {
                         io.to(`task:${taskId}`).emit('task:log', {
                           taskId,
@@ -1017,12 +1034,12 @@ strategy1Stats.failedExtractions++;
                   } else {
                     // 有匹配则重置计数器
                     consecutiveEmptyPages = 0;
-                    console.log(`[ZhilianCrawler] ✅ 当前页匹配到 ${filteredJobs.length} 条目标企业职位`);
+                    this.log('info', `[ZhilianCrawler] ✅ 当前页匹配到 ${filteredJobs.length} 条目标企业职位`);
                   }
                 }
               }
 
-              console.log(`[ZhilianCrawler] 过滤后剩余 ${filteredJobs.length} 个职位`);
+              this.log('info', `[ZhilianCrawler] 过滤后剩余 ${filteredJobs.length} 个职位`);
 
               // 发送详细日志到前端
               if (io && taskId) {
@@ -1035,10 +1052,10 @@ strategy1Stats.failedExtractions++;
 
               // 如果没有找到职位
               if (jobList.length === 0) {
-                console.warn(`[ZhilianCrawler] ⚠️ 第${currentPage}页未找到职位，可能原因：`);
-                console.warn(`[ZhilianCrawler]    1. 网站结构已变化`);
-                console.warn(`[ZhilianCrawler]    2. 被反爬虫机制拦截`);
-                console.warn(`[ZhilianCrawler]    3. 该关键词/城市组合确实没有职位`);
+                this.log('warn', `[ZhilianCrawler] ⚠️ 第${currentPage}页未找到职位，可能原因：`);
+                this.log('warn', `[ZhilianCrawler]    1. 网站结构已变化`);
+                this.log('warn', `[ZhilianCrawler]    2. 被反爬虫机制拦截`);
+                this.log('warn', `[ZhilianCrawler]    3. 该关键词/城市组合确实没有职位`);
                 
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
@@ -1051,7 +1068,7 @@ strategy1Stats.failedExtractions++;
                 // ✅ 优化：不再直接break，而是尝试继续爬取下一页
                 // 连续3页为空才真正停止
                 if (currentPage >= 3) {
-                  console.log(`[ZhilianCrawler] 已连续${currentPage}页未找到数据，停止爬取`);
+                  this.log('info', `[ZhilianCrawler] 已连续${currentPage}页未找到数据，停止爬取`);
                   if (io && taskId) {
                     io.to(`task:${taskId}`).emit('task:log', {
                       taskId,
@@ -1062,33 +1079,33 @@ strategy1Stats.failedExtractions++;
                   hasNextPage = false; // 标记为无下一页，让finally块处理退出
                 } else {
                   // 否则继续尝试下一页
-                  console.log(`[ZhilianCrawler] 尝试继续爬取第${currentPage + 1}页...`);
+                  this.log('info', `[ZhilianCrawler] 尝试继续爬取第${currentPage + 1}页...`);
                 }
               } else {
                 // ✅ 优化：使用并发控制加速详情页抓取
                 const concurrency = config.concurrency || 1; // 默认串行（兼容旧配置）
-                console.log(`[ZhilianCrawler] 🚀启用并发模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}`);
+                this.log('info', `[ZhilianCrawler] 🚀启用并发模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}`);
                 
                 if (concurrency <= 1) {
                   // 串行模式（原有逻辑）
                   for (let i = 0; i < filteredJobs.length && !this.checkAborted(); i++) {
                     const job = filteredJobs[i];
-                    console.log(`[ZhilianCrawler] 处理第 ${i + 1}/${filteredJobs.length} 个职位: ${job.title}`);
+                    this.log('info', `[ZhilianCrawler] 处理第 ${i + 1}/${filteredJobs.length} 个职位: ${job.title}`);
                     
                     // ✅ 关键修复：访问职位详情页获取完整信息
                     let jobData;
                     if (job.link) {
                       try {
-                        console.log(`[ZhilianCrawler] 📄 正在访问详情页: ${job.link.substring(0, 80)}...`);
+                        this.log('info', `[ZhilianCrawler] 📄 正在访问详情页: ${job.link.substring(0, 80)}...`);
                         jobData = await this.fetchJobDetail(browser, job.link, job);
-                        console.log(`[ZhilianCrawler] ✅ 成功获取详情页数据 - 公司: ${jobData.companyName}, 经验: ${jobData.workExperience}, 学历: ${jobData.education}`);
+                        this.log('info', `[ZhilianCrawler] ✅ 成功获取详情页数据 - 公司: ${jobData.companyName}, 经验: ${jobData.workExperience}, 学历: ${jobData.education}`);
                       } catch (error: any) {
-                        console.error(`[ZhilianCrawler] ❌ 获取职位详情失败: ${error.message}，使用基本信息（字段将为空）`);
+                        this.log('error', `[ZhilianCrawler] ❌ 获取职位详情失败: ${error.message}，使用基本信息（字段将为空）`);
                         // 如果详情页抓取失败，降级使用基本信息（但字段为空，不编造）
                         jobData = this.generateBasicJob(job, config);
                       }
                     } else {
-                      console.warn(`[ZhilianCrawler] ⚠️ 职位没有链接，使用基本信息`);
+                      this.log('warn', `[ZhilianCrawler] ⚠️ 职位没有链接，使用基本信息`);
                       // 没有链接时使用基本信息
                       jobData = this.generateBasicJob(job, config);
                     }
@@ -1114,13 +1131,13 @@ strategy1Stats.failedExtractions++;
                   const concurrency = Math.min(config.concurrency || 2, maxConcurrency);
                   const batchSize = concurrency;
                   
-                  console.log(`[ZhilianCrawler] 🚀启用并发模式: 并发数=${concurrency} (配置值=${config.concurrency}, 上限=${maxConcurrency}), 总职位数=${filteredJobs.length}`);
+                  this.log('info', `[ZhilianCrawler] 🚀启用并发模式: 并发数=${concurrency} (配置值=${config.concurrency}, 上限=${maxConcurrency}), 总职位数=${filteredJobs.length}`);
                   
                   for (let batchStart = 0; batchStart < filteredJobs.length && !this.checkAborted(); batchStart += batchSize) {
                     const batchEnd = Math.min(batchStart + batchSize, filteredJobs.length);
                     const batch = filteredJobs.slice(batchStart, batchEnd);
                     
-                    console.log(`[ZhilianCrawler] 🔄 处理批次 ${Math.floor(batchStart / batchSize) + 1}: 职位 ${batchStart + 1}-${batchEnd}/${filteredJobs.length}`);
+                    this.log('info', `[ZhilianCrawler] 🔄 处理批次 ${Math.floor(batchStart / batchSize) + 1}: 职位 ${batchStart + 1}-${batchEnd}/${filteredJobs.length}`);
                     
                     // 🔧 关键修复：在处理批次前检查浏览器连接状态和标签页数量
                     try {
@@ -1129,39 +1146,39 @@ strategy1Stats.failedExtractions++;
                       }
                       
                       const pages = await browser.pages();
-                      console.log(`[ZhilianCrawler] 🔍 浏览器健康检查: 连接正常，当前标签页数: ${pages.length}`);
+                      this.log('info', `[ZhilianCrawler] 🔍 浏览器健康检查: 连接正常，当前标签页数: ${pages.length}`);
                       
                       // 🔧 如果标签页过多，在批次开始前清理（更激进的清理策略）
                       if (pages.length > 3) {
-                        console.warn(`[ZhilianCrawler] ⚠️ 标签页数量较多(${pages.length})，批次开始前清理...`);
+                        this.log('warn', `[ZhilianCrawler] ⚠️ 标签页数量较多(${pages.length})，批次开始前清理...`);
                         // 只保留列表页，关闭所有详情页
                         for (let i = 0; i < pages.length; i++) {
                           try {
                             const url = pages[i].url();
                             // 保留列表页（包含zhaopin.com但不包含jobdetail）
                             if (!url.includes('jobdetail')) {
-                              console.log(`[ZhilianCrawler] 📋 保留列表页: ${url.substring(0, 60)}`);
+                              this.log('info', `[ZhilianCrawler] 📋 保留列表页: ${url.substring(0, 60)}`);
                               continue;
                             }
                             // 关闭详情页
                             if (!pages[i].isClosed()) {
                               await pages[i].close();
-                              console.log(`[ZhilianCrawler] 🗑️ 已关闭详情页 #${i + 1}`);
+                              this.log('info', `[ZhilianCrawler] 🗑️ 已关闭详情页 #${i + 1}`);
                             }
                           } catch (e: any) {
-                            console.warn(`[ZhilianCrawler] 关闭标签页失败: ${e.message}`);
+                            this.log('warn', `[ZhilianCrawler] 关闭标签页失败: ${e.message}`);
                           }
                         }
                       }
                     } catch (browserError: any) {
-                      console.error(`[ZhilianCrawler] ❌ 浏览器连接失败: ${browserError.message}`);
-                      console.error(`[ZhilianCrawler] 💡 建议：降低并发数或检查Chrome进程是否正常`);
+                      this.log('error', `[ZhilianCrawler] ❌ 浏览器连接失败: ${browserError.message}`);
+                      this.log('error', `[ZhilianCrawler] 💡 建议：降低并发数或检查Chrome进程是否正常`);
                       // 直接跳出循环，不再继续
                       break;
                     }
                     
                     // ✅ 关键优化：批次内并行处理，但增强错误隔离和资源管理
-                    console.log(`[ZhilianCrawler] ⚡ 使用并行模式处理当前批次（并发数=${batch.length}）`);
+                    this.log('info', `[ZhilianCrawler] ⚡ 使用并行模式处理当前批次（并发数=${batch.length}）`);
                     
                     // 🔧 使用Promise.allSettled替代Promise.all，确保单个失败不影响其他任务
                     const batchPromises = batch.map(async (job, indexInBatch) => {
@@ -1174,22 +1191,22 @@ strategy1Stats.failedExtractions++;
                       // 🔧 每次创建标签页前都检查浏览器状态
                       try {
                         if (!browser.isConnected()) {
-                          console.error(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器连接已断开`);
+                          this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器连接已断开`);
                           return { success: false, data: null, index: globalIndex };
                         }
                         
                         // 🔧 额外检查：如果标签页太多，等待一下
                         const currentPages = await browser.pages();
                         if (currentPages.length > 8) {
-                          console.warn(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 标签页过多(${currentPages.length})，等待2秒...`);
+                          this.log('warn', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 标签页过多(${currentPages.length})，等待2秒...`);
                           await this.randomDelay(2000, 2000);
                         }
                       } catch (e: any) {
-                        console.error(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器状态检查失败: ${e.message}`);
+                        this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器状态检查失败: ${e.message}`);
                         return { success: false, data: null, index: globalIndex };
                       }
                       
-                      console.log(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🚀 并发抓取: ${job.title}`);
+                      this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🚀 并发抓取: ${job.title}`);
                       
                       let jobData;
                       if (job.link) {
@@ -1208,7 +1225,7 @@ strategy1Stats.failedExtractions++;
                                 }
                                 
                                 // 创建新标签页
-                                console.log(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🆕 创建新标签页 (尝试 ${attempts + 1}/${maxAttempts})`);
+                                this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🆕 创建新标签页 (尝试 ${attempts + 1}/${maxAttempts})`);
                                 
                                 const createPageTimeout = new Promise<any>((_, reject) => {
                                   setTimeout(() => reject(new Error('创建标签页超时（10秒）')), 10000);
@@ -1219,7 +1236,7 @@ strategy1Stats.failedExtractions++;
                                   createPageTimeout
                                 ]);
                                 
-                                console.log(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ✅ 标签页创建成功`);
+                                this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ✅ 标签页创建成功`);
                                 return page;
                               } catch (createError: any) {
                                 attempts++;
@@ -1227,16 +1244,16 @@ strategy1Stats.failedExtractions++;
                                 if (createError.message.includes('Target closed') || 
                                     createError.message.includes('Protocol error') ||
                                     createError.message.includes('Session closed')) {
-                                  console.error(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 💥 浏览器已崩溃，无法创建标签页`);
+                                  this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 💥 浏览器已崩溃，无法创建标签页`);
                                   throw new Error('BROWSER_CRASHED');
                                 }
                                 
                                 if (attempts >= maxAttempts) {
-                                  console.error(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 创建标签页失败，已重试 ${maxAttempts} 次`);
+                                  this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 创建标签页失败，已重试 ${maxAttempts} 次`);
                                   throw createError;
                                 }
                                 
-                                console.warn(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 创建标签页失败，${1000 * attempts}ms后重试...`);
+                                this.log('warn', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 创建标签页失败，${1000 * attempts}ms后重试...`);
                                 await this.randomDelay(1000 * attempts, 1000 * attempts + 500);
                               }
                             }
@@ -1247,16 +1264,16 @@ strategy1Stats.failedExtractions++;
                           // 现在使用创建好的页面进行详情抓取
                           jobData = await this.fetchJobDetailWithPage(page, job.link, job);
                           
-                          console.log(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ✅ 成功 - ${jobData.companyName}`);
+                          this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ✅ 成功 - ${jobData.companyName}`);
                           return { success: true, data: jobData, index: globalIndex };
                         } catch (error: any) {
-                          console.error(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 失败: ${error.message}`);
+                          this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 失败: ${error.message}`);
                           
                           // 🔧 如果是浏览器断开错误，立即返回并标记
                           if (error.message.includes('Session closed') || 
                               error.message.includes('浏览器连接已断开') ||
                               error.message === 'BROWSER_CRASHED') {
-                            console.error(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 💥 浏览器会话已关闭，停止当前批次`);
+                            this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 💥 浏览器会话已关闭，停止当前批次`);
                             return { success: false, data: null, index: globalIndex, error: 'BROWSER_CRASHED' };
                           }
                           
@@ -1265,7 +1282,7 @@ strategy1Stats.failedExtractions++;
                           return { success: false, data: jobData, index: globalIndex, error: error.message };
                         }
                       } else {
-                        console.warn(`[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 无链接`);
+                        this.log('warn', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 无链接`);
                         jobData = this.generateBasicJob(job, config);
                         return { success: true, data: jobData, index: globalIndex };
                       }
@@ -1281,11 +1298,11 @@ strategy1Stats.failedExtractions++;
                       r.status === 'fulfilled' && r.value.error === 'BROWSER_DISCONNECTED'
                     );
                     
-                    console.log(`[ZhilianCrawler] 📊 批次完成: 成功${successCount}条, 失败${failCount}条`);
+                    this.log('info', `[ZhilianCrawler] 📊 批次完成: 成功${successCount}条, 失败${failCount}条`);
                     
                     // 🔧 如果检测到浏览器断开，立即停止
                     if (browserDisconnected) {
-                      console.error(`[ZhilianCrawler] 💥 检测到浏览器断开，停止爬取`);
+                      this.log('error', `[ZhilianCrawler] 💥 检测到浏览器断开，停止爬取`);
                       // 仍然yield已成功的数据
                       for (const result of batchResults) {
                         if (result.status === 'fulfilled' && result.value.data) {
@@ -1303,7 +1320,7 @@ strategy1Stats.failedExtractions++;
                     
                     // 🔧 批次间延迟增加，给浏览器充分恢复时间
                     if (batchEnd < filteredJobs.length && !browserDisconnected) {
-                      console.log(`[ZhilianCrawler] ⏱️ 批次间延迟 3-4秒（浏览器恢复）...`);
+                      this.log('info', `[ZhilianCrawler] ⏱️ 批次间延迟 3-4秒（浏览器恢复）...`);
                       await this.randomDelay(3000, 4000);  // 🔧 增加延迟，确保浏览器稳定
                     }
                     
@@ -1361,7 +1378,7 @@ strategy1Stats.failedExtractions++;
                   return false;
                 });
                 
-                console.log(`[ZhilianCrawler] 是否有下一页: ${hasNextPage}`);
+                this.log('info', `[ZhilianCrawler] 是否有下一页: ${hasNextPage}`);
               }
 
               // 计算本页耗时
@@ -1390,8 +1407,8 @@ strategy1Stats.failedExtractions++;
                                      error.message.includes('BROWSER_RESTART_SCHEDULED');
 
               if (isBrowserCrash) {
-                console.error(`[ZhilianCrawler] 🚨 检测到浏览器崩溃！错误: ${error.message}`);
-                console.error(`[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
+                this.log('error', `[ZhilianCrawler] 🚨 检测到浏览器崩溃！错误: ${error.message}`);
+                this.log('error', `[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
                 
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
@@ -1404,19 +1421,19 @@ strategy1Stats.failedExtractions++;
                 if (page) {
                   try {
                     await page.close().catch(() => {});
-                    console.log(`[ZhilianCrawler] ✅ 页面已强制关闭`);
+                    this.log('info', `[ZhilianCrawler] ✅ 页面已强制关闭`);
                   } catch (e) {
-                    console.warn(`[ZhilianCrawler] ⚠️ 关闭页面失败:`, e);
+                    this.log('warn', `[ZhilianCrawler] ⚠️ 关闭页面失败:`, e);
                   }
                 }
                 
                 try {
                   if (browser.isConnected()) {
                     await browser.close().catch(() => {});
-                    console.log(`[ZhilianCrawler] ✅ 浏览器实例已关闭`);
+                    this.log('info', `[ZhilianCrawler] ✅ 浏览器实例已关闭`);
                   }
                 } catch (closeErr) {
-                  console.warn(`[ZhilianCrawler] ⚠️ 关闭浏览器失败:`, closeErr);
+                  this.log('warn', `[ZhilianCrawler] ⚠️ 关闭浏览器失败:`, closeErr);
                 }
                 
                 const crashError = new Error(`BROWSER_CRASH_RECOVERABLE: ${error.message}`);
@@ -1433,7 +1450,7 @@ strategy1Stats.failedExtractions++;
                                       error.message.includes('TimeoutError');
               
               if (isPageLoadError) {
-                console.warn(`[ZhilianCrawler] ⚠️ 第 ${currentPage} 页加载不完整或超时: ${error.message}`);
+                this.log('warn', `[ZhilianCrawler] ⚠️ 第 ${currentPage} 页加载不完整或超时: ${error.message}`);
                 
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
@@ -1443,9 +1460,9 @@ strategy1Stats.failedExtractions++;
                   });
                 }
               } else {
-                console.error(`[ZhilianCrawler] ❌ 爬取第 ${currentPage} 页时出错:`, error.message);
+                this.log('error', `[ZhilianCrawler] ❌ 爬取第 ${currentPage} 页时出错:`, error.message);
                 if (error.stack) {
-                  console.error(`[ZhilianCrawler] 错误堆栈:`, error.stack);
+                  this.log('error', `[ZhilianCrawler] 错误堆栈:`, error.stack);
                 }
                 
                 if (io && taskId) {
@@ -1461,13 +1478,13 @@ strategy1Stats.failedExtractions++;
               if (page) {
                 try {
                   await page.close();
-                  console.log(`[ZhilianCrawler] ✅ 异常页面已关闭`);
+                  this.log('info', `[ZhilianCrawler] ✅ 异常页面已关闭`);
                 } catch (e) {
                   // 忽略关闭错误
                 }
               }
 
-              console.warn(`[ZhilianCrawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
+              this.log('warn', `[ZhilianCrawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
               break;
             } finally {
   if (page) {
@@ -1481,9 +1498,9 @@ strategy1Stats.failedExtractions++;
         closeTimeout
       ]);
       
-      console.log(`[ZhilianCrawler] ✅ 页面已关闭`);
+      this.log('info', `[ZhilianCrawler] ✅ 页面已关闭`);
     } catch (closeError: any) {
-      console.warn(`[ZhilianCrawler] ⚠️ 关闭页面时出错（可能已自动关闭）:`, closeError.message);
+      this.log('warn', `[ZhilianCrawler] ⚠️ 关闭页面时出错（可能已自动关闭）:`, closeError.message);
     }
   }
 }
@@ -1496,7 +1513,7 @@ strategy1Stats.failedExtractions++;
             currentPage++;
 
             if (config.maxPages && currentPage > config.maxPages) {
-              console.log(`[ZhilianCrawler] 达到最大页数限制: ${config.maxPages}`);
+              this.log('info', `[ZhilianCrawler] 达到最大页数限制: ${config.maxPages}`);
               break;
             }
 
@@ -1504,8 +1521,8 @@ strategy1Stats.failedExtractions++;
 
           }
           
-          console.log(`[ZhilianCrawler] ✅ 完成组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
-          console.log(`[ZhilianCrawler]`);
+          this.log('info', `[ZhilianCrawler] ✅ 完成组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
+          this.log('info', `[ZhilianCrawler]`);
           
           // 🔧 关键修复：发送组合完成进度到前端并更新数据库
           if (io && taskId) {
@@ -1527,16 +1544,16 @@ strategy1Stats.failedExtractions++;
                 WHERE id = $3
               `).run(progressPercent, currentCombination, taskId);
               
-              console.log(`[ZhilianCrawler] 📊 进度更新: ${currentCombination}/${totalCombinationCount} (${progressPercent}%)`);
+              this.log('info', `[ZhilianCrawler] 📊 进度更新: ${currentCombination}/${totalCombinationCount} (${progressPercent}%)`);
             } catch (dbError) {
-              console.warn(`[ZhilianCrawler] ⚠️ 更新进度失败:`, dbError.message);
+              this.log('warn', `[ZhilianCrawler] ⚠️ 更新进度失败:`, dbError.message);
             }
           }
           
           // 🔧 主动重启机制：每处理20个组合后主动关闭并重启浏览器
 const COMBINATIONS_PER_BROWSER = 20;
 if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < totalCombinationCount) {
-  console.log(`[ZhilianCrawler] 🔄 已处理 ${currentCombination} 个组合，主动重启浏览器以防止资源泄漏...`);
+  this.log('info', `[ZhilianCrawler] 🔄 已处理 ${currentCombination} 个组合，主动重启浏览器以防止资源泄漏...`);
   
   if (io && taskId) {
     io.to(`task:${taskId}`).emit('task:log', {
@@ -1546,20 +1563,23 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
     });
   }
   
+  // 🔧 关键修复：保存当前组合索引，确保断点续传从正确位置开始
   const restartError = new Error(`BROWSER_RESTART_SCHEDULED: 已处理${currentCombination}个组合`);
   (restartError as any).shouldRestart = true;
+  (restartError as any).combinationIndex = currentCombination;  // ✅ 保存组合索引
+  (restartError as any).currentPage = 1;  // ✅ 新组合从第1页开始
   throw restartError;
 }
         }
       }
       
-      console.log(`[ZhilianCrawler]`);
-      console.log(`[ZhilianCrawler] =============================================`);
-      console.log(`[ZhilianCrawler] ✅✅✅ 所有 ${totalCombinationCount} 个组合处理完成!`);
-      console.log(`[ZhilianCrawler] =============================================`);
+      this.log('info', `[ZhilianCrawler]`);
+      this.log('info', `[ZhilianCrawler] =============================================`);
+      this.log('info', `[ZhilianCrawler] ✅✅✅ 所有 ${totalCombinationCount} 个组合处理完成!`);
+      this.log('info', `[ZhilianCrawler] =============================================`);
     } finally {
       // 🔧 优化：安全关闭浏览器，添加超时和错误处理
-      console.log(`[ZhilianCrawler] 🛑 正在关闭浏览器...`);
+      this.log('info', `[ZhilianCrawler] 🛑 正在关闭浏览器...`);
       
       try {
         // 添加超时控制，防止关闭时卡住
@@ -1572,20 +1592,20 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
           closeTimeout
         ]);
         
-        console.log(`[ZhilianCrawler] ✅ 浏览器已关闭`);
+        this.log('info', `[ZhilianCrawler] ✅ 浏览器已关闭`);
       } catch (closeError: any) {
-        console.warn(`[ZhilianCrawler] ⚠️ 关闭浏览器时出错: ${closeError.message}`);
+        this.log('warn', `[ZhilianCrawler] ⚠️ 关闭浏览器时出错: ${closeError.message}`);
       }
       
       // 🔧 延迟清理临时目录（等待2秒确保Chrome进程完全退出）
-      console.log(`[ZhilianCrawler] 🧹 等待2秒后清理临时目录...`);
+      this.log('info', `[ZhilianCrawler] 🧹 等待2秒后清理临时目录...`);
       setTimeout(async () => {
         try {
           const fs = await import('fs/promises');
           await fs.rm(userDataDir, { recursive: true, force: true });
-          console.log(`[ZhilianCrawler] ✅ 临时目录已清理: ${userDataDir}`);
+          this.log('info', `[ZhilianCrawler] ✅ 临时目录已清理: ${userDataDir}`);
         } catch (cleanupError: any) {
-          console.warn(`[ZhilianCrawler] ⚠️ 清理临时目录失败: ${cleanupError.message}`);
+          this.log('warn', `[ZhilianCrawler] ⚠️ 清理临时目录失败: ${cleanupError.message}`);
         }
       }, 2000);
     }
@@ -1617,7 +1637,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
     while (retryCount <= maxRetries) {
       try {
         if (retryCount > 0) {
-          console.log(`[ZhilianCrawler] 🔄 第 ${retryCount} 次重试抓取详情页: ${jobUrl.substring(0, 60)}...`);
+          this.log('info', `[ZhilianCrawler] 🔄 第 ${retryCount} 次重试抓取详情页: ${jobUrl.substring(0, 60)}...`);
           
           // 🔧 优化：根据重试次数动态调整延迟时间
           const delayMin = 2000 + (retryCount - 1) * 1000;  // 第1次重试2-4秒，第2次3-5秒，第3次4-6秒
@@ -1629,7 +1649,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
             throw new Error('浏览器连接已断开，无法重试');
           }
         } else {
-          console.log(`[ZhilianCrawler] 📑 开始抓取详情页: ${jobUrl.substring(0, 60)}...`);
+          this.log('info', `[ZhilianCrawler] 📑 开始抓取详情页: ${jobUrl.substring(0, 60)}...`);
         }
 
         // ✅ 关键修复：检查浏览器是否仍然可用
@@ -1640,11 +1660,11 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
           }
           
           const pages = await browser.pages();
-          console.log(`[ZhilianCrawler] 🔍 浏览器健康检查: 当前打开 ${pages.length} 个标签页`);
+          this.log('info', `[ZhilianCrawler] 🔍 浏览器健康检查: 当前打开 ${pages.length} 个标签页`);
           
           // 🔧 关键优化：如果标签页过多，关闭一些旧页面释放资源（更激进的清理）
           if (pages.length > 5) {  // 🔧 降低阈值至5，防止并发5时资源耗尽
-            console.warn(`[ZhilianCrawler] ⚠️ 标签页数量过多(${pages.length})，清理详情页...`);
+            this.log('warn', `[ZhilianCrawler] ⚠️ 标签页数量过多(${pages.length})，清理详情页...`);
             // 只保留列表页，关闭所有详情页
             let closedCount = 0;
             for (let i = 0; i < pages.length; i++) {
@@ -1664,16 +1684,16 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
               }
             }
             if (closedCount > 0) {
-              console.log(`[ZhilianCrawler] ✅ 已清理 ${closedCount} 个详情标签页`);
+              this.log('info', `[ZhilianCrawler] ✅ 已清理 ${closedCount} 个详情标签页`);
             }
           }
         } catch (browserCheckError: any) {
-          console.error(`[ZhilianCrawler] ❌ 浏览器健康检查失败: ${browserCheckError.message}`);
+          this.log('error', `[ZhilianCrawler] ❌ 浏览器健康检查失败: ${browserCheckError.message}`);
           throw new Error(`浏览器实例已失效，无法继续抓取: ${browserCheckError.message}`);
         }
 
         // 创建新标签页（而不是新浏览器）
-        console.log(`[ZhilianCrawler] 🆕 创建新标签页...`);
+        this.log('info', `[ZhilianCrawler] 🆕 创建新标签页...`);
         
         // 🔧 增加超时控制，防止创建标签页时无限等待
         const createPageTimeout = new Promise<any>((_, reject) => {
@@ -1685,7 +1705,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
           createPageTimeout
         ]);
         
-        console.log(`[ZhilianCrawler] ✅ 标签页创建成功`);
+        this.log('info', `[ZhilianCrawler] ✅ 标签页创建成功`);
         
         // 🔧 设置资源拦截，减少内存占用
         await page.setRequestInterception(true);
@@ -1703,21 +1723,20 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
         
         // 导航到详情页
-        console.log(`[ZhilianCrawler] 🌐 正在导航至详情页...`);
+        this.log('info', `[ZhilianCrawler] 🌐 正在导航至详情页...`);
         await page.goto(jobUrl, { 
           waitUntil: 'domcontentloaded',  // 改为domcontentloaded，更快
           timeout: 15000 
         });
         
         // 等待动态内容加载
-        console.log(`[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
+        this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
         await new Promise(resolve => setTimeout(resolve, 2000));
         
         // 提取职位详情
-        console.log(`[ZhilianCrawler] 🔍 正在提取页面数据...`);
+        this.log('info', `[ZhilianCrawler] 🔍 正在提取页面数据...`);
         const detail = await page.evaluate(() => {
         const result: any = {};
-        
         // ✅ 职位名称 - 从 summary-planes__title 中提取
         const titleEl = document.querySelector('.summary-planes__title');
         result.title = titleEl ? titleEl.textContent.trim() : '';
@@ -1808,16 +1827,16 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         throw new Error('未能提取到职位标题或公司名称，页面可能加载不完整');
       }
 
-      console.log(`[ZhilianCrawler] ✅ 详情页数据提取成功: ${detail.title || '未知职位'}`);
+      this.log('info', `[ZhilianCrawler] ✅ 详情页数据提取成功: ${detail.title || '未知职位'}`);
       
       // 🔧 关键优化：立即关闭标签页，释放资源
       if (page) {
         try {
           await page.close();
-          console.log(`[ZhilianCrawler] ✅ 标签页已关闭`);
+          this.log('info', `[ZhilianCrawler] ✅ 标签页已关闭`);
           page = null;
         } catch (closeError: any) {
-          console.warn(`[ZhilianCrawler] ⚠️ 关闭标签页失败（可忽略）: ${closeError.message}`);
+          this.log('warn', `[ZhilianCrawler] ⚠️ 关闭标签页失败（可忽略）: ${closeError.message}`);
           page = null;  // 即使关闭失败也清空引用
         }
       }
@@ -1867,12 +1886,12 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         dataSource: '智联招聘'
       };
 
-      console.log(`[ZhilianCrawler] 🏁 详情页处理完成`);
+      this.log('info', `[ZhilianCrawler] 🏁 详情页处理完成`);
       return jobData;
       
     } catch (error: any) {
       retryCount++;
-      console.warn(`[ZhilianCrawler] ⚠️ 抓取详情页失败 (尝试 ${retryCount}/${maxRetries + 1}): ${error.message}`);
+      this.log('warn', `[ZhilianCrawler] ⚠️ 抓取详情页失败 (尝试 ${retryCount}/${maxRetries + 1}): ${error.message}`);
       
       // 🔧 关键修复：确保页面被关闭，避免资源泄漏
       if (page) {
@@ -1886,7 +1905,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
 
       // 如果达到最大重试次数，抛出错误或返回降级数据
       if (retryCount > maxRetries) {
-        console.error(`[ZhilianCrawler] ❌ 详情页抓取最终失败，使用基本信息降级`);
+        this.log('error', `[ZhilianCrawler] ❌ 详情页抓取最终失败，使用基本信息降级`);
         return this.generateBasicJob(basicInfo, {} as TaskConfig);
       }
       
@@ -1899,61 +1918,150 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
   }
 
   // ✅ 新增：使用已创建的page对象抓取详情页（避免并发创建标签页导致的浏览器崩溃）
+  // ✅ 新增：使用已创建的page对象抓取详情页（避免并发创建标签页导致的浏览器崩溃）
   private async fetchJobDetailWithPage(page: any, jobUrl: string, basicInfo: any): Promise<JobData> {
     try {
-      console.log(`[ZhilianCrawler] 📑 开始抓取详情页: ${jobUrl.substring(0, 60)}...`);
+      this.log('info', `[ZhilianCrawler] 📑 开始抓取详情页: ${jobUrl.substring(0, 60)}...`);
 
-      // 🔧 设置资源拦截，减少内存占用
-      await page.setRequestInterception(true);
-      page.on('request', (request: any) => {
-        // 阻止图片、字体、媒体等资源加载，加快页面加载速度
-        if (['image', 'stylesheet', 'font', 'media'].includes(request.resourceType())) {
-          request.abort();
-        } else {
-          request.continue();
-        }
-      });
-      
-      // 设置视口和用户代理
-      await page.setViewport({ width: 1920, height: 1080 });
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+      // 🔧 页面已在并发控制中初始化完成（setRequestInterception、setViewport、setUserAgent）
+      // 这里直接导航到详情页
       
       // 导航到详情页
-      console.log(`[ZhilianCrawler] 🌐 正在导航至详情页...`);
+      this.log('info', `[ZhilianCrawler] 🌐 正在导航至详情页...`);
       await page.goto(jobUrl, { 
         waitUntil: 'domcontentloaded',  // 改为domcontentloaded，更快
         timeout: 15000 
       });
       
-      // 等待动态内容加载
-      console.log(`[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
+      // 🔧 关键优化：显式等待关键元素出现，确保页面完全加载
+      this.log('info', `[ZhilianCrawler] ⏳ 等待关键元素加载...`);
+      try {
+        // 等待职位标题或公司名称出现（任一出现即表示页面加载成功）
+        await page.waitForSelector('.summary-planes__title, .company-name, [class*="job-title"]', {
+          timeout: 8000  // 最多等待8秒
+        });
+        this.log('info', `[ZhilianCrawler] ✅ 关键元素已加载`);
+      } catch (waitError: any) {
+        this.log('warn', `[ZhilianCrawler] ⚠️ 关键元素等待超时，尝试延长等待时间...`);
+        // 如果等待失败，额外等待3秒后再尝试
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+      
+      // 🔧 额外等待：确保动态内容完全渲染
+      this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
       await new Promise(resolve => setTimeout(resolve, 2000));
       
+      // 🔧 健康检查：验证页面是否真的加载成功
+      const pageHealth = await page.evaluate(() => {
+        return {
+          bodyLength: document.body ? document.body.textContent?.length || 0 : 0,
+          hasTitle: !!document.querySelector('.summary-planes__title, .job-title, [class*="title"]'),
+          hasCompany: !!document.querySelector('.company-name, .company-info, [class*="company"]'),
+          title: document.querySelector('.summary-planes__title')?.textContent?.trim() || '',
+          company: document.querySelector('.company-name')?.textContent?.trim() || '',
+          
+          // 🔧 新增：反爬检测指标
+          hasErrorPage: !!document.querySelector('.error-page, .captcha, #verifyCode, [class*="verify"], [class*="captcha"], [class*="robot"]'),
+          hasLoginPrompt: !!document.querySelector('[class*="login"], [class*="登录"], .need-login'),
+          pageTitle: document.title || '',
+          htmlContent: document.documentElement.outerHTML.substring(0, 500)  // 截取前500字符用于诊断
+        };
+      });
+      
+      this.log('info', `[ZhilianCrawler] 📊 页面健康检查: body长度=${pageHealth.bodyLength}, 有标题=${pageHealth.hasTitle}, 有公司=${pageHealth.hasCompany}`);
+      
+      // 🔧 反爬检测：如果检测到错误页面或验证码
+      if (pageHealth.hasErrorPage || pageHealth.hasLoginPrompt) {
+        this.log('error', `[ZhilianCrawler] 🚨 检测到反爬拦截！页面标题="${pageHealth.pageTitle}", 包含错误/验证码元素`);
+        this.log('error', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);
+        throw new Error('ANTI_BOT_DETECTED: 检测到反爬拦截（验证码/错误页面）');
+      }
+      
+      // 🔧 内容过少检测：可能是空页面或错误页面（从100提高到1000）
+      if (pageHealth.bodyLength < 1000) {
+        this.log('warn', `[ZhilianCrawler] ⚠️ 页面内容过少(${pageHealth.bodyLength}字节)，可能加载不完整或被拦截`);
+        this.log('warn', `[ZhilianCrawler] 📄 页面标题: "${pageHealth.pageTitle}"`);
+        this.log('warn', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 500)}...`);
+        
+        // 尝试刷新一次
+        this.log('info', `[ZhilianCrawler] 🔄 尝试刷新页面...`);
+        await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        // 再次检查
+        const retryHealth = await page.evaluate(() => ({
+          bodyLength: document.body ? document.body.textContent?.length || 0 : 0,
+          hasTitle: !!document.querySelector('.summary-planes__title, .job-title'),
+          hasCompany: !!document.querySelector('.company-name, .company-info'),
+          pageTitle: document.title || ''
+        }));
+        
+        this.log('info', `[ZhilianCrawler] 📊 刷新后检查: body长度=${retryHealth.bodyLength}, 有标题=${retryHealth.hasTitle}, 有公司=${retryHealth.hasCompany}, 标题="${retryHealth.pageTitle}"`);
+        
+        if (retryHealth.bodyLength < 1000 || (!retryHealth.hasTitle && !retryHealth.hasCompany)) {
+          this.log('error', `[ZhilianCrawler] ❌ 刷新后仍然无法加载，放弃此详情页`);
+          this.log('error', `[ZhilianCrawler] 📄 刷新后HTML片段: ${(await page.content()).substring(0, 500)}...`);
+          throw new Error('PAGE_LOAD_FAILED: 页面内容过少，刷新后仍无效');
+        }
+        
+        this.log('info', `[ZhilianCrawler] ✅ 刷新后页面加载成功`);
+      }
+      
       // 提取职位详情
-      console.log(`[ZhilianCrawler] 🔍 正在提取页面数据...`);
+      this.log('info', `[ZhilianCrawler] 🔍 正在提取页面数据...`);
       const detail = await page.evaluate(() => {
         const result: any = {};
         
-        // ✅ 职位名称 - 从 summary-planes__title 中提取
-        const titleEl = document.querySelector('.summary-planes__title');
-        result.title = titleEl ? titleEl.textContent.trim() : '';
+        // ✅ 职位名称 - 多策略提取（兼容不同版本的DOM结构）
+        const titleSelectors = [
+          '.summary-planes__title',
+          '.job-title',
+          '[class*="job-title"]',
+          '[class*="position-title"]',
+          'h1[class*="title"]'
+        ];
+        
+        for (const selector of titleSelectors) {
+          const titleEl = document.querySelector(selector);
+          if (titleEl && titleEl.textContent?.trim()) {
+            result.title = titleEl.textContent.trim();
+            break;
+          }
+        }
+        
+        // ✅ 公司名称 - 多策略提取
+        const companySelectors = [
+          '.company-name',
+          '.company-info__name',
+          '.cname',
+          '[class*="company-name"]',
+          '[class*="cname"]'
+        ];
+        
+        for (const selector of companySelectors) {
+          const companyEl = document.querySelector(selector);
+          if (companyEl && companyEl.textContent?.trim()) {
+            result.company = companyEl.textContent.trim();
+            break;
+          }
+        }
         
         // ✅ 薪资 - 从 summary-planes__salary 中提取
-        const salaryEl = document.querySelector('.summary-planes__salary');
+        const salaryEl = document.querySelector('.summary-planes__salary, [class*="salary"]');
         result.salary = salaryEl ? salaryEl.textContent.trim() : '';
         
         // ✅ 城市 - 从 workCity-link 中提取
-        const cityEl = document.querySelector('.workCity-link');
+        const cityEl = document.querySelector('.workCity-link, [class*="city"] a');
         if (cityEl) {
           result.city = cityEl.textContent.trim();
         }
         
         // ✅ 区域 - 从 summary-planes__info 第一个li的span中提取
-        const areaEl = document.querySelector('.summary-planes__info li span');
+        const areaEl = document.querySelector('.summary-planes__info li span, [class*="area"]');
         result.area = areaEl ? areaEl.textContent.trim() : '';
         
         // ✅ 工作经验、学历、工作性质、招聘人数 - 从 summary-planes__info 中提取
-        const infoItems = Array.from(document.querySelectorAll('.summary-planes__info li'));
+        const infoItems = Array.from(document.querySelectorAll('.summary-planes__info li, [class*="job-info"] li'));
         infoItems.forEach((item: any) => {
           const text = (item.textContent || '').trim();
           
@@ -1979,13 +2087,13 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         });
         
         // ✅ 工作地址 - 从 address-info__bubble 中提取
-        const addressEl = document.querySelector('.address-info__bubble');
+        const addressEl = document.querySelector('.address-info__bubble, [class*="address"]');
         if (addressEl) {
           result.address = (addressEl.textContent || '').trim();
         }
         
         // ✅ 公司信息 - 从 company-info__desc 中提取
-        const companyDescEl = document.querySelector('.company-info__desc');
+        const companyDescEl = document.querySelector('.company-info__desc, [class*="company-desc"]');
         if (companyDescEl) {
           const companyText = (companyDescEl.textContent || '').trim();
           // 解析公司性质和规模：未融资 · 500-999人 · 计算机软件
@@ -2000,7 +2108,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         }
         
         // ✅ 岗位更新日期 - 从 summary-planes__time 中提取
-        const updateEl = document.querySelector('.summary-planes__time');
+        const updateEl = document.querySelector('.summary-planes__time, [class*="update-time"]');
         if (updateEl) {
           const updateTimeText = updateEl.textContent.trim();
           // 提取"更新于 今天"、"更新于 3天前"等
@@ -2011,7 +2119,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         }
         
         // ✅ 职位标签/技能要求 - 从 describtion-card__skills-item 中提取
-        const skillItems = Array.from(document.querySelectorAll('.describtion-card__skills-item'));
+        const skillItems = Array.from(document.querySelectorAll('.describtion-card__skills-item, [class*="skill"]'));
         if (skillItems.length > 0) {
           result.jobTags = skillItems.map((item: any) => item.textContent.trim()).join(',');
         }
@@ -2019,22 +2127,19 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         return result;
       });
       
+      // 🔧 增强诊断：输出提取结果
+      this.log('info', `[ZhilianCrawler] 📊 提取结果: 标题="${detail.title?.substring(0, 20) || '空'}", 公司="${detail.company?.substring(0, 20) || '空'}"`);
+      
       // 检查是否提取到了关键数据，如果没有可能页面加载有问题
       if (!detail.title && !detail.company) {
+        this.log('error', `[ZhilianCrawler] ❌ 详情页提取失败: 标题和公司名均为空`);
         throw new Error('未能提取到职位标题或公司名称，页面可能加载不完整');
       }
 
-      console.log(`[ZhilianCrawler] ✅ 详情页数据提取成功: ${detail.title || '未知职位'}`);
+      this.log('info', `[ZhilianCrawler] ✅ 详情页数据提取成功: ${detail.title || '未知职位'}`);
       
-      // 🔧 关键优化：立即关闭标签页，释放资源
-      if (page) {
-        try {
-          await page.close();
-          console.log(`[ZhilianCrawler] ✅ 标签页已关闭`);
-        } catch (closeError: any) {
-          console.warn(`[ZhilianCrawler] ⚠️ 关闭标签页失败（可忽略）: ${closeError.message}`);
-        }
-      }
+      // 🔧 关键修复：此处不关闭 page，因为它是通过参数传入的共享页面对象，由调用者管理生命周期
+      // 如果在内部关闭，会导致后续复用该 page 的任务失败
       
       // ✅ 将相对日期转换为实际日期
       let updateDate = new Date().toISOString().split('T')[0];
@@ -2081,11 +2186,11 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         dataSource: '智联招聘'
       };
 
-      console.log(`[ZhilianCrawler] 🏁 详情页处理完成`);
+      this.log('info', `[ZhilianCrawler] 🏁 详情页处理完成`);
       return jobData;
       
     } catch (error: any) {
-      console.error(`[ZhilianCrawler] ❌ 抓取详情页失败: ${error.message}`);
+      this.log('error', `[ZhilianCrawler] ❌ 抓取详情页失败: ${error.message}`);
       
       // 🔧 关键修复：确保页面被关闭，避免资源泄漏
       if (page) {

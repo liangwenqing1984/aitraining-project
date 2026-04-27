@@ -7,6 +7,22 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export class Job51Crawler {
+  private logger: any = null;  // 🔧 新增：日志记录器
+  
+  // 🔧 新增：设置日志记录器
+  setLogger(logger: any) {
+    this.logger = logger;
+  }
+  
+  // 🔧 辅助方法：根据是否有logger选择输出方式
+  private log(level: string, ...args: any[]) {
+    if (this.logger) {
+      (this.logger as any)[level](...args);
+    } else {
+      console[level](...args);
+    }
+  }
+
   private signal: AbortSignal | null = null;
 
   async *crawl(config: TaskConfig, signal: AbortSignal): AsyncGenerator<JobData> {
@@ -28,19 +44,19 @@ export class Job51Crawler {
     let totalCombinationCount = keywords.length * cities.length;
     let currentCombination = 0;
 
-    console.log(`[Job51Crawler] 开始爬取`);
-    console.log(`[Job51Crawler] ========== 关键词和城市配置 ==========`);
-    console.log(`[Job51Crawler] 关键词列表: [${keywords.join(', ')}] (共${keywords.length}个)`);
-    console.log(`[Job51Crawler] 城市列表: [${cities.join(', ')}] (共${cities.length}个)`);
-    console.log(`[Job51Crawler] 企业列表: ${companies.length > 0 ? '[' + companies.join(', ') + ']' : '不限'} (共${companies.length}个)`);
-    console.log(`[Job51Crawler] 总组合数: ${totalCombinationCount} (${keywords.length} × ${cities.length})`);
-    console.log(`[Job51Crawler] =============================================`);
+    this.log('info', `[Job51Crawler] 开始爬取`);
+    this.log('info', `[Job51Crawler] ========== 关键词和城市配置 ==========`);
+    this.log('info', `[Job51Crawler] 关键词列表: [${keywords.join(', ')}] (共${keywords.length}个)`);
+    this.log('info', `[Job51Crawler] 城市列表: [${cities.join(', ')}] (共${cities.length}个)`);
+    this.log('info', `[Job51Crawler] 企业列表: ${companies.length > 0 ? '[' + companies.join(', ') + ']' : '不限'} (共${companies.length}个)`);
+    this.log('info', `[Job51Crawler] 总组合数: ${totalCombinationCount} (${keywords.length} × ${cities.length})`);
+    this.log('info', `[Job51Crawler] =============================================`);
 
     // 启动浏览器 - 使用自定义临时目录避免冲突
     const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
     const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\job51_${Date.now()}`;
     
-    console.log(`[Job51Crawler] 使用临时目录: ${userDataDir}`);
+    this.log('info', `[Job51Crawler] 使用临时目录: ${userDataDir}`);
     
     const browser = await puppeteer.launch({
       executablePath: chromePath,
@@ -58,26 +74,26 @@ export class Job51Crawler {
 
     try {
       // 遍历所有关键词和城市的组合
-      console.log(`[Job51Crawler] >>>>>> 开始遍历 ${totalCombinationCount} 个组合 <<<<<<`);
+      this.log('info', `[Job51Crawler] >>>>>> 开始遍历 ${totalCombinationCount} 个组合 <<<<<<`);
       
       for (const keyword of keywords) {
         for (const city of cities) {
           currentCombination++;
           
-          console.log(`[Job51Crawler]`);
-          console.log(`[Job51Crawler] ╔════════════════════════════════════════╗`);
-          console.log(`[Job51Crawler] ║ 开始处理组合 ${currentCombination}/${totalCombinationCount}`);
-          console.log(`[Job51Crawler] ║   关键词: "${keyword}"`);
-          console.log(`[Job51Crawler] ║   城市:   "${city || '不限'}"`);
-          console.log(`[Job51Crawler] ╚════════════════════════════════════════╝`);
+          this.log('info', `[Job51Crawler]`);
+          this.log('info', `[Job51Crawler] ╔════════════════════════════════════════╗`);
+          this.log('info', `[Job51Crawler] ║ 开始处理组合 ${currentCombination}/${totalCombinationCount}`);
+          this.log('info', `[Job51Crawler] ║   关键词: "${keyword}"`);
+          this.log('info', `[Job51Crawler] ║   城市:   "${city || '不限'}"`);
+          this.log('info', `[Job51Crawler] ╚════════════════════════════════════════╝`);
           
           if (this.checkAborted()) {
-            console.log(`[Job51Crawler] ⚠️ 任务已中止，停止后续组合处理`);
+            this.log('info', `[Job51Crawler] ⚠️ 任务已中止，停止后续组合处理`);
             return;
           }
 
           const cityCode = city ? JOB51_CITY_CODES[city] : '000000';
-          console.log(`[Job51Crawler] 开始爬取组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
+          this.log('info', `[Job51Crawler] 开始爬取组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
 
           // 发送日志到前端
           const taskId = this.getTaskId(config);
@@ -91,7 +107,7 @@ export class Job51Crawler {
 
           // 构建搜索URL
           const baseUrl = `https://search.51job.com/list/${cityCode},000000,0000,00,9,99,${encodeURIComponent(keyword)},2`;
-          console.log(`[Job51Crawler] 搜索URL: ${baseUrl}`);
+          this.log('info', `[Job51Crawler] 搜索URL: ${baseUrl}`);
 
           let currentPage = 1;
           let hasNextPage = true;
@@ -100,7 +116,7 @@ export class Job51Crawler {
             const url = `${baseUrl},${currentPage}.html`;
             const pageStartTime = Date.now();
             
-            console.log(`[Job51Crawler] 正在爬取第 ${currentPage} 页: ${url}`);
+            this.log('info', `[Job51Crawler] 正在爬取第 ${currentPage} 页: ${url}`);
             
             // 发送详细日志到前端
             const taskId = this.getTaskId(config);
@@ -178,7 +194,7 @@ export class Job51Crawler {
               while (!loadSuccess && retryCount <= maxRetries) {
                 try {
                   if (retryCount > 0) {
-                    console.log(`[Job51Crawler] 第 ${retryCount} 次重试加载...`);
+                    this.log('info', `[Job51Crawler] 第 ${retryCount} 次重试加载...`);
                     if (io) {
                       io.to(`task:${taskId}`).emit('task:log', {
                         taskId,
@@ -196,7 +212,7 @@ export class Job51Crawler {
 
                   // 🔧 优化4: 验证页面是否真正加载成功
                   const htmlLength = await page.content().then(html => html.length);
-                  console.log(`[Job51Crawler] 页面HTML长度: ${htmlLength} 字符`);
+                  this.log('info', `[Job51Crawler] 页面HTML长度: ${htmlLength} 字符`);
                   
                   // 如果HTML长度过短（小于1000字符），认为加载失败
                   if (htmlLength < 1000) {
@@ -204,11 +220,11 @@ export class Job51Crawler {
                   }
 
                   loadSuccess = true;
-                  console.log(`[Job51Crawler] ✅ 页面加载成功，URL: ${page.url()}`);
+                  this.log('info', `[Job51Crawler] ✅ 页面加载成功，URL: ${page.url()}`);
                   
                 } catch (loadError: any) {
                   retryCount++;
-                  console.warn(`[Job51Crawler] ⚠️ 第 ${retryCount} 次加载失败:`, loadError.message);
+                  this.log('warn', `[Job51Crawler] ⚠️ 第 ${retryCount} 次加载失败:`, loadError.message);
                   
                   if (retryCount > maxRetries) {
                     throw new Error(`页面加载失败，已重试 ${maxRetries} 次: ${loadError.message}`);
@@ -220,7 +236,7 @@ export class Job51Crawler {
               }
 
               // 🔧 优化5: 强制滚动触发懒加载
-              console.log(`[Job51Crawler] 执行滚动操作以触发懒加载...`);
+              this.log('info', `[Job51Crawler] 执行滚动操作以触发懒加载...`);
               await page.evaluate(async () => {
                 // 多次滚动到底部
                 for (let i = 0; i < 3; i++) {
@@ -242,10 +258,10 @@ export class Job51Crawler {
               }
               const debugFile = path.join(debugDir, `job51_puppeteer_page_${currentPage}_${Date.now()}.html`);
               fs.writeFileSync(debugFile, html);
-              console.log(`[Job51Crawler] HTML快照已保存到: ${debugFile}`);
+              this.log('info', `[Job51Crawler] HTML快照已保存到: ${debugFile}`);
 
               // 🔧 优化6: 智能提取职位数据 - 优先尝试DOM选择器，失败则使用文本分析
-              console.log(`[Job51Crawler] 开始提取职位数据...`);
+              this.log('info', `[Job51Crawler] 开始提取职位数据...`);
               
               // @ts-ignore - 此代码在浏览器环境中运行
               const jobs = await page.evaluate(() => {
@@ -266,7 +282,8 @@ export class Job51Crawler {
                   const elements = document.querySelectorAll(selector);
                   if (elements.length > 0) {
                     foundJobs = true;
-                    console.log(`找到选择器 "${selector}" 匹配 ${elements.length} 个元素`);
+                    // 🔧 修复: this.log在浏览器环境中不可用，已注释
+                    // 'info', `找到选择器 "${selector}" 匹配 ${elements.length} 个元素`);
                     
                     elements.forEach((element: any) => {
                       const titleEl = element.querySelector('.jname a, .job-title a, .jobName, a[href*="/job/"]');
@@ -291,7 +308,8 @@ export class Job51Crawler {
 
                 // ===== 方法2: 如果DOM选择器失败，使用文本分析提取 =====
                 if (!foundJobs || jobList.length === 0) {
-                  console.log('DOM选择器未找到数据，尝试文本分析方法...');
+                  // 🔧 修复: this.log在浏览器环境中不可用，已注释
+                  // 'info', 'DOM选择器未找到数据，尝试文本分析方法...');
                   
                   const bodyText = document.body.innerText;
                   const lines = bodyText.split('\n').filter(line => line.trim().length > 0);
@@ -347,7 +365,7 @@ export class Job51Crawler {
                 return jobList;
               });
 
-              console.log(`[Job51Crawler] 使用智能提取找到 ${jobs.length} 个职位`);
+              this.log('info', `[Job51Crawler] 使用智能提取找到 ${jobs.length} 个职位`);
 
               // 发送详细日志到前端
               if (io) {
@@ -360,10 +378,10 @@ export class Job51Crawler {
 
               // 如果没有找到职位
               if (jobs.length === 0) {
-                console.warn(`[Job51Crawler] ⚠️ 未找到职位，可能原因：`);
-                console.warn(`[Job51Crawler]    1. 网站结构已变化`);
-                console.warn(`[Job51Crawler]    2. 被反爬虫机制拦截`);
-                console.warn(`[Job51Crawler]    3. 该关键词/城市组合确实没有职位`);
+                this.log('warn', `[Job51Crawler] ⚠️ 未找到职位，可能原因：`);
+                this.log('warn', `[Job51Crawler]    1. 网站结构已变化`);
+                this.log('warn', `[Job51Crawler]    2. 被反爬虫机制拦截`);
+                this.log('warn', `[Job51Crawler]    3. 该关键词/城市组合确实没有职位`);
                 
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
@@ -381,12 +399,12 @@ export class Job51Crawler {
                 ? jobs.filter(job => companies.some(comp => job.company.includes(comp)))
                 : jobs;
 
-              console.log(`[Job51Crawler] 过滤后剩余 ${filteredJobs.length} 个职位`);
+              this.log('info', `[Job51Crawler] 过滤后剩余 ${filteredJobs.length} 个职位`);
 
               // 输出每个职位的详细信息
               for (let i = 0; i < filteredJobs.length && !this.checkAborted(); i++) {
                 const job = filteredJobs[i];
-                console.log(`[Job51Crawler] 处理第 ${i + 1}/${filteredJobs.length} 个职位: ${job.title}`);
+                this.log('info', `[Job51Crawler] 处理第 ${i + 1}/${filteredJobs.length} 个职位: ${job.title}`);
                 
                 const jobData = this.generateMockJob(job, config);
                 yield jobData;
@@ -431,7 +449,7 @@ export class Job51Crawler {
                 return false;
               });
               
-              console.log(`[Job51Crawler] 是否有下一页: ${hasNextPage}`);
+              this.log('info', `[Job51Crawler] 是否有下一页: ${hasNextPage}`);
 
               // 计算本页耗时
               const pageEndTime = Date.now();
@@ -449,7 +467,7 @@ export class Job51Crawler {
               currentPage++;
 
               if (config.maxPages && currentPage > config.maxPages) {
-                console.log(`[Job51Crawler] 达到最大页数限制: ${config.maxPages}`);
+                this.log('info', `[Job51Crawler] 达到最大页数限制: ${config.maxPages}`);
                 break;
               }
 
@@ -459,9 +477,9 @@ export class Job51Crawler {
               const pageEndTime = Date.now();
               const pageDuration = ((pageEndTime - pageStartTime) / 1000).toFixed(2);
               
-              console.error(`[Job51Crawler] ❌ 爬取第 ${currentPage} 页时出错:`, error.message);
+              this.log('error', `[Job51Crawler] ❌ 爬取第 ${currentPage} 页时出错:`, error.message);
               if (error.stack) {
-                console.error(`[Job51Crawler] 错误堆栈:`, error.stack);
+                this.log('error', `[Job51Crawler] 错误堆栈:`, error.stack);
               }
               
               // 记录详细错误日志到前端
@@ -473,22 +491,22 @@ export class Job51Crawler {
                 });
               }
               
-              console.warn(`[Job51Crawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
+              this.log('warn', `[Job51Crawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
               break;
             } finally {
               await page.close();
             }
           }
           
-          console.log(`[Job51Crawler] ✅ 完成组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
-          console.log(`[Job51Crawler]`);
+          this.log('info', `[Job51Crawler] ✅ 完成组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
+          this.log('info', `[Job51Crawler]`);
         }
       }
       
-      console.log(`[Job51Crawler]`);
-      console.log(`[Job51Crawler] =============================================`);
-      console.log(`[Job51Crawler] ✅✅✅ 所有 ${totalCombinationCount} 个组合处理完成!`);
-      console.log(`[Job51Crawler] =============================================`);
+      this.log('info', `[Job51Crawler]`);
+      this.log('info', `[Job51Crawler] =============================================`);
+      this.log('info', `[Job51Crawler] ✅✅✅ 所有 ${totalCombinationCount} 个组合处理完成!`);
+      this.log('info', `[Job51Crawler] =============================================`);
     } finally {
       await browser.close();
     }

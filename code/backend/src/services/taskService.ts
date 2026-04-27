@@ -9,23 +9,21 @@ import fs from 'fs';
 import ExcelJS from 'exceljs';
 
 const csvDir = path.join(__dirname, '../../data/csv');
-const logDir = path.join(__dirname, '../../data/logs');  // 🔧 新增:日志目录
+const logDir = path.join(__dirname, '../../data/logs');
 
 // 确保日志目录存在
 if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir, { recursive: true });
-  console.log('[TaskService] ✅ 日志目录已创建:', logDir);
 }
 
-// 控制台输出拦截器类
-class ConsoleInterceptor {
+// 🔧 新增：任务专用日志记录器（替代全局console劫持）
+class TaskLogger {
   private taskId: string;
+  private writeStream: fs.WriteStream | null = null;
   private originalConsoleLog: any;
   private originalConsoleWarn: any;
   private originalConsoleError: any;
   private originalConsoleInfo: any;
-  private logFilePath: string;  // 🔧 新增:日志文件路径
-  private writeStream: fs.WriteStream | null = null;  // 🔧 新增:文件写入流
 
   constructor(taskId: string) {
     this.taskId = taskId;
@@ -34,17 +32,10 @@ class ConsoleInterceptor {
     this.originalConsoleError = console.error;
     this.originalConsoleInfo = console.info;
     
-    // 🔧 初始化日志文件路径
-    this.logFilePath = path.join(logDir, `task_${taskId}.log`);
-  }
-
-  // 启动拦截
-  start() {
-    const self = this;
-    
-    // 🔧 创建日志文件写入流(追加模式)
-    this.writeStream = fs.createWriteStream(this.logFilePath, { 
-      flags: 'a',  // append mode
+    // 创建日志文件写入流（追加模式）
+    const logFilePath = path.join(logDir, `task_${taskId}.log`);
+    this.writeStream = fs.createWriteStream(logFilePath, { 
+      flags: 'a',
       encoding: 'utf-8'
     });
     
@@ -54,112 +45,59 @@ class ConsoleInterceptor {
     this.writeStream.write(`任务ID: ${this.taskId}\n`);
     this.writeStream.write(`开始时间: ${startTime}\n`);
     this.writeStream.write(`${'='.repeat(80)}\n\n`);
-    
-    console.log(`[ConsoleInterceptor] 📝 日志文件已创建: ${this.logFilePath}`);
-    
-    // 拦截 console.log
-    console.log = function(...args: any[]) {
-      self.originalConsoleLog.apply(console, args);
-      
-      // 🔧 写入日志文件
-      const timestamp = new Date().toISOString();
-      const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      const logLine = `[${timestamp}] [INFO] ${message}\n`;
-      if (self.writeStream) {
-        self.writeStream.write(logLine);
-      }
-      
-      // 同时推送到前端
-      if (io && self.taskId) {
-        io.to(`task:${self.taskId}`).emit('task:log', {
-          taskId: self.taskId,
-          level: 'info',
-          message: message,
-          timestamp: timestamp  // 🔧 添加时间戳
-        });
-      }
-    };
-
-    // 拦截 console.warn
-    console.warn = function(...args: any[]) {
-      self.originalConsoleWarn.apply(console, args);
-      
-      // 🔧 写入日志文件
-      const timestamp = new Date().toISOString();
-      const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      const logLine = `[${timestamp}] [WARN] ${message}\n`;
-      if (self.writeStream) {
-        self.writeStream.write(logLine);
-      }
-      
-      if (io && self.taskId) {
-        io.to(`task:${self.taskId}`).emit('task:log', {
-          taskId: self.taskId,
-          level: 'warning',
-          message: message,
-          timestamp: timestamp
-        });
-      }
-    };
-
-    // 拦截 console.error
-    console.error = function(...args: any[]) {
-      self.originalConsoleError.apply(console, args);
-      
-      // 🔧 写入日志文件
-      const timestamp = new Date().toISOString();
-      const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      const logLine = `[${timestamp}] [ERROR] ${message}\n`;
-      if (self.writeStream) {
-        self.writeStream.write(logLine);
-      }
-      
-      if (io && self.taskId) {
-        io.to(`task:${self.taskId}`).emit('task:log', {
-          taskId: self.taskId,
-          level: 'error',
-          message: message,
-          timestamp: timestamp
-        });
-      }
-    };
-
-    // 拦截 console.info
-    console.info = function(...args: any[]) {
-      self.originalConsoleInfo.apply(console, args);
-      
-      // 🔧 写入日志文件
-      const timestamp = new Date().toISOString();
-      const message = args.map(arg => 
-        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
-      ).join(' ');
-      const logLine = `[${timestamp}] [INFO] ${message}\n`;
-      if (self.writeStream) {
-        self.writeStream.write(logLine);
-      }
-      
-      if (io && self.taskId) {
-        io.to(`task:${self.taskId}`).emit('task:log', {
-          taskId: self.taskId,
-          level: 'info',
-          message: message,
-          timestamp: timestamp
-        });
-      }
-    };
-
-    console.log(`[ConsoleInterceptor] ✅ 已启动日志拦截，任务ID: ${this.taskId}`);
   }
 
-  // 停止拦截，恢复原始console
-  stop() {
-    // 🔧 关闭文件写入流
+  // 格式化消息
+  private formatMessage(level: string, args: any[]): string {
+    const timestamp = new Date().toISOString();
+    const message = args.map(arg => 
+      typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+    return `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+  }
+
+  // 写入日志文件和WebSocket
+  private writeLog(level: string, args: any[]) {
+    const formattedMessage = this.formatMessage(level, args);
+    const logLine = formattedMessage + '\n';
+    
+    // 写入文件
+    if (this.writeStream) {
+      this.writeStream.write(logLine);
+    }
+    
+    // 推送到WebSocket
+    if (io && this.taskId) {
+      io.to(`task:${this.taskId}`).emit('task:log', {
+        taskId: this.taskId,
+        level: level.toLowerCase(),
+        message: args.map(arg => 
+          typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+        ).join(' '),
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  // 日志方法
+  info(...args: any[]) {
+    this.writeLog('INFO', args);
+    // 同时输出到原始console（用于调试）
+    this.originalConsoleLog.apply(console, [`[${this.taskId}]`, ...args]);
+  }
+
+  warn(...args: any[]) {
+    this.writeLog('WARN', args);
+    this.originalConsoleWarn.apply(console, [`[${this.taskId}]`, ...args]);
+  }
+
+  error(...args: any[]) {
+    this.writeLog('ERROR', args);
+    this.originalConsoleError.apply(console, [`[${this.taskId}]`, ...args]);
+  }
+
+  // 关闭日志器
+  close() {
     if (this.writeStream) {
       const endTime = new Date().toISOString();
       this.writeStream.write(`\n${'='.repeat(80)}\n`);
@@ -167,16 +105,10 @@ class ConsoleInterceptor {
       this.writeStream.write(`${'='.repeat(80)}\n`);
       
       this.writeStream.end(() => {
-        console.log(`[ConsoleInterceptor] 📝 日志文件已保存: ${this.logFilePath}`);
+        this.originalConsoleLog(`[TaskLogger] 📝 日志文件已保存: task_${this.taskId}.log`);
       });
       this.writeStream = null;
     }
-    
-    console.log = this.originalConsoleLog;
-    console.warn = this.originalConsoleWarn;
-    console.error = this.originalConsoleError;
-    console.info = this.originalConsoleInfo;
-    console.log(`[ConsoleInterceptor] ⏹️ 已停止日志拦截，任务ID: ${this.taskId}`);
   }
 }
 
@@ -186,8 +118,10 @@ class TaskService {
 
   // 启动任务
   async startTask(taskId: string, config: TaskConfig) {
-    console.log(`[TaskService] 开始启动任务: ${taskId}`);
-    console.log(`[TaskService] 任务配置:`, JSON.stringify(config, null, 2));
+    const logger = new TaskLogger(taskId);
+    
+    logger.info(`[TaskService] 开始启动任务: ${taskId}`);
+    logger.info(`[TaskService] 任务配置:`, JSON.stringify(config, null, 2));
     
     const controller = new AbortController();
     this.runningTasks.set(taskId, controller);
@@ -197,7 +131,7 @@ class TaskService {
       UPDATE tasks SET status = 'running', start_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `).run(taskId);
-    console.log(`[TaskService] 任务状态已更新为 running`);
+    logger.info(`[TaskService] 任务状态已更新为 running`);
 
     // 初始化进度
     this.taskProgress.set(taskId, {
@@ -216,13 +150,13 @@ class TaskService {
     const filename = `job_data_${taskId}.xlsx`;
     const filepath = path.join(csvDir, filename);
     await this.createExcelFile(filepath);
-    console.log(`[TaskService] Excel文件已创建: ${filepath}`);
+    logger.info(`[TaskService] Excel文件已创建: ${filepath}`);
 
     // 更新文件路径
     await db.prepare(`
       UPDATE tasks SET csv_path = $1 WHERE id = $2
     `).run(filepath, taskId);
-    console.log(`[TaskService] 文件路径已更新`);
+    logger.info(`[TaskService] 文件路径已更新`);
 
     // 发送初始状态消息
     io.to(`task:${taskId}`).emit('task:status', {
@@ -230,10 +164,10 @@ class TaskService {
       status: 'running',
       message: '任务已启动，准备开始爬取...'
     });
-    console.log(`[TaskService] 已发送初始状态消息`);
+    logger.info(`[TaskService] 已发送初始状态消息`);
 
-    // 启动爬取过程
-    this.executeCrawling(taskId, config, controller);
+    // 启动爬取过程（传入logger）
+    this.executeCrawling(taskId, config, controller, undefined, logger);
   }
 
   // 执行爬取
@@ -242,20 +176,18 @@ class TaskService {
     config: TaskConfig, 
     controller: AbortController,
     resumeState?: { combinationIndex: number; currentPage: number; initialRecordCount: number },
-    existingInterceptor?: ConsoleInterceptor  // 🔧 新增参数：接收已有的拦截器
+    logger?: TaskLogger  // 🔧 修改参数类型：从ConsoleInterceptor改为TaskLogger
   ) {
-    // 在try外部声明拦截器
-    let consoleInterceptor: ConsoleInterceptor | null = null;
-    
+    let taskLogger: TaskLogger | null = null; // 🔧 在try外部声明
+
     try {
-      // 🔧 关键修复：如果已有拦截器则复用，否则创建新的
-      if (existingInterceptor) {
-        consoleInterceptor = existingInterceptor;
-        console.log(`[TaskService] 🔄 使用已有的控制台拦截器`);
+      // 🔧 关键修复：如果已有logger则复用，否则创建新的
+      if (logger) {
+        taskLogger = logger;
+        taskLogger.info(`[TaskService] 🔄 使用已有的日志记录器`);
       } else {
-        consoleInterceptor = new ConsoleInterceptor(taskId);
-        consoleInterceptor.start();
-        console.log(`[TaskService] ✅ 创建新的控制台拦截器`);
+        taskLogger = new TaskLogger(taskId);
+        taskLogger.info(`[TaskService] ✅ 创建新的日志记录器`);
       }
       
       // 执行爬取
@@ -265,8 +197,8 @@ class TaskService {
       
       // 🔧 关键修复：如果是重启任务，从已有CSV文件读取初始记录数
       if (resumeState) {
-        console.log(`[TaskService] 🔄 断点续传模式 - 起始记录数: ${totalRecords}`);
-        console.log(`[TaskService] 📍 从组合索引 ${resumeState.combinationIndex}, 第 ${resumeState.currentPage} 页继续`);
+        taskLogger.info(`[TaskService] 🔄 断点续传模式 - 起始记录数: ${totalRecords}`);
+        taskLogger.info(`[TaskService] 📍 从组合索引 ${resumeState.combinationIndex}, 第 ${resumeState.currentPage} 页继续`);
         
         io.to(`task:${taskId}`).emit('task:log', {
           taskId,
@@ -281,10 +213,10 @@ class TaskService {
       const filename = path.basename(filepath);
 
       for (const site of config.sites) {
-        console.log(`[TaskService] 开始爬取站点: ${site}`);
+        taskLogger.info(`[TaskService] 开始爬取站点: ${site}`);
         
         if (controller.signal.aborted) {
-          console.log(`[TaskService] 任务已被中止`);
+          taskLogger.info(`[TaskService] 任务已被中止`);
           break;
         }
 
@@ -298,21 +230,26 @@ class TaskService {
           ? new ZhilianCrawler()
           : new Job51Crawler();
 
-        // 🔧 关键修复：设置爬虫的taskId，使其能够更新数据库进度
+        // 🔧 关键修复：设置爬虫的taskId和logger，使其能够正确记录日志
         (crawler as any).taskId = taskId;
+        if ((crawler as any).setLogger) {
+          (crawler as any).setLogger(taskLogger);
+        }
         
-        console.log(`[TaskService] 🚀 爬虫实例已创建，开始遍历职位数据...`);
-        let iterationCount = 0; // 🔧 诊断：记录迭代次数
+        taskLogger.info(`[TaskService] 🚀 爬虫实例已创建，开始遍历职位数据...`);
+
+        // 🔧 诊断：记录迭代次数
+        let iterationCount = 0;
         
         for await (const job of crawler.crawl(config, controller.signal)) {
           iterationCount++;
           
           if (iterationCount === 1) {
-            console.log(`[TaskService] ✅ 首次接收到数据！job=${JSON.stringify({jobName: job.jobName, companyName: job.companyName})}`);
+            taskLogger.info(`[TaskService] ✅ 首次接收到数据！job=${JSON.stringify({jobName: job.jobName, companyName: job.companyName})}`);
           }
           
           if (controller.signal.aborted) {
-            console.log(`[TaskService] 爬取过程中被中止`);
+            taskLogger.info(`[TaskService] 爬取过程中被中止`);
             break;
           }
 
@@ -324,10 +261,10 @@ class TaskService {
             
             // 🔧 优化：减少日志输出频率，每10条输出一次
             if (totalRecords % 10 === 0 || totalRecords <= 5) {
-              console.log(`[TaskService] 已采集第 ${totalRecords} 条数据`);
+              taskLogger.info(`[TaskService] 已采集第 ${totalRecords} 条数据`);
             }
           } else {
-            console.warn(`[TaskService] ⚠️ 职位 ${job.jobId} 写入失败，跳过计数`);
+            taskLogger.warn(`[TaskService] ⚠️ 职位 ${job.jobId} 写入失败，跳过计数`);
           }
 
           // 🔧 关键优化：降低数据库更新频率，从每条更新改为每5条或每秒更新
@@ -358,7 +295,7 @@ class TaskService {
             // 🔧 诊断日志：记录更新触发原因
             const triggerReason = totalRecords === 0 ? '心跳(无数据)' : 
                                  (elapsed >= 2 ? `时间间隔(${elapsed.toFixed(1)}s)` : `数据量(${totalRecords}条)`);
-            console.log(`[TaskService] 📊 准备更新进度 - 触发原因: ${triggerReason}, totalRecords=${totalRecords}, isMultiCombination=${isMultiCombination}`);
+            taskLogger.info(`[TaskService] 📊 准备更新进度 - 触发原因: ${triggerReason}, totalRecords=${totalRecords}, isMultiCombination=${isMultiCombination}`);
 
             // 🔧 关键修复：无论单/多组合，都更新record_count（已采集记录数）
             // 但progress（进度百分比）的计算方式不同
@@ -405,13 +342,13 @@ class TaskService {
               );
             } catch (dbError: any) {
               // 🔧 数据库更新失败不影响数据采集，仅记录日志
-              console.warn(`[TaskService] 数据库进度更新失败（可忽略）: ${dbError.message}`);
+              taskLogger.warn(`[TaskService] 数据库进度更新失败（可忽略）: ${dbError.message}`);
             }
 
             // 🔧 调试：检查WebSocket房间内的客户端数量
             const room = io.sockets.adapter.rooms.get(`task:${taskId}`);
             const clientCount = room ? room.size : 0;
-            console.log(`[TaskService] 📡 准备推送进度 - 房间内客户端数: ${clientCount}, progress: ${progressPercent}%, records: ${totalRecords}`);
+            taskLogger.info(`[TaskService] 📡 准备推送进度 - 房间内客户端数: ${clientCount}, progress: ${progressPercent}%, records: ${totalRecords}`);
 
             io.to(`task:${taskId}`).emit('task:progress', {
               taskId,
@@ -424,14 +361,14 @@ class TaskService {
               message: totalRecords > 0 ? `已采集 ${totalRecords} 条数据` : '正在爬取中...'
             });
             
-            console.log(`[TaskService] ✅ 进度消息已发送`);
+            taskLogger.info(`[TaskService] ✅ 进度消息已发送`);
           }
         }
 
       }
 
       // 任务完成
-      console.log(`[TaskService] 任务完成，共采集 ${totalRecords} 条数据`);
+      taskLogger.info(`[TaskService] 任务完成，共采集 ${totalRecords} 条数据`);
       const endTime = Date.now();
       
       // 安全地获取startTime
@@ -473,21 +410,26 @@ class TaskService {
         csvPath: filepath
       });
       
-      console.log(`[TaskService] 任务已完成并发送完成消息`);
+      taskLogger.info(`[TaskService] 任务已完成并发送完成消息`);
 
     } catch (error: any) {
       // 任务失败
-      console.error(`[TaskService] 任务失败:`, error);
+      taskLogger?.error(`[TaskService] 任务失败:`, error);
       if (error.stack) {
-        console.error(`[TaskService] 错误堆栈:`, error.stack);
+        taskLogger?.error(`[TaskService] 错误堆栈:`, error.stack);
       }
 
       // 🔧 关键修复：检测是否为可恢复的浏览器崩溃错误
       const isBrowserCrash = error.canRecover === true || 
                              error.message?.includes('BROWSER_CRASH_RECOVERABLE');
+      
+      // 🔧 新增：检测是否为计划内的浏览器重启
+      const isPlannedRestart = error.shouldRestart === true ||
+                               error.message?.includes('BROWSER_RESTART_SCHEDULED');
 
-      if (isBrowserCrash) {
-        console.log(`[TaskService] 🔄 检测到浏览器崩溃，准备重启并重试...`);
+      if (isBrowserCrash || isPlannedRestart) {
+        const restartReason = isPlannedRestart ? '计划内重启' : '浏览器崩溃';
+        taskLogger?.info(`[TaskService] 🔄 检测到${restartReason}，准备重启并重试...`);
         
         // 🔧 关键修复1：读取当前CSV文件的行数作为初始记录数
         let initialRecordCount = 0;
@@ -500,17 +442,17 @@ class TaskService {
             const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
             // 减去表头行
             initialRecordCount = Math.max(0, lines.length - 1);
-            console.log(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从CSV文件读取）`);
+            taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从CSV文件读取）`);
           }
         } catch (readError: any) {
-          console.warn(`[TaskService] ⚠️ 读取CSV文件失败，将从0开始计数:`, readError.message);
+          taskLogger?.warn(`[TaskService] ⚠️ 读取CSV文件失败，将从0开始计数:`, readError.message);
         }
         
         // 🔧 关键修复2：提取错误中的位置信息
         const combinationIndex = error.combinationIndex || 0;
         const currentPage = error.currentPage || 1;
         
-        console.log(`[TaskService] 📍 失败位置: 组合索引=${combinationIndex}, 页码=${currentPage}`);
+        taskLogger?.info(`[TaskService] 📍 失败位置: 组合索引=${combinationIndex}, 页码=${currentPage}`);
         
         // 发送重启日志到前端
         io.to(`task:${taskId}`).emit('task:log', {
@@ -524,7 +466,7 @@ class TaskService {
 
         try {
           // 重新执行爬取任务（从当前位置继续）
-          console.log(`[TaskService] 🚀 重新启动爬虫任务...`);
+          taskLogger?.info(`[TaskService] 🚀 重新启动爬虫任务...`);
           
           // 🔧 关键修复3：传递恢复状态，包括起始记录数和失败位置
           const resumeState = {
@@ -543,11 +485,11 @@ class TaskService {
           };
           
           // 🔧 关键修复5：传递当前拦截器，避免重复创建
-          await this.executeCrawling(taskId, configWithResume, controller, resumeState, consoleInterceptor || undefined);
+          await this.executeCrawling(taskId, configWithResume, controller, resumeState, logger || undefined);
           return; // 重试成功后直接返回，不执行下方的失败逻辑
         } catch (retryError: any) {
           // 如果重试也失败，则标记为最终失败
-          console.error(`[TaskService] ❌ 重试后仍然失败:`, retryError.message);
+          taskLogger?.error(`[TaskService] ❌ 重试后仍然失败:`, retryError.message);
           error = retryError; // 使用重试的错误信息
         }
       }
@@ -571,14 +513,12 @@ class TaskService {
       
     } finally {
       // 🔧 关键修复：只有当前创建的拦截器才需要停止（复用的拦截器由外层管理）
-      if (consoleInterceptor && !existingInterceptor) {
-        consoleInterceptor.stop();
-        console.log(`[TaskService] ✅ 控制台拦截器已停止`);
-      } else if (existingInterceptor) {
-        console.log(`[TaskService] ℹ️  复用外层拦截器，不在这里停止`);
+      if (logger) {
+        logger.close();
+        taskLogger?.info(`[TaskService] ✅ 日志记录器已停止`);
       }
       
-      console.log(`[TaskService] 清理任务资源`);
+      taskLogger?.info(`[TaskService] 清理任务资源`);
       this.runningTasks.delete(taskId);
       this.taskProgress.delete(taskId);
     }

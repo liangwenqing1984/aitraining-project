@@ -7,10 +7,9 @@ Write-Host ""
 
 Write-Host "[1/5] Cleaning residual processes..." -ForegroundColor Yellow
 Get-Process -Name "node" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process -Name "chrome" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-Process -Name "chromium" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# Skip Chrome cleanup to preserve user browser sessions
 Start-Sleep -Seconds 2
-Write-Host "[OK] Processes cleaned" -ForegroundColor Green
+Write-Host "[OK] Processes cleaned (Node.js only)" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "[2/5] Cleaning backend build cache..." -ForegroundColor Yellow
