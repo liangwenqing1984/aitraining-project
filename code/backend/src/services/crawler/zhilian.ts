@@ -1083,55 +1083,47 @@ strategy1Stats.failedExtractions++;
                 }
               } else {
                 // ✅ 优化：使用并发控制加速详情页抓取
-                const concurrency = config.concurrency || 1; // 默认串行（兼容旧配置）
-                this.log('info', `[ZhilianCrawler] 🚀启用并发模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}`);
+                const concurrency = config.concurrency != null ? config.concurrency : 2; // 默认并发数为2，平衡速度与稳定性
+                this.log('info', `[ZhilianCrawler] 🚀启用${concurrency <= 1 ? '串行' : '并发'}模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}`);
                 
                 if (concurrency <= 1) {
-                  // 串行模式（原有逻辑）
+                  // 🔧 串行模式：逐个处理，最安全但速度最慢（适合已被WAF标记的IP）
+                  this.log('info', `[ZhilianCrawler] ⚡ 使用串行模式处理（最安全，避免WAF拦截）`);
+                  
                   for (let i = 0; i < filteredJobs.length && !this.checkAborted(); i++) {
                     const job = filteredJobs[i];
-                    this.log('info', `[ZhilianCrawler] 处理第 ${i + 1}/${filteredJobs.length} 个职位: ${job.title}`);
+                    this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] 🔄 串行抓取: ${job.title}`);
                     
-                    // ✅ 关键修复：访问职位详情页获取完整信息
                     let jobData;
                     if (job.link) {
                       try {
-                        this.log('info', `[ZhilianCrawler] 📄 正在访问详情页: ${job.link.substring(0, 80)}...`);
                         jobData = await this.fetchJobDetail(browser, job.link, job);
-                        this.log('info', `[ZhilianCrawler] ✅ 成功获取详情页数据 - 公司: ${jobData.companyName}, 经验: ${jobData.workExperience}, 学历: ${jobData.education}`);
+                        this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ✅ 成功: ${jobData.companyName}`);
                       } catch (error: any) {
-                        this.log('error', `[ZhilianCrawler] ❌ 获取职位详情失败: ${error.message}，使用基本信息（字段将为空）`);
-                        // 如果详情页抓取失败，降级使用基本信息（但字段为空，不编造）
+                        this.log('error', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ❌ 失败: ${error.message}`);
                         jobData = this.generateBasicJob(job, config);
                       }
                     } else {
-                      this.log('warn', `[ZhilianCrawler] ⚠️ 职位没有链接，使用基本信息`);
-                      // 没有链接时使用基本信息
+                      this.log('warn', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] ⚠️ 无链接`);
                       jobData = this.generateBasicJob(job, config);
                     }
                     
                     yield jobData;
-
-                    // 每5条记录发送一次日志
-                    if ((i + 1) % 5 === 0 || i === filteredJobs.length - 1) {
-                      if (io && taskId) {
-                        io.to(`task:${taskId}`).emit('task:log', {
-                          taskId,
-                          level: 'success',
-                          message: `✅ 已采集 ${i + 1}/${filteredJobs.length} 条 | 关键词: ${keyword} | 城市: ${city || '不限'}`
-                        });
-                      }
+                    
+                    // 🔧 串行模式下，每个职位间增加随机延迟（模拟人类浏览，降低WAF风险）
+                    if (i < filteredJobs.length - 1) {
+                      const delay = 2000 + Math.random() * 2000;  // 2-4秒随机延迟（平衡速度与防封）
+                      this.log('info', `[ZhilianCrawler] ⏳ 等待 ${(delay/1000).toFixed(1)} 秒后处理下一个...`);
+                      await new Promise(resolve => setTimeout(resolve, delay));
                     }
-
-                    await this.randomDelay(1000, 2000);
                   }
                 } else {
                   // ✅ 并发模式：批次内并行处理，但加强资源管理
                   const maxConcurrency = 5; // 并发上限保持为5
-                  const concurrency = Math.min(config.concurrency || 2, maxConcurrency);
-                  const batchSize = concurrency;
+                  const actualConcurrency = Math.min(concurrency, maxConcurrency);
+                  const batchSize = actualConcurrency;
                   
-                  this.log('info', `[ZhilianCrawler] 🚀启用并发模式: 并发数=${concurrency} (配置值=${config.concurrency}, 上限=${maxConcurrency}), 总职位数=${filteredJobs.length}`);
+                  this.log('info', `[ZhilianCrawler] 🚀启用并发模式: 并发数=${actualConcurrency} (配置值=${concurrency}, 上限=${maxConcurrency}), 总职位数=${filteredJobs.length}`);
                   
                   for (let batchStart = 0; batchStart < filteredJobs.length && !this.checkAborted(); batchStart += batchSize) {
                     const batchEnd = Math.min(batchStart + batchSize, filteredJobs.length);
