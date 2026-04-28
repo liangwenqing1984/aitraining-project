@@ -439,21 +439,33 @@ class TaskService {
         const restartReason = isPlannedRestart ? '计划内重启' : '浏览器崩溃';
         taskLogger?.info(`[TaskService] 🔄 检测到${restartReason}，准备重启并重试...`);
         
-        // 🔧 关键修复1：读取当前CSV文件的行数作为初始记录数
+        // 🔧 关键修复1：读取当前Excel/CSV文件的行数作为初始记录数
         let initialRecordCount = 0;
         try {
           const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
           const filepath = task?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
-          
+
           if (fs.existsSync(filepath)) {
-            const fileContent = fs.readFileSync(filepath, 'utf-8');
-            const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
-            // 减去表头行
-            initialRecordCount = Math.max(0, lines.length - 1);
-            taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从CSV文件读取）`);
+            const ext = path.extname(filepath).toLowerCase();
+            if (ext === '.xlsx') {
+              const workbook = new ExcelJS.Workbook();
+              await workbook.xlsx.readFile(filepath);
+              const worksheet = workbook.worksheets[0];
+              if (worksheet) {
+                // 减去表头行
+                initialRecordCount = Math.max(0, worksheet.rowCount - 1);
+                taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从Excel文件读取）`);
+              }
+            } else {
+              const fileContent = fs.readFileSync(filepath, 'utf-8');
+              const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
+              // 减去表头行
+              initialRecordCount = Math.max(0, lines.length - 1);
+              taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从CSV文件读取）`);
+            }
           }
         } catch (readError: any) {
-          taskLogger?.warn(`[TaskService] ⚠️ 读取CSV文件失败，将从0开始计数:`, readError.message);
+          taskLogger?.warn(`[TaskService] ⚠️ 读取文件失败，将从0开始计数:`, readError.message);
         }
         
         // 🔧 关键修复2：提取错误中的位置信息
