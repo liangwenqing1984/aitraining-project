@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
+import { Loading } from '@element-plus/icons-vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
-import { getEnrichmentResults, generateInsights, getInsightsHistory, getInsightsReport } from '@/api/llm'
+import { getEnrichmentResults, generateInsights, getInsightsHistory, getInsightsReport, getEnrichmentStatus } from '@/api/llm'
 import * as echarts from 'echarts'
 
 const route = useRoute()
@@ -18,11 +19,13 @@ const activeReportTab = ref<'charts' | 'ai'>('charts')
 
 // 图表实例
 const charts: Record<string, any> = {}
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
 onMounted(async () => {
   const fileId = route.query.fileId as string
   if (fileId) {
     await loadAndAnalyze(fileId)
+    loadReportHistory()
   }
 })
 
@@ -80,26 +83,75 @@ async function loadAndAnalyze(fileId: string) {
   }
 }
 
-// 生成 AI 深度洞察报告
+// Check if enrichment data exists
+async function checkEnrichmentReady(): Promise<boolean> {
+  if (!fileInfo.value?.taskId) return false
+  try {
+    const res: any = await getEnrichmentStatus(fileInfo.value.taskId)
+    return res.success && res.data?.exists
+  } catch { return false }
+}
+
+// 生成 AI 深度洞察报告（WebSocket + 轮询双重保障）
 async function generateAIReport() {
   if (!fileInfo.value?.id) return
+  if (aiReportGenerating.value) return
+
+  // Prerequisite check
+  const ready = await checkEnrichmentReady()
+  if (!ready) {
+    ElMessage.warning('请先对该任务进行 AI 数据增强，增强完成后方可生成深度分析报告')
+    return
+  }
+
   aiReportGenerating.value = true
+  const startTime = Date.now()
+
   try {
     const res: any = await generateInsights(fileInfo.value.id)
-    if (res.success) {
-      ElMessage.success('AI 报告生成已启动，请稍候刷新查看')
-      // Wait and poll for the report
-      setTimeout(async () => {
-        await loadReportHistory()
-        aiReportGenerating.value = false
-      }, 15000) // Wait 15s for LLM to finish
-    } else {
-      throw new Error(res.error || '生成失败')
-    }
+    if (!res.success) throw new Error(res.error || '生成失败')
+
+    ElMessage.success('报告生成已启动，请稍候...')
+
+    // Poll for completion (every 2s, up to 90s)
+    pollForReport(startTime)
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || e.message || 'AI 报告生成失败')
     aiReportGenerating.value = false
   }
+}
+
+// 轮询等待报告生成
+function pollForReport(startTime: number) {
+  if (pollTimer) clearInterval(pollTimer)
+
+  pollTimer = setInterval(async () => {
+    try {
+      const res: any = await getInsightsHistory(fileInfo.value.id)
+      if (res.success && res.data?.length > 0) {
+        // New report found (created after we started generating)
+        const latest = res.data[0]
+        if (new Date(latest.createdAt).getTime() > startTime - 5000) {
+          clearInterval(pollTimer!)
+          pollTimer = null
+          aiReportHistory.value = res.data
+          await viewReport(latest.id)
+          aiReportGenerating.value = false
+          ElMessage.success('AI 深度分析报告已生成！')
+          return
+        }
+      }
+      // Timeout after 90s
+      if (Date.now() - startTime > 90000) {
+        clearInterval(pollTimer!)
+        pollTimer = null
+        aiReportGenerating.value = false
+        ElMessage.warning('报告生成超时，请稍后手动刷新查看')
+      }
+    } catch {
+      // Keep polling
+    }
+  }, 2000)
 }
 
 // 加载报告历史
@@ -109,7 +161,6 @@ async function loadReportHistory() {
     const res: any = await getInsightsHistory(fileInfo.value.id)
     if (res.success && res.data?.length > 0) {
       aiReportHistory.value = res.data
-      // Load the latest report
       await viewReport(res.data[0].id)
     }
   } catch {}
@@ -121,7 +172,6 @@ async function viewReport(reportId: string) {
     const res: any = await getInsightsReport(reportId)
     if (res.success && res.data) {
       aiReport.value = res.data
-      // Render charts from report config
       setTimeout(() => {
         const configs = aiReport.value?.chartsConfig
         if (configs && Array.isArray(configs)) {
@@ -129,7 +179,7 @@ async function viewReport(reportId: string) {
             renderReportChart(idx, cfg)
           })
         }
-      }, 200)
+      }, 300)
     }
   } catch {}
 }
@@ -140,12 +190,15 @@ function renderReportChart(idx: number, cfg: any) {
   const dom = document.getElementById(domId)
   if (!dom || !cfg.echartsOption) return
 
-  // Dispose old chart if exists
   const oldKey = `ai_chart_${idx}`
   if (charts[oldKey]) charts[oldKey].dispose()
 
   const instance = echarts.init(dom)
-  instance.setOption(cfg.echartsOption)
+  try {
+    instance.setOption(cfg.echartsOption, true)
+  } catch {
+    // Skip invalid chart options
+  }
   charts[oldKey] = instance
 }
 const salaryDistributionData = computed(() => {
@@ -359,25 +412,57 @@ function parseContent(content: string): Array<{ heading: string; body: string; k
   }
 }
 
-// Simple markdown to HTML renderer
+// Markdown to HTML renderer (supports tables, lists, bold, code)
 function renderMarkdown(text: string): string {
   if (!text) return ''
-  return text
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^- (.+)$/gm, '<li>$1</li>')
-    .replace(/\|(.+)\|/g, (match) => {
-      const cells = match.split('|').filter(c => c.trim())
-      if (cells.every(c => /^[-:]+$/.test(c.trim()))) return '' // separator row
-      return '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>'
+  let html = text
+
+  // Table blocks: detect | header | ... | separator | ... | rows
+  html = html.replace(/((?:[|].+[|]\n)+)/g, (block) => {
+    const lines = block.trim().split('\n').filter(l => l.includes('|'))
+    if (lines.length < 2) return block
+    // Skip separator line
+    const dataLines = lines.filter(l => !/^\|[\s\-:]+\|$/.test(l))
+    if (dataLines.length === 0) return block
+    const headerCells = dataLines[0].split('|').filter(c => c.trim())
+    const bodyLines = dataLines.slice(1)
+    let tableHtml = '<table><thead><tr>'
+    headerCells.forEach(c => { tableHtml += `<th>${c.trim()}</th>` })
+    tableHtml += '</tr></thead><tbody>'
+    bodyLines.forEach(line => {
+      const cells = line.split('|').filter(c => c.trim())
+      tableHtml += '<tr>'
+      cells.forEach((c, i) => {
+        const tag = i < headerCells.length ? 'td' : 'td'
+        tableHtml += `<${tag}>${c.trim()}</${tag}>`
+      })
+      tableHtml += '</tr>'
     })
-    .replace(/(<tr>.+<\/tr>)/g, '<table>$1</table>')
-    .replace(/\n\n/g, '<br/><br/>')
-    .replace(/\n/g, '<br/>')
+    tableHtml += '</tbody></table>'
+    return tableHtml
+  })
+
+  // Bold and italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
+  html = html.replace(/`(.+?)`/g, '<code>$1</code>')
+
+  // Headings
+  html = html.replace(/^#### (.+)$/gm, '<h5>$1</h5>')
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>')
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>')
+  html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>')
+
+  // Unordered list items
+  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
+
+  // Paragraph breaks
+  html = html.replace(/\n\n/g, '<br/><br/>')
+  html = html.replace(/\n/g, '<br/>')
+
+  return html
 }
 
 // 初始化所有图表
@@ -932,9 +1017,10 @@ const handleResize = () => {
 }
 window.addEventListener('resize', handleResize)
 
-// 组件卸载时清理图表实例和事件监听
+// 组件卸载时清理
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null }
   Object.values(charts).forEach(chart => chart?.dispose())
 })
 </script>
@@ -1082,6 +1168,17 @@ onUnmounted(() => {
       </el-row>
     </div>
     
+    <!-- AI 报告生成中 -->
+    <el-card v-if="!loading && aiReportGenerating" class="mb-4 ai-report-card generating-card">
+      <div class="generating-status">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        <div>
+          <h3>AI 深度分析报告生成中...</h3>
+          <p>正在调用大模型分析 {{ enrichmentData.length }} 条增强数据，预计需要 20-40 秒</p>
+        </div>
+      </div>
+    </el-card>
+
     <!-- AI 深度分析报告 -->
     <el-card v-if="!loading && aiReport" class="mb-4 ai-report-card">
       <template #header>
@@ -1487,6 +1584,20 @@ onUnmounted(() => {
 }
 
 /* AI Report Styles */
+.generating-card {
+  border-left: 4px solid #409eff;
+  animation: pulse-border 2s infinite;
+}
+@keyframes pulse-border {
+  0%, 100% { border-left-color: #409eff; }
+  50% { border-left-color: #a0cfff; }
+}
+.generating-status {
+  display: flex; align-items: center; gap: 20px; padding: 20px 0;
+}
+.generating-status h3 { margin: 0 0 8px; color: #303133; }
+.generating-status p { margin: 0; color: #909399; font-size: 13px; }
+
 .ai-report-card {
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
