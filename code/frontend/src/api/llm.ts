@@ -138,3 +138,52 @@ export function suggestSelectors(html: string, target: string): Promise<ApiRespo
 export function recommendAction(classification: PageClassification): Promise<ApiResponse<any>> {
   return api.post('/llm/anti-crawl/action', { classification })
 }
+
+// ==================== RAG 语义搜索 ====================
+
+export interface RAGSearchResult {
+  id: string
+  jobId: string
+  taskId: string
+  jobName: string
+  jobCategoryL1: string
+  jobCategoryL2: string
+  companyName: string
+  companyIndustry: string
+  workCity: string
+  salaryMonthlyMin: number
+  salaryMonthlyMax: number
+  keySkills: string[]
+  similarity: number
+}
+
+export interface RAGIndexResult {
+  total: number
+  indexed: number
+  skipped: number
+  errors: number
+}
+
+// 启动向量化索引（异步）
+export function startRAGIndex(taskId: string): Promise<ApiResponse<{ status: string }>> {
+  return api.post(`/rag/index/${taskId}`)
+}
+
+// 同步向量化索引
+export function syncRAGIndex(taskId: string): Promise<ApiResponse<RAGIndexResult>> {
+  return api.post(`/rag/index/${taskId}/sync`)
+}
+
+// 语义搜索
+export function ragSearch(query: string, options?: {
+  limit?: number
+  taskId?: string
+  minSimilarity?: number
+}): Promise<ApiResponse<{ query: string; results: RAGSearchResult[]; count: number }>> {
+  return api.post('/rag/search', { query, ...options })
+}
+
+// 获取向量化统计
+export function getRAGStats(taskId?: string): Promise<ApiResponse<any>> {
+  return api.get('/rag/stats', { params: taskId ? { taskId } : {} })
+}

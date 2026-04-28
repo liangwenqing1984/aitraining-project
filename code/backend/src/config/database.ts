@@ -31,8 +31,11 @@ async function initDatabase() {
   const client = await pool.connect();
   
   try {
-    // 设置schema搜索路径
-    await client.query('SET search_path TO liangwenqing');
+    // 先启用 pgvector 扩展（在设置 schema 之前，扩展安装在 public schema）
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+
+    // 设置schema搜索路径（包含 public 以便访问 vector 类型）
+    await client.query('SET search_path TO liangwenqing, public');
     
     // 创建tasks表
     await client.query(`
@@ -160,6 +163,29 @@ async function initDatabase() {
       )
     `);
 
+    // 创建 job_embeddings 表（RAG 职位向量存储，依赖 pgvector 扩展）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS job_embeddings (
+        id VARCHAR(255) PRIMARY KEY,
+        job_id VARCHAR(255) NOT NULL,
+        task_id VARCHAR(255) REFERENCES tasks(id) ON DELETE CASCADE,
+        text_content TEXT NOT NULL,
+        embedding vector(768),
+        job_name VARCHAR(500),
+        job_category_l1 VARCHAR(100),
+        job_category_l2 VARCHAR(100),
+        company_name VARCHAR(500),
+        company_industry VARCHAR(100),
+        work_city VARCHAR(100),
+        salary_monthly_min INTEGER,
+        salary_monthly_max INTEGER,
+        key_skills JSONB DEFAULT '[]',
+        source_metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(task_id, job_id)
+      )
+    `);
+
     // 创建索引
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC)');
@@ -169,6 +195,16 @@ async function initDatabase() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_job_enrichments_task ON job_enrichments(task_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_market_reports_file ON market_reports(file_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_saved_queries_task ON saved_queries(task_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_job_embeddings_task ON job_embeddings(task_id)');
+    // pgvector IVFFlat 索引（加速近似最近邻搜索）
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_job_embeddings_vector
+      ON job_embeddings USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100)
+    `).catch(() => {
+      // IVFFlat 索引在空表上创建可能失败，插入数据后重建即可
+      console.log('[Database] ⚠️ IVFFlat 索引创建跳过（可能因表为空），后续可通过 reindex 手动重建');
+    });
 
     console.log('✅ PostgreSQL数据库表初始化完成');
   } catch (error) {
@@ -219,7 +255,7 @@ const db = {
         try {
           const client = await pool.connect();
           try {
-            await client.query('SET search_path TO liangwenqing');
+            await client.query('SET search_path TO liangwenqing, public');
             const result = await client.query(convertedSql, args);
             
             // 🔧 调试日志：记录原始结果
@@ -252,7 +288,7 @@ const db = {
         try {
           const client = await pool.connect();
           try {
-            await client.query('SET search_path TO liangwenqing');
+            await client.query('SET search_path TO liangwenqing, public');
             const result = await client.query(convertedSql, args);
             return result.rows[0] ? convertToCamelCase(result.rows[0]) : null;
           } finally {
@@ -268,7 +304,7 @@ const db = {
         try {
           const client = await pool.connect();
           try {
-            await client.query('SET search_path TO liangwenqing');
+            await client.query('SET search_path TO liangwenqing, public');
             
             // 处理INSERT和UPDATE语句中的datetime('now')
             let processedSql = convertedSql.replace(/datetime\('now'\)/g, 'CURRENT_TIMESTAMP');

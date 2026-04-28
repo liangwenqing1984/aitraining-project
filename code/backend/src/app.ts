@@ -11,6 +11,7 @@ import fileRoutes from './routes/fileRoutes';
 import analysisRoutes from './routes/analysisRoutes';
 import authRoutes from './routes/authRoutes';
 import llmRoutes from './routes/llmRoutes';
+import ragRoutes from './routes/ragRoutes';
 
 // 中间件
 import { errorHandler } from './middleware/errorHandler';
@@ -44,6 +45,7 @@ app.use('/api/files', fileRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/llm', llmRoutes);
+app.use('/api/rag', ragRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

@@ -125,6 +125,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '智能查询', icon: 'ChatDotRound' }
       },
       {
+        path: 'rag',
+        name: 'RAGSearch',
+        component: () => import('@/views/rag/Index.vue'),
+        meta: { title: '语义搜索', icon: 'Search' }
+      },
+      {
         path: 'settings/llm',
         name: 'LLMSettings',
         component: () => import('@/views/settings/LLMSettings.vue'),

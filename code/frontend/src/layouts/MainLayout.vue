@@ -17,7 +17,8 @@ import {
   SwitchButton,
   TrendCharts,
   Files,
-  Operation
+  Operation,
+  Search
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -44,6 +45,7 @@ const menuItems = [
   { path: '/crawler', title: '数据采集', icon: Monitor },
   { path: '/files', title: '数据管理', icon: Files },
   { path: '/query', title: '智能查询', icon: TrendCharts },
+  { path: '/rag', title: '语义搜索', icon: Search },
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
   { path: '/settings/llm', title: 'AI 配置', icon: Setting },
   { path: '/docs', title: '文档', icon: Document },
