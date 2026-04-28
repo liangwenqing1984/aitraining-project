@@ -172,6 +172,20 @@ export const useCrawlerStore = defineStore('crawler', () => {
       }
     })
 
+    // 监听 AI 增强进度
+    socket.value.on('enrichment:progress', (data: any) => {
+      const { taskId, status, message } = data
+      if (status === 'completed') {
+        ElMessage.success(`[AI 增强] ${message}`)
+      } else if (status === 'failed') {
+        ElMessage.error(`[AI 增强] ${message}`)
+      }
+      // Also log to task
+      if (taskId) {
+        addLogToTask(taskId, status === 'failed' ? 'error' : 'info', `[AI增强] ${message}`)
+      }
+    })
+
     // 🔧 关键修复: task:log事件需要根据taskId路由到对应的任务日志
     socket.value.on('task:log', (data: any) => {
       // data应该包含: { taskId, level, message }

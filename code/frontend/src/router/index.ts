@@ -119,6 +119,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '文档', icon: 'Document' }
       },
       {
+        path: 'settings/llm',
+        name: 'LLMSettings',
+        component: () => import('@/views/settings/LLMSettings.vue'),
+        meta: { title: 'LLM 配置', icon: 'Setting' }
+      },
+      {
         path: 'about',
         name: 'About',
         component: () => import('@/views/About.vue'),

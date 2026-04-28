@@ -1,0 +1,348 @@
+<template>
+  <div class="llm-settings">
+    <div class="page-header">
+      <h2>LLM 模型配置</h2>
+      <p class="subtitle">配置大模型提供商，为数据增强、智能分析、自然语言查询等功能提供 AI 能力</p>
+    </div>
+
+    <div class="action-bar">
+      <el-button type="primary" @click="showAddDialog">
+        <el-icon><Plus /></el-icon>
+        添加模型
+      </el-button>
+    </div>
+
+    <el-table :data="configs" stripe v-loading="loading" class="config-table">
+      <el-table-column prop="provider" label="提供商" width="120">
+        <template #default="{ row }">
+          <el-tag :type="providerTagType(row.provider)">{{ providerLabel(row.provider) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="modelName" label="模型名称" min-width="200" />
+      <el-table-column prop="baseUrl" label="API 端点" min-width="250">
+        <template #default="{ row }">
+          <span v-if="row.baseUrl">{{ row.baseUrl }}</span>
+          <span v-else class="default-text">{{ getDefaultUrl(row.provider) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="分配任务" min-width="200">
+        <template #default="{ row }">
+          <el-tag
+            v-for="task in row.taskRouting"
+            :key="task"
+            size="small"
+            class="task-tag"
+          >{{ taskLabel(task) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">
+          <el-switch v-model="row.isActive" @change="handleStatusChange(row)" />
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="160" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="primary" size="small" @click="testConnection(row)">测试</el-button>
+          <el-button link type="primary" size="small" @click="editConfig(row)">编辑</el-button>
+          <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+
+    <!-- 添加/编辑对话框 -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="editingId ? '编辑模型配置' : '添加模型配置'"
+      width="560px"
+      destroy-on-close
+    >
+      <el-form :model="form" label-width="100px" label-position="left">
+        <el-form-item label="提供商" required>
+          <el-select v-model="form.provider" placeholder="选择提供商" style="width: 100%">
+            <el-option label="OpenAI (GPT-4o 等)" value="openai" />
+            <el-option label="Anthropic (Claude)" value="anthropic" />
+            <el-option label="DeepSeek" value="deepseek" />
+            <el-option label="智谱 (GLM)" value="zhipu" />
+            <el-option label="Ollama (本地模型)" value="ollama" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="模型名称" required>
+          <el-input
+            v-model="form.modelName"
+            :placeholder="form.provider === 'ollama' ? '例如: qwen3:14b' : '例如: gpt-4o'"
+          />
+        </el-form-item>
+
+        <el-form-item label="API Key">
+          <el-input
+            v-model="form.apiKeyEncrypted"
+            type="password"
+            show-password
+            :placeholder="form.provider === 'ollama' ? '本地模型无需填写' : '输入 API Key'"
+          />
+        </el-form-item>
+
+        <el-form-item label="API 端点">
+          <el-input
+            v-model="form.baseUrl"
+            :placeholder="getDefaultUrl(form.provider)"
+          />
+        </el-form-item>
+
+        <el-form-item label="任务分配" required>
+          <el-checkbox-group v-model="form.taskRouting">
+            <el-checkbox label="enrichment">数据增强</el-checkbox>
+            <el-checkbox label="insights">智能洞察</el-checkbox>
+            <el-checkbox label="query">自然语言查询</el-checkbox>
+            <el-checkbox label="anti-crawl">反爬检测</el-checkbox>
+          </el-checkbox-group>
+          <div class="form-tip">勾选此模型负责处理的任务类型。本地模型推荐用于数据增强和反爬检测，云端模型推荐用于智能洞察和自然语言查询。</div>
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSave" :loading="saving">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 测试结果对话框 -->
+    <el-dialog v-model="testDialogVisible" title="连接测试" width="480px">
+      <div v-if="testing" class="test-loading">
+        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+        <p>正在测试连接...</p>
+      </div>
+      <div v-else-if="testResult">
+        <el-alert
+          :type="testResult.ok ? 'success' : 'error'"
+          :title="testResult.ok ? '连接成功' : '连接失败'"
+          :description="testResult.ok ? `延迟: ${testResult.latency}ms` : (testResult.error || `延迟: ${testResult.latency}ms`)"
+          show-icon
+          :closable="false"
+        />
+        <div v-if="testResult.models.length > 0" style="margin-top: 16px">
+          <h4>可用模型：</h4>
+          <el-tag v-for="m in testResult.models" :key="m" size="small" style="margin: 4px">{{ m }}</el-tag>
+        </div>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Loading } from '@element-plus/icons-vue'
+import {
+  listLLMConfigs, saveLLMConfig, deleteLLMConfig, checkLLMHealth,
+  type LLMConfig, type HealthCheckResult
+} from '@/api/llm'
+
+const configs = ref<LLMConfig[]>([])
+const loading = ref(false)
+const saving = ref(false)
+const dialogVisible = ref(false)
+const editingId = ref<number | null>(null)
+const testDialogVisible = ref(false)
+const testing = ref(false)
+const testResult = ref<HealthCheckResult | null>(null)
+
+const defaultForm: LLMConfig = {
+  provider: 'openai',
+  modelName: '',
+  apiKeyEncrypted: '',
+  baseUrl: '',
+  isActive: true,
+  taskRouting: [],
+}
+
+const form = ref<LLMConfig>({ ...defaultForm })
+
+const taskLabelMap: Record<string, string> = {
+  'enrichment': '数据增强',
+  'insights': '智能洞察',
+  'query': 'NL查询',
+  'anti-crawl': '反爬检测',
+}
+
+function taskLabel(key: string): string {
+  return taskLabelMap[key] || key
+}
+
+function providerLabel(p: string): string {
+  const map: Record<string, string> = {
+    openai: 'OpenAI', anthropic: 'Anthropic',
+    deepseek: 'DeepSeek', zhipu: '智谱',
+    ollama: 'Ollama'
+  }
+  return map[p] || p
+}
+
+function providerTagType(p: string): string {
+  const map: Record<string, string> = {
+    openai: 'success', anthropic: '',
+    deepseek: 'primary', zhipu: 'danger',
+    ollama: 'warning'
+  }
+  return map[p] || 'info'
+}
+
+function getDefaultUrl(p: string): string {
+  const map: Record<string, string> = {
+    openai: 'https://api.openai.com',
+    anthropic: 'https://api.anthropic.com',
+    deepseek: 'https://api.deepseek.com',
+    zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+    ollama: 'http://localhost:11434',
+  }
+  return map[p] || ''
+}
+
+async function loadConfigs() {
+  loading.value = true
+  try {
+    const res = await listLLMConfigs()
+    configs.value = (res as any).data || []
+  } catch (e: any) {
+    ElMessage.error('加载配置失败: ' + (e.message || '未知错误'))
+  } finally {
+    loading.value = false
+  }
+}
+
+function showAddDialog() {
+  editingId.value = null
+  form.value = { ...defaultForm }
+  dialogVisible.value = true
+}
+
+function editConfig(row: LLMConfig) {
+  editingId.value = row.id || null
+  form.value = {
+    provider: row.provider,
+    modelName: row.modelName,
+    apiKeyEncrypted: '',
+    baseUrl: row.baseUrl || '',
+    isActive: row.isActive,
+    taskRouting: [...(row.taskRouting || [])],
+  }
+  dialogVisible.value = true
+}
+
+async function handleSave() {
+  if (!form.value.provider || !form.value.modelName) {
+    ElMessage.warning('请填写提供商和模型名称')
+    return
+  }
+  if (!form.value.taskRouting.length) {
+    ElMessage.warning('请至少选择一个任务类型')
+    return
+  }
+
+  saving.value = true
+  try {
+    const payload: any = { ...form.value }
+    if (editingId.value) {
+      payload.id = editingId.value
+    }
+    await saveLLMConfig(payload)
+    ElMessage.success(editingId.value ? '配置已更新' : '配置已创建')
+    dialogVisible.value = false
+    await loadConfigs()
+  } catch (e: any) {
+    ElMessage.error('保存失败: ' + (e.message || '未知错误'))
+  } finally {
+    saving.value = false
+  }
+}
+
+async function handleDelete(row: LLMConfig) {
+  try {
+    await ElMessageBox.confirm(`确定要删除 ${row.modelName} 的配置吗？`, '确认删除', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    })
+    await deleteLLMConfig(row.id!)
+    ElMessage.success('已删除')
+    await loadConfigs()
+  } catch { /* cancelled */ }
+}
+
+async function handleStatusChange(row: LLMConfig) {
+  try {
+    await saveLLMConfig({
+      ...row,
+      apiKeyEncrypted: undefined, // don't overwrite existing key
+    })
+  } catch (e: any) {
+    ElMessage.error('状态更新失败: ' + (e.message || '未知错误'))
+    row.isActive = !row.isActive
+  }
+}
+
+async function testConnection(row: LLMConfig) {
+  testDialogVisible.value = true
+  testing.value = true
+  testResult.value = null
+  try {
+    const res = await checkLLMHealth(row.provider)
+    testResult.value = (res as any).data
+  } catch (e: any) {
+    const errMsg = e?.response?.data?.error || e?.message || '网络请求失败'
+    testResult.value = { ok: false, models: [], latency: 0, error: errMsg }
+  } finally {
+    testing.value = false
+  }
+}
+
+onMounted(() => {
+  loadConfigs()
+})
+</script>
+
+<style scoped>
+.llm-settings {
+  padding: 24px;
+  max-width: 1100px;
+}
+
+.page-header h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.subtitle {
+  color: #909399;
+  margin: 0 0 20px;
+}
+
+.action-bar {
+  margin-bottom: 16px;
+}
+
+.config-table {
+  margin-top: 8px;
+}
+
+.task-tag {
+  margin: 2px 4px 2px 0;
+}
+
+.form-tip {
+  color: #909399;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.default-text {
+  color: #c0c4cc;
+  font-style: italic;
+}
+
+.test-loading {
+  text-align: center;
+  padding: 24px;
+}
+</style>

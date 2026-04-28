@@ -3,12 +3,14 @@ import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
+import { getEnrichmentResults } from '@/api/llm'
 import * as echarts from 'echarts'
 
 const route = useRoute()
 const loading = ref(false)
 const analysisResult = ref<any>(null)
 const fileInfo = ref<any>(null)
+const enrichmentData = ref<any[]>([])
 
 // 图表实例
 const charts: Record<string, any> = {}
@@ -50,7 +52,15 @@ async function loadAndAnalyze(fileId: string) {
       console.log('[Analysis] ======================================')
       
       ElMessage.success('数据分析完成')
-      
+
+      // 加载 AI 增强数据（如果存在）
+      try {
+        const enrichRes: any = await getEnrichmentResults(fileRes.data.taskId)
+        if (enrichRes.data && Array.isArray(enrichRes.data)) {
+          enrichmentData.value = enrichRes.data
+        }
+      } catch { /* 增强数据加载失败不影响分析 */ }
+
       // 延迟初始化图表，确保DOM已渲染
       setTimeout(() => {
         initAllCharts()
@@ -957,6 +967,37 @@ onUnmounted(() => {
       </el-row>
     </div>
     
+    <!-- AI 增强结果 -->
+    <el-card v-if="!loading && enrichmentData.length > 0" class="mb-4 enrich-card">
+      <template #header>
+        <div class="card-header">
+          <span class="title">🤖 AI 增强数据（共 {{ enrichmentData.length }} 条）</span>
+          <el-tag type="success">LLM 标准化</el-tag>
+        </div>
+      </template>
+      <el-table :data="enrichmentData" stripe max-height="500" style="width: 100%">
+        <el-table-column prop="jobId" label="职位ID" width="120" />
+        <el-table-column label="月薪范围" width="150">
+          <template #default="{ row }">
+            <span v-if="row.salaryMonthlyMin">
+              {{ (row.salaryMonthlyMin / 1000).toFixed(0) }}K - {{ (row.salaryMonthlyMax / 1000).toFixed(0) }}K
+            </span>
+            <span v-else class="na-text">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="jobCategoryL1" label="一级分类" width="100" />
+        <el-table-column prop="jobCategoryL2" label="二级分类" width="120" />
+        <el-table-column prop="companyIndustry" label="行业" width="100" />
+        <el-table-column label="核心技能" min-width="200">
+          <template #default="{ row }">
+            <el-tag v-for="skill in row.keySkills?.slice(0, 5)" :key="skill" size="small" style="margin: 2px">{{ skill }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="educationNormalized" label="学历" width="80" />
+        <el-table-column prop="workMode" label="工作模式" width="80" />
+      </el-table>
+    </el-card>
+
     <el-empty v-if="!loading && !analysisResult" description="请从任务列表点击'分析'按钮查看数据分析">
       <el-button type="primary" @click="$router.push('/crawler')">前往任务列表</el-button>
     </el-empty>
@@ -1260,5 +1301,15 @@ onUnmounted(() => {
   .section-title {
     font-size: 16px;
   }
+}
+
+.enrich-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-left: 4px solid #67c23a;
+}
+
+.na-text {
+  color: #c0c4cc;
 }
 </style>

@@ -1,5 +1,6 @@
 import { httpServer } from './app';
 import { initDatabase } from './config/database';
+import { llmService } from './services/llm';
 import './socket';
 
 const PORT = process.env.PORT || 3004;
@@ -8,7 +9,8 @@ const PORT = process.env.PORT || 3004;
 async function startServer() {
   try {
     await initDatabase();
-    
+    await llmService.initialize();
+
     // 启动服务器
     httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

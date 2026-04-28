@@ -88,11 +88,54 @@ async function initDatabase() {
       )
     `);
 
+    // 创建 llm_config 表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS llm_config (
+        id SERIAL PRIMARY KEY,
+        provider VARCHAR(50) NOT NULL,
+        model_name VARCHAR(100) NOT NULL,
+        api_key_encrypted TEXT,
+        base_url VARCHAR(255),
+        is_active BOOLEAN DEFAULT true,
+        task_routing JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 创建 job_enrichments 表（LLM数据增强结果）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS job_enrichments (
+        id VARCHAR(255) PRIMARY KEY,
+        task_id VARCHAR(255) REFERENCES tasks(id) ON DELETE CASCADE,
+        job_id VARCHAR(255) NOT NULL,
+        salary_monthly_min INTEGER,
+        salary_monthly_max INTEGER,
+        salary_annual_estimate INTEGER,
+        job_category_l1 VARCHAR(100),
+        job_category_l2 VARCHAR(100),
+        company_industry VARCHAR(100),
+        key_skills JSONB DEFAULT '[]',
+        required_skills JSONB DEFAULT '[]',
+        preferred_skills JSONB DEFAULT '[]',
+        education_normalized VARCHAR(20),
+        experience_years_min INTEGER,
+        experience_years_max INTEGER,
+        benefits JSONB DEFAULT '[]',
+        work_mode VARCHAR(20),
+        model_used VARCHAR(100),
+        enriched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(task_id, job_id)
+      )
+    `);
+
     // 创建索引
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_task_id ON csv_files(task_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_source ON csv_files(source)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_llm_config_active ON llm_config(is_active)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_job_enrichments_task ON job_enrichments(task_id)');
 
     console.log('✅ PostgreSQL数据库表初始化完成');
   } catch (error) {

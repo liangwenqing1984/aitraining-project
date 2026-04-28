@@ -44,6 +44,7 @@ const menuItems = [
   { path: '/crawler', title: '数据采集', icon: Monitor },
   { path: '/files', title: '数据管理', icon: Files },
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
+  { path: '/settings/llm', title: 'AI 配置', icon: Setting },
   { path: '/docs', title: '文档', icon: Document },
   { path: '/about', title: '关于', icon: InfoFilled }
 ]

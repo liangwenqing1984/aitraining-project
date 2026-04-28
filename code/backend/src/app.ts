@@ -10,6 +10,7 @@ import taskRoutes from './routes/taskRoutes';
 import fileRoutes from './routes/fileRoutes';
 import analysisRoutes from './routes/analysisRoutes';
 import authRoutes from './routes/authRoutes';
+import llmRoutes from './routes/llmRoutes';
 
 // 中间件
 import { errorHandler } from './middleware/errorHandler';
@@ -42,6 +43,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/llm', llmRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

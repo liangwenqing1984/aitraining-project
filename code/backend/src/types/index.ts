@@ -92,6 +92,97 @@ export interface ProgressData {
   message: string;
 }
 
+// ==================== LLM 相关类型 ====================
+
+export type LLMProvider = 'openai' | 'anthropic' | 'ollama' | 'deepseek' | 'zhipu';
+export type LLMTaskType = 'enrichment' | 'insights' | 'query' | 'anti-crawl';
+
+export interface LLMConfig {
+  id?: number;
+  provider: LLMProvider;
+  modelName: string;
+  apiKeyEncrypted?: string;
+  baseUrl?: string;
+  isActive: boolean;
+  taskRouting: LLMTaskType[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LLMCallOptions {
+  taskType: LLMTaskType;
+  temperature?: number;
+  maxTokens?: number;
+  stream?: boolean;
+  signal?: AbortSignal;
+  responseFormat?: 'text' | 'json';
+}
+
+export interface LLMCallResult {
+  content: string;
+  model: string;
+  provider: string;
+  tokensUsed?: { prompt: number; completion: number; total: number };
+  duration: number;
+}
+
+export interface EnrichmentResult {
+  jobId: string;
+  salaryMonthlyMin?: number;
+  salaryMonthlyMax?: number;
+  salaryAnnualEstimate?: number;
+  jobCategoryL1?: string;
+  jobCategoryL2?: string;
+  companyIndustry?: string;
+  keySkills: string[];
+  requiredSkills: string[];
+  preferredSkills: string[];
+  educationNormalized?: string;
+  experienceYearsMin?: number;
+  experienceYearsMax?: number;
+  benefits: string[];
+  workMode?: string;
+}
+
+export interface MarketReport {
+  id?: string;
+  fileId: string;
+  reportType: 'overview' | 'skills' | 'company' | 'trend';
+  title: string;
+  content: string;
+  summary: string;
+  chartsConfig?: any;
+  modelUsed?: string;
+  createdAt?: string;
+}
+
+export interface NLQueryResult {
+  query: string;
+  generatedSql?: string;
+  summary: string;
+  data: any[];
+  chartConfig?: any;
+  executionTime: number;
+}
+
+export interface SavedQuery {
+  id?: string;
+  userQuery: string;
+  generatedSql?: string;
+  resultSummary?: string;
+  resultCount?: number;
+  createdAt?: string;
+}
+
+export interface AntiCrawlResult {
+  pageType: 'normal' | 'captcha' | 'waf' | 'login' | 'error' | 'empty';
+  confidence: number;
+  suggestedAction: 'continue' | 'wait' | 'switch_ip' | 'degrade' | 'abort';
+  waitSeconds?: number;
+  suggestedSelectors?: string[];
+  reason: string;
+}
+
 // API响应
 export interface ApiResponse<T = any> {
   success: boolean;

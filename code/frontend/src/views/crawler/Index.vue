@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { fileApi } from '@/api/file'
+import { startEnrichment as startEnrichApi, getEnrichmentStatus } from '@/api/llm'
 import { Plus, Document, VideoPlay, CircleCheck, DataAnalysis, Download, TrendCharts, Setting, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Task } from '@/api/task'
@@ -81,6 +82,44 @@ async function analyzeTask(taskId: string) {
   } catch (error: any) {
     console.error('[Analyze] Error:', error)
     ElMessage.error(error.response?.data?.error || '无法获取文件信息')
+  }
+}
+
+// AI 增强状态追踪
+const enrichingTasks = ref<Record<string, boolean>>({})
+
+async function enrichTask(taskId: string) {
+  try {
+    await ElMessageBox.confirm(
+      '将使用 AI 对职位数据进行标准化增强（薪资标准化、技能提取、行业分类等），是否继续？',
+      '确认 AI 增强',
+      { confirmButtonText: '开始增强', cancelButtonText: '取消', type: 'info' }
+    )
+    enrichingTasks.value[taskId] = true
+    await startEnrichApi(taskId)
+    ElMessage.success('数据增强已启动，处理完成后将自动更新')
+    // 延迟刷新增强状态
+    setTimeout(() => checkEnrichStatus(taskId), 3000)
+  } catch (e: any) {
+    if (e !== 'cancel') {
+      ElMessage.error(e.response?.data?.error || e.message || '启动增强失败')
+    }
+    enrichingTasks.value[taskId] = false
+  }
+}
+
+async function checkEnrichStatus(taskId: string) {
+  try {
+    const res = await getEnrichmentStatus(taskId)
+    if (res.data?.exists) {
+      enrichingTasks.value[taskId] = false
+      ElMessage.success(`数据增强完成，共 ${res.data.total} 条记录`)
+    } else {
+      // 还未完成，继续等待
+      setTimeout(() => checkEnrichStatus(taskId), 5000)
+    }
+  } catch {
+    enrichingTasks.value[taskId] = false
   }
 }
 
@@ -398,23 +437,33 @@ async function handleDeleteTask(taskId: string) {
             </el-button>
             
             <!-- 下载和分析按钮 -->
-            <el-button 
-              v-if="row.status === 'completed'" 
-              type="success" 
-              link 
+            <el-button
+              v-if="row.status === 'completed'"
+              type="success"
+              link
               size="small"
               @click="downloadTaskFile(row.id)"
             >
               <el-icon class="action-icon"><Download /></el-icon>下载
             </el-button>
-            <el-button 
-              v-if="row.status === 'completed'" 
-              type="warning" 
-              link 
+            <el-button
+              v-if="row.status === 'completed'"
+              type="warning"
+              link
               size="small"
               @click="analyzeTask(row.id)"
             >
               <el-icon class="action-icon"><TrendCharts /></el-icon>分析
+            </el-button>
+            <el-button
+              v-if="row.status === 'completed'"
+              type="success"
+              link
+              size="small"
+              :loading="enrichingTasks[row.id]"
+              @click="enrichTask(row.id)"
+            >
+              <el-icon class="action-icon"><DataAnalysis /></el-icon>AI 增强
             </el-button>
             
             <!-- 删除按钮 - 带确认 -->
