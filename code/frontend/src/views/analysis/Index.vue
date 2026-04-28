@@ -3,7 +3,7 @@ import { ref, onMounted, computed, watch, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { fileApi } from '@/api/file'
-import { getEnrichmentResults } from '@/api/llm'
+import { getEnrichmentResults, generateInsights, getInsightsHistory, getInsightsReport } from '@/api/llm'
 import * as echarts from 'echarts'
 
 const route = useRoute()
@@ -11,6 +11,10 @@ const loading = ref(false)
 const analysisResult = ref<any>(null)
 const fileInfo = ref<any>(null)
 const enrichmentData = ref<any[]>([])
+const aiReportGenerating = ref(false)
+const aiReport = ref<any>(null)           // Current report display
+const aiReportHistory = ref<any[]>([])     // Report history list
+const activeReportTab = ref<'charts' | 'ai'>('charts')
 
 // 图表实例
 const charts: Record<string, any> = {}
@@ -76,7 +80,74 @@ async function loadAndAnalyze(fileId: string) {
   }
 }
 
-// 计算属性：薪资分布数据
+// 生成 AI 深度洞察报告
+async function generateAIReport() {
+  if (!fileInfo.value?.id) return
+  aiReportGenerating.value = true
+  try {
+    const res: any = await generateInsights(fileInfo.value.id)
+    if (res.success) {
+      ElMessage.success('AI 报告生成已启动，请稍候刷新查看')
+      // Wait and poll for the report
+      setTimeout(async () => {
+        await loadReportHistory()
+        aiReportGenerating.value = false
+      }, 15000) // Wait 15s for LLM to finish
+    } else {
+      throw new Error(res.error || '生成失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || e.message || 'AI 报告生成失败')
+    aiReportGenerating.value = false
+  }
+}
+
+// 加载报告历史
+async function loadReportHistory() {
+  if (!fileInfo.value?.id) return
+  try {
+    const res: any = await getInsightsHistory(fileInfo.value.id)
+    if (res.success && res.data?.length > 0) {
+      aiReportHistory.value = res.data
+      // Load the latest report
+      await viewReport(res.data[0].id)
+    }
+  } catch {}
+}
+
+// 查看指定报告
+async function viewReport(reportId: string) {
+  try {
+    const res: any = await getInsightsReport(reportId)
+    if (res.success && res.data) {
+      aiReport.value = res.data
+      // Render charts from report config
+      setTimeout(() => {
+        const configs = aiReport.value?.chartsConfig
+        if (configs && Array.isArray(configs)) {
+          configs.forEach((cfg: any, idx: number) => {
+            renderReportChart(idx, cfg)
+          })
+        }
+      }, 200)
+    }
+  } catch {}
+}
+
+// 渲染报告中的图表
+function renderReportChart(idx: number, cfg: any) {
+  const domId = `ai-chart-${idx}`
+  const dom = document.getElementById(domId)
+  if (!dom || !cfg.echartsOption) return
+
+  // Dispose old chart if exists
+  const oldKey = `ai_chart_${idx}`
+  if (charts[oldKey]) charts[oldKey].dispose()
+
+  const instance = echarts.init(dom)
+  instance.setOption(cfg.echartsOption)
+  charts[oldKey] = instance
+}
 const salaryDistributionData = computed(() => {
   if (!analysisResult.value?.salaryAnalysis?.distribution) return []
   return analysisResult.value.salaryAnalysis.distribution.map((item: any) => ({
@@ -273,6 +344,41 @@ const availableCharts = computed(() => {
   
   return chartsList.filter(chart => chart.hasData)
 })
+
+// Parse report content from JSON string
+function parseContent(content: string): Array<{ heading: string; body: string; keyInsight: string }> {
+  if (!content) return []
+  try {
+    if (typeof content === 'string') {
+      const parsed = JSON.parse(content)
+      return Array.isArray(parsed) ? parsed : [parsed]
+    }
+    return Array.isArray(content) ? content : [content]
+  } catch {
+    return [{ heading: '', body: content, keyInsight: '' }]
+  }
+}
+
+// Simple markdown to HTML renderer
+function renderMarkdown(text: string): string {
+  if (!text) return ''
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/\|(.+)\|/g, (match) => {
+      const cells = match.split('|').filter(c => c.trim())
+      if (cells.every(c => /^[-:]+$/.test(c.trim()))) return '' // separator row
+      return '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>'
+    })
+    .replace(/(<tr>.+<\/tr>)/g, '<table>$1</table>')
+    .replace(/\n\n/g, '<br/><br/>')
+    .replace(/\n/g, '<br/>')
+}
 
 // 初始化所有图表
 function initAllCharts() {
@@ -840,7 +946,16 @@ onUnmounted(() => {
       <template #header>
         <div class="card-header">
           <span class="title">📊 智能数据分析报告</span>
-          <el-tag type="primary" effect="dark" size="large">{{ fileInfo.filename }}</el-tag>
+          <div style="display: flex; gap: 12px; align-items: center;">
+            <el-button
+              type="warning"
+              :loading="aiReportGenerating"
+              @click="generateAIReport"
+            >
+              {{ aiReportGenerating ? 'AI 报告生成中...' : '🤖 AI 深度分析' }}
+            </el-button>
+            <el-tag type="primary" effect="dark" size="large">{{ fileInfo.filename }}</el-tag>
+          </div>
         </div>
       </template>
       
@@ -967,6 +1082,64 @@ onUnmounted(() => {
       </el-row>
     </div>
     
+    <!-- AI 深度分析报告 -->
+    <el-card v-if="!loading && aiReport" class="mb-4 ai-report-card">
+      <template #header>
+        <div class="card-header">
+          <span class="title">🤖 AI 深度分析报告</span>
+          <div style="display: flex; gap: 8px;">
+            <el-select
+              v-if="aiReportHistory.length > 1"
+              v-model="aiReport.id"
+              size="small"
+              @change="viewReport"
+              placeholder="查看历史报告"
+              style="width: 200px;"
+            >
+              <el-option
+                v-for="r in aiReportHistory"
+                :key="r.id"
+                :label="r.title + ' (' + new Date(r.createdAt).toLocaleDateString('zh-CN') + ')'"
+                :value="r.id"
+              />
+            </el-select>
+            <el-tag type="warning">{{ aiReport.modelUsed }}</el-tag>
+          </div>
+        </div>
+      </template>
+
+      <div class="ai-report-summary" v-if="aiReport.summary">
+        <el-text size="large">{{ aiReport.summary }}</el-text>
+      </div>
+
+      <div v-if="aiReport.content" class="ai-report-body">
+        <div v-for="(section, idx) in parseContent(aiReport.content)" :key="idx" class="report-section">
+          <h3 v-if="section.heading" class="report-heading" v-html="renderMarkdown(section.heading)"></h3>
+          <div class="report-body" v-html="renderMarkdown(section.body)"></div>
+          <div v-if="section.keyInsight" class="report-insight">
+            <span>💡 {{ section.keyInsight }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="aiReport.chartsConfig && aiReport.chartsConfig.length > 0" class="ai-charts">
+        <el-row :gutter="16">
+          <el-col
+            v-for="(chart, idx) in aiReport.chartsConfig"
+            :key="idx"
+            :span="12"
+          >
+            <el-card class="ai-chart-card">
+              <template #header>
+                <span>{{ chart.title || '图表 ' + (idx + 1) }}</span>
+              </template>
+              <div :id="'ai-chart-' + idx" style="width: 100%; height: 350px;"></div>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
+    </el-card>
+
     <!-- AI 增强结果 -->
     <el-card v-if="!loading && enrichmentData.length > 0" class="mb-4 enrich-card">
       <template #header>
@@ -1311,5 +1484,83 @@ onUnmounted(() => {
 
 .na-text {
   color: #c0c4cc;
+}
+
+/* AI Report Styles */
+.ai-report-card {
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border-left: 4px solid #e6a23c;
+}
+
+.ai-report-summary {
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #fff9e6 0%, #fff3cc 100%);
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #faecd8;
+}
+
+.report-section {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.report-section:last-child { border-bottom: none; }
+
+.report-heading {
+  font-size: 17px;
+  font-weight: bold;
+  color: #303133;
+  margin: 0 0 10px;
+}
+
+.report-body {
+  font-size: 14px;
+  color: #606266;
+  line-height: 1.8;
+}
+
+.report-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+}
+
+.report-body :deep(td) {
+  border: 1px solid #e4e7ed;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.report-body :deep(code) {
+  background: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.report-body :deep(strong) {
+  color: #303133;
+}
+
+.report-insight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: #ecf5ff;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #409eff;
+}
+
+.ai-charts { margin-top: 20px; }
+
+.ai-chart-card {
+  margin-bottom: 16px;
+  border-radius: 8px;
 }
 </style>

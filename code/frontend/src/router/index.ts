@@ -119,6 +119,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '文档', icon: 'Document' }
       },
       {
+        path: 'query',
+        name: 'NLQuery',
+        component: () => import('@/views/query/Index.vue'),
+        meta: { title: '智能查询', icon: 'ChatDotRound' }
+      },
+      {
         path: 'settings/llm',
         name: 'LLMSettings',
         component: () => import('@/views/settings/LLMSettings.vue'),

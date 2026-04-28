@@ -43,6 +43,7 @@ const menuItems = [
   { path: '/home', title: '首页', icon: HomeFilled },
   { path: '/crawler', title: '数据采集', icon: Monitor },
   { path: '/files', title: '数据管理', icon: Files },
+  { path: '/query', title: '智能查询', icon: TrendCharts },
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
   { path: '/settings/llm', title: 'AI 配置', icon: Setting },
   { path: '/docs', title: '文档', icon: Document },

@@ -129,6 +129,37 @@ async function initDatabase() {
       )
     `);
 
+    // 创建 market_reports 表（LLM 市场洞察报告）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS market_reports (
+        id VARCHAR(255) PRIMARY KEY,
+        file_id VARCHAR(255) REFERENCES csv_files(id) ON DELETE CASCADE,
+        task_id VARCHAR(255),
+        report_type VARCHAR(50) DEFAULT 'overview',
+        title VARCHAR(500),
+        content TEXT,
+        summary TEXT,
+        charts_config JSONB DEFAULT '[]',
+        model_used VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 创建 saved_queries 表（自然语言查询历史）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS saved_queries (
+        id VARCHAR(255) PRIMARY KEY,
+        task_id VARCHAR(255),
+        user_query TEXT NOT NULL,
+        generated_sql TEXT,
+        result_summary TEXT,
+        result_data JSONB DEFAULT '[]',
+        result_count INTEGER DEFAULT 0,
+        model_used VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // 创建索引
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC)');
@@ -136,6 +167,8 @@ async function initDatabase() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_source ON csv_files(source)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_llm_config_active ON llm_config(is_active)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_job_enrichments_task ON job_enrichments(task_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_market_reports_file ON market_reports(file_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_saved_queries_task ON saved_queries(task_id)');
 
     console.log('✅ PostgreSQL数据库表初始化完成');
   } catch (error) {

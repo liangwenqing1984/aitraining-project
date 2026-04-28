@@ -69,3 +69,72 @@ export function getEnrichmentStatus(taskId: string): Promise<ApiResponse<{ exist
 export function getEnrichmentResults(taskId: string): Promise<ApiResponse<any[]>> {
   return api.get(`/llm/enrich/${taskId}/result`)
 }
+
+// ==================== 市场洞察 ====================
+
+// 生成市场洞察报告
+export function generateInsights(fileId: string): Promise<ApiResponse<void>> {
+  return api.post(`/llm/insights/${fileId}`)
+}
+
+// 获取报告历史
+export function getInsightsHistory(fileId: string): Promise<ApiResponse<any[]>> {
+  return api.get(`/llm/insights/${fileId}/history`)
+}
+
+// 获取单个报告
+export function getInsightsReport(reportId: string): Promise<ApiResponse<any>> {
+  return api.get(`/llm/insights/report/${reportId}`)
+}
+
+// ==================== 自然语言查询 ====================
+
+export interface NLQueryResult {
+  id: string
+  userQuery: string
+  generatedSql: string
+  resultSummary: string
+  resultData: any[]
+  resultCount: number
+  modelUsed: string
+  createdAt: string
+}
+
+// 执行自然语言查询
+export function executeNLQuery(question: string, taskId?: string): Promise<ApiResponse<NLQueryResult>> {
+  return api.post('/llm/query', { question, taskId })
+}
+
+// 获取查询历史
+export function getNLQueryHistory(): Promise<ApiResponse<NLQueryResult[]>> {
+  return api.get('/llm/query/history')
+}
+
+// 删除查询记录
+export function deleteNLQuery(id: string): Promise<ApiResponse<void>> {
+  return api.delete(`/llm/query/${id}`)
+}
+
+// ==================== AI 反爬 ====================
+
+export interface PageClassification {
+  pageType: 'normal' | 'captcha' | 'waf' | 'login' | 'error' | 'empty'
+  confidence: number
+  indicators: string[]
+  reason: string
+}
+
+// 页面分类
+export function classifyPage(html: string, url: string): Promise<ApiResponse<PageClassification>> {
+  return api.post('/llm/anti-crawl/classify', { html, url })
+}
+
+// 选择器推荐
+export function suggestSelectors(html: string, target: string): Promise<ApiResponse<any[]>> {
+  return api.post('/llm/anti-crawl/selectors', { html, target })
+}
+
+// 应对策略推荐
+export function recommendAction(classification: PageClassification): Promise<ApiResponse<any>> {
+  return api.post('/llm/anti-crawl/action', { classification })
+}
