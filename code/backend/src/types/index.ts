@@ -21,6 +21,7 @@ export interface TaskConfig {
   _resumeState?: {
     combinationIndex: number;  // 从第几个组合开始
     currentPage: number;       // 从第几页开始
+    jobIndex: number;          // 页内从第几个职位开始（避免页内重复）
   };
 }
 

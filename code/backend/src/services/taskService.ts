@@ -115,6 +115,7 @@ class TaskLogger {
 class TaskService {
   private runningTasks: Map<string, AbortController> = new Map();
   private taskProgress: Map<string, any> = new Map();
+  private writtenJobIds: Map<string, Set<string>> = new Map();  // taskId → Set<jobId>
 
   // 启动任务
   async startTask(taskId: string, config: TaskConfig) {
@@ -196,21 +197,28 @@ class TaskService {
       let lastRecordCount = totalRecords;
       
       // 🔧 关键修复：如果是重启任务，从已有CSV文件读取初始记录数
+      let initDedupPromise: Promise<void> | null = null;
       if (resumeState) {
         taskLogger.info(`[TaskService] 🔄 断点续传模式 - 起始记录数: ${totalRecords}`);
         taskLogger.info(`[TaskService] 📍 从组合索引 ${resumeState.combinationIndex}, 第 ${resumeState.currentPage} 页继续`);
-        
+
         io.to(`task:${taskId}`).emit('task:log', {
           taskId,
           level: 'info',
           message: `🔄 断点续传：已采集${totalRecords}条数据，从失败点继续...`
         });
       }
-      
+
       // 获取CSV路径和文件名
       const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
       const filepath = task?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
       const filename = path.basename(filepath);
+
+      // 🔧 去重：从已有Excel文件读取已写入的jobId集合，防止断点续传产生重复数据
+      if (resumeState) {
+        initDedupPromise = this.initWrittenJobIds(filepath, taskId, taskLogger);
+        await initDedupPromise;
+      }
 
       for (const site of config.sites) {
         taskLogger.info(`[TaskService] 开始爬取站点: ${site}`);
@@ -254,7 +262,7 @@ class TaskService {
           }
 
           // 写入Excel
-          const writeSuccess = await this.appendExcelRow(filepath, job);
+          const writeSuccess = await this.appendExcelRow(filepath, job, taskId);
           
           if (writeSuccess) {
             totalRecords++;
@@ -301,29 +309,29 @@ class TaskService {
             // 但progress（进度百分比）的计算方式不同
             let progressPercent: number;
             
+            // 基于已采集数据量，使用渐进式估算
+            // 前10条数据显示0-50%，10-50条显示50-80%，50条以上显示80-99%
+            if (totalRecords <= 10) {
+              progressPercent = (totalRecords / 10) * 50;
+            } else if (totalRecords <= 50) {
+              progressPercent = 50 + ((totalRecords - 10) / 40) * 30;
+            } else {
+              progressPercent = 80 + Math.min(19, (totalRecords - 50) / 10);
+            }
+
+            // 多组合场景：取记录估算进度与爬虫组合进度的较大值
             if (isMultiCombination) {
-              // 多组合场景：由爬虫自己更新进度，这里只更新record_count
-              // 读取当前数据库中的进度值（由爬虫维护）
               try {
                 const taskInfo = await db.prepare('SELECT progress FROM tasks WHERE id = $1').get(taskId) as any;
-                progressPercent = taskInfo?.progress || 0;
+                const dbProgress = taskInfo?.progress || 0;
+                progressPercent = Math.max(progressPercent, dbProgress);
               } catch (e) {
-                progressPercent = 0;
+                // 忽略DB读取错误，使用记录估算进度
               }
-            } else {
-              // 单组合场景：基于已采集数据量，使用渐进式估算
-              // 前10条数据显示0-50%，10-50条显示50-80%，50条以上显示80-99%
-              if (totalRecords <= 10) {
-                progressPercent = (totalRecords / 10) * 50;
-              } else if (totalRecords <= 50) {
-                progressPercent = 50 + ((totalRecords - 10) / 40) * 30;
-              } else {
-                progressPercent = 80 + Math.min(19, (totalRecords - 50) / 10);
-              }
-              
-              // 确保进度不超过99%
-              progressPercent = Math.min(99, Math.max(0, progressPercent));
             }
+
+            // 确保进度不超过99%
+            progressPercent = Math.min(99, Math.max(0, progressPercent));
             
             // 🔧 关键修复：PostgreSQL的INTEGER字段不接受小数，必须取整
             progressPercent = Math.round(progressPercent);
@@ -451,9 +459,10 @@ class TaskService {
         // 🔧 关键修复2：提取错误中的位置信息
         const combinationIndex = error.combinationIndex || 0;
         const currentPage = error.currentPage || 1;
-        
-        taskLogger?.info(`[TaskService] 📍 失败位置: 组合索引=${combinationIndex}, 页码=${currentPage}`);
-        
+        const jobIndex = error.jobIndex || 0;
+
+        taskLogger?.info(`[TaskService] 📍 失败位置: 组合索引=${combinationIndex}, 页码=${currentPage}, 职位索引=${jobIndex}`);
+
         // 发送重启日志到前端
         io.to(`task:${taskId}`).emit('task:log', {
           taskId,
@@ -480,7 +489,8 @@ class TaskService {
             ...config,
             _resumeState: {
               combinationIndex,
-              currentPage
+              currentPage,
+              jobIndex
             }
           };
           
@@ -627,9 +637,50 @@ class TaskService {
     console.log(`[TaskService] Excel文件已创建: ${filepath}`);
   }
 
-  // 追加Excel行
-  private async appendExcelRow(filepath: string, job: JobData): Promise<boolean> {
+  // 🔧 去重：从现有Excel文件读取已写入的jobId集合
+  private async initWrittenJobIds(filepath: string, taskId: string, taskLogger?: TaskLogger): Promise<void> {
     try {
+      if (!fs.existsSync(filepath)) {
+        this.writtenJobIds.set(taskId, new Set());
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filepath);
+      const worksheet = workbook.getWorksheet(1);
+      if (!worksheet) {
+        this.writtenJobIds.set(taskId, new Set());
+        return;
+      }
+
+      const jobIds = new Set<string>();
+      // jobId是第2列（索引1），跳过表头行
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // 跳过表头
+        const jobIdCell = row.getCell(2); // B列 = 职位ID
+        const jobId = jobIdCell?.value?.toString()?.trim();
+        if (jobId) {
+          jobIds.add(jobId);
+        }
+      });
+
+      this.writtenJobIds.set(taskId, jobIds);
+      taskLogger?.info(`[TaskService] 🔍 去重初始化完成: 已从Excel读取 ${jobIds.size} 个已有jobId`);
+    } catch (error: any) {
+      taskLogger?.warn(`[TaskService] ⚠️ 读取已有jobId失败，将使用空去重集合: ${error.message}`);
+      this.writtenJobIds.set(taskId, new Set());
+    }
+  }
+
+  // 追加Excel行
+  private async appendExcelRow(filepath: string, job: JobData, taskId: string): Promise<boolean> {
+    try {
+      // 🔧 去重检查：防止断点续传产生的重复数据
+      const existingIds = this.writtenJobIds.get(taskId);
+      if (existingIds && existingIds.has(job.jobId)) {
+        return false; // 重复jobId，静默跳过
+      }
+
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(filepath);
       const worksheet = workbook.getWorksheet(1);
@@ -691,7 +742,13 @@ class TaskService {
 
       // 保存工作簿
       await workbook.xlsx.writeFile(filepath);
-      
+
+      // 🔧 去重：记录已写入的jobId
+      if (!this.writtenJobIds.has(taskId)) {
+        this.writtenJobIds.set(taskId, new Set());
+      }
+      this.writtenJobIds.get(taskId)!.add(job.jobId);
+
       return true; // 写入成功
       
     } catch (error: any) {

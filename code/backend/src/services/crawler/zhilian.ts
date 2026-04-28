@@ -27,6 +27,9 @@ export class ZhilianCrawler {
 
   private signal: AbortSignal | null = null;
 
+  // 🔧 串行化 browser.newPage() 调用，防止并发创建时超时导致孤儿标签页泄漏
+  private pageCreateMutex: Promise<void> = Promise.resolve();
+
   async *crawl(config: TaskConfig, signal: AbortSignal): AsyncGenerator<JobData> {
     this.signal = signal;
 
@@ -34,10 +37,11 @@ export class ZhilianCrawler {
     const resumeState = config._resumeState;
     const startCombinationIndex = resumeState?.combinationIndex || 0;
     const startPage = resumeState?.currentPage || 1;
-    
+    const globalStartJobIndex = resumeState?.jobIndex || 0;
+
     if (resumeState) {
       this.log('info', `[ZhilianCrawler] 🔄 断点续传模式激活`);
-      this.log('info', `[ZhilianCrawler] 📍 从组合索引 ${startCombinationIndex}, 第 ${startPage} 页开始`);
+      this.log('info', `[ZhilianCrawler] 📍 从组合索引 ${startCombinationIndex}, 第 ${startPage} 页, 第 ${globalStartJobIndex + 1} 个职位开始`);
     }
 
     // 获取关键词列表（支持多个）
@@ -241,6 +245,7 @@ export class ZhilianCrawler {
             }
 
             let page: any = null;
+            let currentJobIndex = 0;  // 🔧 断点续传：追踪当前页内处理的职位索引
             try {
               
               page = await browser.newPage();
@@ -1085,14 +1090,18 @@ strategy1Stats.failedExtractions++;
                 // ✅ 使用并发控制加速详情页抓取（支持WAF检测自动降级）
                 const concurrency = config.concurrency != null ? config.concurrency : 2;
                 let wafDetected = false;  // 🔧 跟踪WAF拦截状态
-                this.log('info', `[ZhilianCrawler] 🚀启用${concurrency <= 1 ? '串行' : '并发'}模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}`);
+                // 🔧 断点续传：确定当前页的起始职位索引（仅恢复组合的恢复页面生效，其他为0）
+                const pageStartJobIndex = (resumeState && currentCombination === startCombinationIndex && currentPage === startPage)
+                  ? globalStartJobIndex : 0;
+                this.log('info', `[ZhilianCrawler] 🚀启用${concurrency <= 1 ? '串行' : '并发'}模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}, 起始职位索引=${pageStartJobIndex}`);
 
                 if (concurrency <= 1) {
                   // 🔧 串行模式：逐个处理，最安全但速度最慢（适合已被WAF标记的IP）
                   this.log('info', `[ZhilianCrawler] ⚡ 使用串行模式处理（最安全，避免WAF拦截）`);
 
-                  for (let i = 0; i < filteredJobs.length && !this.checkAborted(); i++) {
+                  for (let i = pageStartJobIndex; i < filteredJobs.length && !this.checkAborted(); i++) {
                     const job = filteredJobs[i];
+                    currentJobIndex = i;  // 🔧 断点续传：记录当前处理的职位索引
                     this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] 🔄 串行抓取: ${job.title}`);
 
                     let jobData;
@@ -1126,13 +1135,13 @@ strategy1Stats.failedExtractions++;
                   }
                 } else {
                   // ✅ 并发模式：批次内并行处理，但加强资源管理
-                  const maxConcurrency = 5; // 并发上限保持为5
+                  const maxConcurrency = 3; // 降低并发上限，减少Chrome内存压力
                   const actualConcurrency = Math.min(concurrency, maxConcurrency);
                   const batchSize = actualConcurrency;
                   
                   this.log('info', `[ZhilianCrawler] 🚀启用并发模式: 并发数=${actualConcurrency} (配置值=${concurrency}, 上限=${maxConcurrency}), 总职位数=${filteredJobs.length}`);
                   
-                  for (let batchStart = 0; batchStart < filteredJobs.length && !this.checkAborted(); batchStart += batchSize) {
+                  for (let batchStart = pageStartJobIndex; batchStart < filteredJobs.length && !this.checkAborted(); batchStart += batchSize) {
                     const batchEnd = Math.min(batchStart + batchSize, filteredJobs.length);
                     const batch = filteredJobs.slice(batchStart, batchEnd);
                     
@@ -1150,19 +1159,19 @@ strategy1Stats.failedExtractions++;
                       // 🔧 如果标签页过多，在批次开始前清理（更激进的清理策略）
                       if (pages.length > 3) {
                         this.log('warn', `[ZhilianCrawler] ⚠️ 标签页数量较多(${pages.length})，批次开始前清理...`);
-                        // 只保留列表页，关闭所有详情页
-                        for (let i = 0; i < pages.length; i++) {
+                        // 只保留搜索列表页，关闭所有详情页和空白页
+                        for (let i = pages.length - 1; i >= 0; i--) {  // 从后往前遍历，避免索引问题
                           try {
                             const url = pages[i].url();
-                            // 保留列表页（包含zhaopin.com但不包含jobdetail）
-                            if (!url.includes('jobdetail')) {
-                              this.log('info', `[ZhilianCrawler] 📋 保留列表页: ${url.substring(0, 60)}`);
+                            // 保留搜索列表页（zhaopin.com/sou），不包含 jobdetail
+                            if (url.includes('zhaopin.com/sou') && !url.includes('jobdetail')) {
+                              this.log('info', `[ZhilianCrawler] 📋 保留搜索页: ${url.substring(0, 60)}`);
                               continue;
                             }
-                            // 关闭详情页
+                            // 关闭详情页和空白页
                             if (!pages[i].isClosed()) {
                               await pages[i].close();
-                              this.log('info', `[ZhilianCrawler] 🗑️ 已关闭详情页 #${i + 1}`);
+                              this.log('info', `[ZhilianCrawler] 🗑️ 已关闭标签页 #${i + 1}`);
                             }
                           } catch (e: any) {
                             this.log('warn', `[ZhilianCrawler] 关闭标签页失败: ${e.message}`);
@@ -1182,11 +1191,13 @@ strategy1Stats.failedExtractions++;
                     // 🔧 使用Promise.allSettled替代Promise.all，确保单个失败不影响其他任务
                     const batchPromises = batch.map(async (job, indexInBatch) => {
                       const globalIndex = batchStart + indexInBatch + 1;
-                      
+                      currentJobIndex = batchStart + indexInBatch;  // 🔧 断点续传：记录当前处理的职位索引
+                      let userPage: any = null;  // 🔧 追踪创建的页面，确保始终被关闭
+
                       if (this.checkAborted()) {
                         return { success: false, data: null, index: globalIndex };
                       }
-                      
+
                       // 🔧 每次创建标签页前都检查浏览器状态
                       try {
                         if (!browser.isConnected()) {
@@ -1213,29 +1224,49 @@ strategy1Stats.failedExtractions++;
                           // 🔧 关键修复：实现串行化标签页创建，但保持抓取并行
                           // 使用一个简单的锁机制来串行化标签页创建
                           const createPageWithLock = async () => {
+                            // 🔧 关键修复：使用互斥锁串行化 browser.newPage() 调用
+                            // Promise.race 超时不会取消落后的 newPage() promise，
+                            // 导致孤儿 about:blank 标签页泄漏，最终耗尽内存导致 Chrome 崩溃。
+                            // 修复方案：
+                            // 1. 互斥锁确保同一时刻只有一个 newPage() 在执行
+                            // 2. 超时后捕获泄漏的页面并立即关闭
+                            const currentMutex = this.pageCreateMutex;
+                            let releaseMutex: () => void;
+                            this.pageCreateMutex = new Promise<void>(resolve => { releaseMutex = resolve; });
+                            await currentMutex;
+
                             let attempts = 0;
                             const maxAttempts = 3;
-                            
+
                             while (attempts < maxAttempts) {
                               try {
-                                // 检查浏览器状态
                                 if (!browser.isConnected()) {
+                                  releaseMutex!();
                                   throw new Error('BROWSER_DISCONNECTED');
                                 }
-                                
-                                // 创建新标签页
+
                                 this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🆕 创建新标签页 (尝试 ${attempts + 1}/${maxAttempts})`);
-                                
+
+                                const newPagePromise = browser.newPage();
                                 const createPageTimeout = new Promise<any>((_, reject) => {
                                   setTimeout(() => reject(new Error('创建标签页超时（10秒）')), 10000);
                                 });
-                                
-                                const page = await Promise.race([
-                                  browser.newPage(),
-                                  createPageTimeout
-                                ]);
 
-                                // 🔧 随机化页面指纹（并发路径）
+                                const page = await Promise.race([
+                                  newPagePromise,
+                                  createPageTimeout
+                                ]).catch(async (raceError) => {
+                                  // 🔧 超时或错误时：newPagePromise 可能仍在后台运行，
+                                  // 必须捕获泄漏的页面并关闭，防止孤儿标签页堆积
+                                  newPagePromise.then((leakedPage: any) => {
+                                    if (leakedPage && !leakedPage.isClosed()) {
+                                      this.log('warn', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🧹 关闭超时泄漏的孤儿标签页`);
+                                      leakedPage.close().catch(() => {});
+                                    }
+                                  }).catch(() => {});
+                                  throw raceError;
+                                });
+
                                 const vw = 1366 + Math.floor(Math.random() * 554);
                                 const vh = 768 + Math.floor(Math.random() * 312);
                                 await page.setViewport({ width: vw, height: vh });
@@ -1248,49 +1279,62 @@ strategy1Stats.failedExtractions++;
                                 await page.setUserAgent(uas[Math.floor(Math.random() * uas.length)]);
 
                                 this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ✅ 标签页创建成功`);
+                                releaseMutex!();
                                 return page;
                               } catch (createError: any) {
                                 attempts++;
-                                
-                                if (createError.message.includes('Target closed') || 
+
+                                if (createError.message.includes('Target closed') ||
                                     createError.message.includes('Protocol error') ||
                                     createError.message.includes('Session closed')) {
                                   this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 💥 浏览器已崩溃，无法创建标签页`);
+                                  releaseMutex!();
                                   throw new Error('BROWSER_CRASHED');
                                 }
-                                
+
                                 if (attempts >= maxAttempts) {
                                   this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 创建标签页失败，已重试 ${maxAttempts} 次`);
+                                  releaseMutex!();
                                   throw createError;
                                 }
-                                
+
                                 this.log('warn', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 创建标签页失败，${1000 * attempts}ms后重试...`);
                                 await this.randomDelay(1000 * attempts, 1000 * attempts + 500);
                               }
                             }
+                            releaseMutex!();
                           };
                           
-                          const page = await createPageWithLock();
-                          
+                          userPage = await createPageWithLock();
+
                           // 现在使用创建好的页面进行详情抓取
-                          jobData = await this.fetchJobDetailWithPage(page, job.link, job);
-                          
+                          jobData = await this.fetchJobDetailWithPage(userPage, job.link, job);
+
                           this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ✅ 成功 - ${jobData.companyName}`);
                           return { success: true, data: jobData, index: globalIndex };
                         } catch (error: any) {
                           this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 失败: ${error.message}`);
-                          
+
                           // 🔧 如果是浏览器断开错误，立即返回并标记
-                          if (error.message.includes('Session closed') || 
+                          if (error.message.includes('Session closed') ||
                               error.message.includes('浏览器连接已断开') ||
                               error.message === 'BROWSER_CRASHED') {
                             this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 💥 浏览器会话已关闭，停止当前批次`);
                             return { success: false, data: null, index: globalIndex, error: 'BROWSER_CRASHED' };
                           }
-                          
+
                           // 🔧 详情页失败时使用降级数据，但不影响其他并发任务
                           jobData = this.generateBasicJob(job, config);
                           return { success: false, data: jobData, index: globalIndex, error: error.message };
+                        } finally {
+                          // 🔧 关键修复：始终关闭页面，防止标签页泄漏
+                          if (userPage && !userPage.isClosed()) {
+                            try {
+                              await userPage.close();
+                            } catch (e) {
+                              // 忽略关闭错误
+                            }
+                          }
                         }
                       } else {
                         this.log('warn', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ⚠️ 无链接`);
@@ -1371,10 +1415,10 @@ strategy1Stats.failedExtractions++;
                       }
                     }
                     
-                    // 🔧 批次间延迟增加，给浏览器充分恢复时间
+                    // 🔧 批次间延迟，给浏览器充分的GC和内存恢复时间
                     if (batchEnd < filteredJobs.length && !browserDisconnected) {
-                      this.log('info', `[ZhilianCrawler] ⏱️ 批次间延迟 3-4秒（浏览器恢复）...`);
-                      await this.randomDelay(3000, 4000);  // 🔧 增加延迟，确保浏览器稳定
+                      this.log('info', `[ZhilianCrawler] ⏱️ 批次间延迟 8-10秒（浏览器内存恢复）...`);
+                      await this.randomDelay(8000, 10000);
                     }
                     
                     // 发送进度日志
@@ -1494,6 +1538,7 @@ strategy1Stats.failedExtractions++;
                 // 🔧 关键修复：附加当前爬取状态，用于断点续传
                 (crashError as any).combinationIndex = currentCombination;
                 (crashError as any).currentPage = currentPage;
+                (crashError as any).jobIndex = currentJobIndex;
                 throw crashError;
               }
 
@@ -1604,7 +1649,7 @@ strategy1Stats.failedExtractions++;
           }
           
           // 🔧 主动重启机制：每处理20个组合后主动关闭并重启浏览器
-const COMBINATIONS_PER_BROWSER = 20;
+const COMBINATIONS_PER_BROWSER = 5;
 if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < totalCombinationCount) {
   this.log('info', `[ZhilianCrawler] 🔄 已处理 ${currentCombination} 个组合，主动重启浏览器以防止资源泄漏...`);
   
@@ -1621,6 +1666,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
   (restartError as any).shouldRestart = true;
   (restartError as any).combinationIndex = currentCombination;  // ✅ 保存组合索引
   (restartError as any).currentPage = 1;  // ✅ 新组合从第1页开始
+  (restartError as any).jobIndex = 0;     // ✅ 新页面从第1个职位开始
   throw restartError;
 }
         }
@@ -1717,17 +1763,15 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
           
           // 🔧 关键优化：如果标签页过多，关闭一些旧页面释放资源（更激进的清理）
           if (pages.length > 5) {  // 🔧 降低阈值至5，防止并发5时资源耗尽
-            this.log('warn', `[ZhilianCrawler] ⚠️ 标签页数量过多(${pages.length})，清理详情页...`);
-            // 只保留列表页，关闭所有详情页
+            this.log('warn', `[ZhilianCrawler] ⚠️ 标签页数量过多(${pages.length})，清理详情页和空白页...`);
             let closedCount = 0;
-            for (let i = 0; i < pages.length; i++) {
+            for (let i = pages.length - 1; i >= 0; i--) {
               try {
                 const url = pages[i].url();
-                // 跳过列表页
-                if (!url.includes('jobdetail')) {
+                // 保留搜索列表页
+                if (url.includes('zhaopin.com/sou') && !url.includes('jobdetail')) {
                   continue;
                 }
-                // 关闭详情页
                 if (!pages[i].isClosed()) {
                   await pages[i].close();
                   closedCount++;
@@ -1737,7 +1781,7 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
               }
             }
             if (closedCount > 0) {
-              this.log('info', `[ZhilianCrawler] ✅ 已清理 ${closedCount} 个详情标签页`);
+              this.log('info', `[ZhilianCrawler] ✅ 已清理 ${closedCount} 个标签页`);
             }
           }
         } catch (browserCheckError: any) {
@@ -1748,15 +1792,25 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         // 创建新标签页（而不是新浏览器）
         this.log('info', `[ZhilianCrawler] 🆕 创建新标签页...`);
         
-        // 🔧 增加超时控制，防止创建标签页时无限等待
+        // 🔧 增加超时控制，并处理孤儿标签页泄漏
+        const newPagePromise = browser.newPage();
         const createPageTimeout = new Promise<any>((_, reject) => {
           setTimeout(() => reject(new Error('创建标签页超时（10秒）')), 10000);
         });
-        
+
         page = await Promise.race([
-          browser.newPage(),
+          newPagePromise,
           createPageTimeout
-        ]);
+        ]).catch(async (raceError) => {
+          // 超时时 newPagePromise 仍在后台运行，捕获并关闭泄漏的孤儿页面
+          newPagePromise.then((leakedPage: any) => {
+            if (leakedPage && !leakedPage.isClosed()) {
+              this.log('warn', `[ZhilianCrawler] 🧹 关闭超时泄漏的孤儿标签页`);
+              leakedPage.close().catch(() => {});
+            }
+          }).catch(() => {});
+          throw raceError;
+        });
         
         this.log('info', `[ZhilianCrawler] ✅ 标签页创建成功`);
         
@@ -1998,28 +2052,41 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
       
       // 导航到详情页
       this.log('info', `[ZhilianCrawler] 🌐 正在导航至详情页...`);
-      await page.goto(jobUrl, { 
-        waitUntil: 'domcontentloaded',  // 改为domcontentloaded，更快
-        timeout: 15000 
-      });
-      
-      // 🔧 关键优化：显式等待关键元素出现，确保页面完全加载
-      this.log('info', `[ZhilianCrawler] ⏳ 等待关键元素加载...`);
+      let navigationTimedOut = false;
       try {
-        // 等待职位标题或公司名称出现（任一出现即表示页面加载成功）
-        await page.waitForSelector('.summary-planes__title, .company-name, [class*="job-title"]', {
-          timeout: 8000  // 最多等待8秒
+        await page.goto(jobUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 12000  // 缩短超时，快速失败以减少资源占用
         });
-        this.log('info', `[ZhilianCrawler] ✅ 关键元素已加载`);
-      } catch (waitError: any) {
-        this.log('warn', `[ZhilianCrawler] ⚠️ 关键元素等待超时，尝试延长等待时间...`);
-        // 如果等待失败，额外等待3秒后再尝试
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      } catch (navError: any) {
+        if (navError.message?.includes('timeout') || navError.message?.includes('Navigation')) {
+          navigationTimedOut = true;
+          this.log('warn', `[ZhilianCrawler] ⏰ 导航超时，尝试从已加载的部分内容提取数据...`);
+        } else {
+          throw navError;  // 非超时错误，直接抛出
+        }
       }
       
-      // 🔧 额外等待：确保动态内容完全渲染
-      this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // 🔧 关键优化：显式等待关键元素出现，确保页面完全加载
+      // 但如果导航已超时，跳过等待，直接尝试快速提取
+      if (!navigationTimedOut) {
+        this.log('info', `[ZhilianCrawler] ⏳ 等待关键元素加载...`);
+        try {
+          await page.waitForSelector('.summary-planes__title, .company-name, [class*="job-title"]', {
+            timeout: 6000
+          });
+          this.log('info', `[ZhilianCrawler] ✅ 关键元素已加载`);
+        } catch (waitError: any) {
+          this.log('warn', `[ZhilianCrawler] ⚠️ 关键元素等待超时，尝试延长等待时间...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+
+        this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      } else {
+        this.log('info', `[ZhilianCrawler] ⚡ 跳过等待，直接尝试快速提取...`);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
       
       // 🔧 健康检查：验证页面是否真的加载成功
       const pageHealth = await page.evaluate(() => {
@@ -2055,10 +2122,15 @@ if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < 
         throw new Error('ANTI_BOT_DETECTED: 检测到反爬拦截（验证码/错误页面）');
       }
 
-      // 🔧 内容过少检测（非WAF场景才尝试刷新，因为WAF已被上面分支拦截）
+      // 🔧 内容过少检测
       if (pageHealth.bodyLength < 1000) {
         this.log('warn', `[ZhilianCrawler] ⚠️ 页面内容过少(${pageHealth.bodyLength}字节)`);
-        this.log('warn', `[ZhilianCrawler] 📄 页面标题: "${pageHealth.pageTitle}"`);
+
+        // 🔧 导航已超时 → 不浪费时间刷新，直接失败用降级数据
+        if (navigationTimedOut) {
+          this.log('warn', `[ZhilianCrawler] ⚡ 导航已超时，跳过刷新直接使用降级数据`);
+          throw new Error('PAGE_LOAD_FAILED: 导航超时且内容过少');
+        }
 
         this.log('info', `[ZhilianCrawler] 🔄 尝试刷新页面...`);
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
