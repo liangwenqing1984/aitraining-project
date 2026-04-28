@@ -27,6 +27,21 @@
         <div class="chat-header">
           <h3>智能数据查询</h3>
           <span class="chat-subtitle">用自然语言查询职位数据</span>
+          <el-select
+            v-model="selectedTaskId"
+            placeholder="选择任务（可选）"
+            clearable
+            size="small"
+            style="width: 220px; margin-left: auto;"
+            :loading="loadingTasks"
+          >
+            <el-option
+              v-for="t in taskList"
+              :key="t.id"
+              :label="t.name + ' (' + t.recordCount + '条)'"
+              :value="t.id"
+            />
+          </el-select>
         </div>
 
         <div class="chat-messages" ref="chatContainer">
@@ -113,7 +128,8 @@
 import { ref, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { ChatDotRound, User, Cpu, Promotion } from '@element-plus/icons-vue'
-import { executeNLQuery, getNLQueryHistory, type NLQueryResult } from '@/api/llm'
+import { executeNLQuery, getNLQueryHistory, getEnrichmentStatus, type NLQueryResult } from '@/api/llm'
+import { taskApi } from '@/api/task'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -129,6 +145,9 @@ const messages = ref<Message[]>([])
 const history = ref<NLQueryResult[]>([])
 const currentQuery = ref<NLQueryResult | null>(null)
 const chatContainer = ref<HTMLElement>()
+const taskList = ref<any[]>([])
+const selectedTaskId = ref<string>('')
+const loadingTasks = ref(false)
 
 const quickQuestions = [
   '薪资最高的10个岗位是哪些？',
@@ -170,7 +189,7 @@ async function sendQuery() {
   scrollToBottom()
 
   try {
-    const res: any = await executeNLQuery(q)
+    const res: any = await executeNLQuery(q, selectedTaskId.value || undefined)
     if (res.success && res.data) {
       const d = res.data
       const summary = d.resultSummary || `共 ${d.resultCount} 条结果`
@@ -230,8 +249,22 @@ function scrollToBottom() {
   }
 }
 
+async function loadTasks() {
+  loadingTasks.value = true
+  try {
+    const res: any = await taskApi.listTasks({ page: 1, pageSize: 50 })
+    if (res.success && res.data) {
+      taskList.value = (res.data.tasks || res.data.rows || res.data || []).filter(
+        (t: any) => t.recordCount > 0
+      )
+    }
+  } catch { /* ignore */ }
+  loadingTasks.value = false
+}
+
 onMounted(() => {
   loadHistory()
+  loadTasks()
 })
 </script>
 

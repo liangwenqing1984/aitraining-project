@@ -73,13 +73,14 @@ export async function executeNLQuery(
   console.log(`[NLQuery] 处理查询: "${question}"`);
 
   // Step 1: Generate SQL
-  const schema = taskId
-    ? `job_enrichments (task_id='${taskId}')`
-    : 'job_enrichments, tasks, csv_files';
+  const taskContext = taskId
+    ? `\n当前任务ID: ${taskId}（如需按任务过滤请使用 WHERE task_id='${taskId}'）`
+    : '';
+  const schema = 'job_enrichments（核心职位数据表）, tasks, csv_files';
 
   const llmResult = await llmService.callLLM(
     NL_QUERY_SYSTEM,
-    NL_QUERY_USER(question, schema),
+    NL_QUERY_USER(question + taskContext, schema),
     {
       taskType: 'query',
       temperature: 0.1,

@@ -125,6 +125,24 @@ export const NL_QUERY_SYSTEM = `你是一个SQL查询助手。用户会用自然
 
 数据库表结构（schema: liangwenqing）：
 
+=== job_enrichments 表（核心：AI增强后的标准化职位数据）===
+- id (VARCHAR), task_id (VARCHAR FK), job_id (VARCHAR UNIQUE)
+- salary_monthly_min (INTEGER) — 月薪下限（元）
+- salary_monthly_max (INTEGER) — 月薪上限（元）
+- salary_annual_estimate (INTEGER) — 估算年薪（元）
+- job_category_l1 (VARCHAR) — 一级分类：技术/产品/运营/市场/销售/设计/金融/人力资源/行政/客服/物流/教育/医疗/建筑/制造/其他
+- job_category_l2 (VARCHAR) — 二级分类：后端开发/前端开发/数据分析/测试/产品经理/UI设计等
+- company_industry (VARCHAR) — 公司行业：互联网/金融/教育/医疗/制造/房地产/零售/物流/能源/媒体/咨询/IT服务/建筑/其他
+- key_skills (JSONB) — 所有技能列表 ["Java","Spring","MySQL"]
+- required_skills (JSONB) — 必备技能
+- preferred_skills (JSONB) — 加分技能
+- education_normalized (VARCHAR) — 学历：博士/硕士/本科/大专/高中/不限
+- experience_years_min (INTEGER) — 经验年限下限
+- experience_years_max (INTEGER) — 经验年限上限
+- benefits (JSONB) — 福利列表
+- work_mode (VARCHAR) — 远程/现场/混合
+- model_used (VARCHAR), enriched_at (TIMESTAMP)
+
 tasks 表（任务）：
 - id (VARCHAR), name, source, config (JSONB), status, progress, record_count
 - created_at, updated_at
@@ -135,11 +153,12 @@ csv_files 表（文件）：
 
 注意事项：
 1. 仅生成SELECT语句，绝对禁止INSERT/UPDATE/DELETE/DROP等
-2. 使用参数化查询，用户输入值用?占位符
-3. LIMIT最多500条
-4. 如果需要跨表JOIN，使用csv_files和tasks表
-5. 对于文本搜索，使用 ILIKE 进行模糊匹配
-6. 如果查询涉及薪资范围（原始数据在JSONB或TEXT中），说明需要应用层解析
+2. 查询薪资、技能、学历、行业、职位分类等信息时，必须从 job_enrichments 表查询
+3. 按薪资排序用 salary_monthly_max DESC 或 salary_monthly_min DESC
+4. 统计查询用 COUNT(*)，分组用 GROUP BY
+5. JSONB 数组字段不能直接在 WHERE 中用 = 比较，需要用 @> 操作符
+6. LIMIT最多500条
+7. 如果用户指定了 task_id，加上 WHERE task_id='xxx' 过滤
 
 输出JSON格式：
 {
