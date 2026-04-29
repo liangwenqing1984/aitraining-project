@@ -58,6 +58,7 @@ const menuGroups = [
     children: [
       { id: 'feat-crawl', label: '数据采集' },
       { id: 'feat-enrich', label: 'AI 数据增强' },
+      { id: 'feat-rag', label: '语义搜索 (RAG)' },
       { id: 'feat-insights', label: 'AI 市场洞察' },
       { id: 'feat-query', label: '自然语言查询' },
       { id: 'feat-anticrawl', label: 'AI 反爬对抗' },
@@ -72,6 +73,7 @@ const menuGroups = [
       { id: 'api-tasks', label: '任务管理 (11)' },
       { id: 'api-files', label: '文件管理 (8)' },
       { id: 'api-analysis', label: '数据分析 (5)' },
+      { id: 'api-rag', label: 'RAG 知识库 (4)' },
       { id: 'api-llm', label: 'AI 服务 (17)' },
       { id: 'api-auth', label: '认证 (6)' },
     ]
@@ -82,12 +84,14 @@ const menuGroups = [
     children: [
       { id: 'guide-crawl', label: '采集数据' },
       { id: 'guide-enrich', label: 'AI 增强数据' },
+      { id: 'guide-rag', label: '语义搜索' },
       { id: 'guide-insights', label: 'AI 深度分析' },
       { id: 'guide-query', label: '自然语言查询' },
       { id: 'guide-config', label: 'AI 配置管理' },
     ]
   },
   { id: 'websocket', label: 'WebSocket 事件', icon: Connection },
+  { id: 'diagnostics', label: '系统诊断手册', icon: Files },
   { id: 'faq', label: '常见问题', icon: ChatDotRound },
 ]
 
@@ -153,6 +157,37 @@ const docs: Record<string, { title: string; content: string }> = {
   <li>3 次重试 + 递增 temperature 提高成功率</li>
   <li>WebSocket 实时推送增强进度</li>
   <li>ON CONFLICT UPSERT 保证幂等可重跑</li>
+</ul>`
+  },
+  'feat-rag': {
+    title: '语义搜索 (RAG)',
+    content: `<p>基于 <strong>pgvector 向量数据库</strong>实现职位知识库的语义相似搜索，支持自然语言描述的职位检索：</p>
+
+<h4>RAG 架构</h4>
+<pre><code>Excel 原始数据 (jobName, companyName, workCity)
+        ↘
+  job_enrichments (LLM 增强: 技能/分类/行业等)
+        ↘
+  buildJobText() → 拼接文本 → Ollama embedding (nomic-embed-text, 768维)
+        ↘
+  job_embeddings (pgvector vector(768) + IVFFlat 余弦索引)
+        ↘
+  semanticSearch() → 余弦相似度排序</code></pre>
+
+<h4>核心特性</h4>
+<ul>
+  <li><strong>向量维度</strong>: 768 维（nomic-embed-text），IVFFlat 索引（100 个列表）</li>
+  <li><strong>混合数据源</strong>: Excel 原始字段（职位名/公司名/城市）+ job_enrichments 增强字段</li>
+  <li><strong>ON CONFLICT UPSERT</strong>: 支持安全重索引，旧数据自动更新</li>
+  <li><strong>余弦相似度</strong>: 默认阈值 0.3，支持 <code>task_id</code> 范围限定</li>
+  <li><strong>Ollama 本地推理</strong>: 数据不出本地，200ms 请求间隔避免过载</li>
+</ul>
+
+<h4>搜索示例</h4>
+<ul>
+  <li>"需要5年以上经验的Java后端开发岗位"</li>
+  <li>"北京地区薪资20K以上的数据分析师"</li>
+  <li>"互联网行业本科学历的产品经理"</li>
 </ul>`
   },
   'feat-insights': {
@@ -385,6 +420,38 @@ npm run dev
   <tr><td>GET</td><td><code>/experience/:fileId</code></td><td>经验要求分布</td></tr>
 </table>`
   },
+  'api-rag': {
+    title: 'RAG 知识库 API（4 个端点）',
+    content: `<p><strong>Base:</strong> <code>/api/rag</code></p>
+<table>
+  <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+  <tr><td>POST</td><td><code>/index/:taskId</code></td><td>异步索引任务数据到向量库（WebSocket 推送进度）</td></tr>
+  <tr><td>POST</td><td><code>/index/:taskId/sync</code></td><td>同步索引，直接返回结果（调试用）</td></tr>
+  <tr><td>POST</td><td><code>/search</code></td><td>语义搜索<br/>Body: <code>{ query, taskId?, limit?, minSimilarity? }</code></td></tr>
+  <tr><td>GET</td><td><code>/stats</code></td><td>查询向量库统计（按任务统计 + 总览）</td></tr>
+</table>
+
+<h4>搜索请求示例</h4>
+<pre><code>POST /api/rag/search
+{
+  "query": "Java后端开发高级工程师",
+  "taskId": "938a0a93...",
+  "limit": 10,
+  "minSimilarity": 0.3
+}</code></pre>
+
+<h4>搜索响应字段</h4>
+<table>
+  <tr><td>jobName</td><td>职位名称（来自 Excel）</td></tr>
+  <tr><td>companyName</td><td>企业名称（来自 Excel）</td></tr>
+  <tr><td>workCity</td><td>工作城市（来自 Excel）</td></tr>
+  <tr><td>jobCategoryL1/L2</td><td>职位分类（来自增强）</td></tr>
+  <tr><td>companyIndustry</td><td>公司行业（来自增强）</td></tr>
+  <tr><td>salaryMonthlyMin/Max</td><td>月薪范围（来自增强）</td></tr>
+  <tr><td>keySkills</td><td>关键技能（来自增强）</td></tr>
+  <tr><td>similarity</td><td>余弦相似度 (0-1)</td></tr>
+</table>`
+  },
   'api-llm': {
     title: 'AI 服务 API（17 个端点）',
     content: `<p><strong>Base:</strong> <code>/api/llm</code></p>
@@ -495,6 +562,27 @@ npm run dev
   <tr><td>task_routing</td><td>JSONB</td><td>任务类型路由</td></tr>
 </table>
 
+<h3>job_embeddings — RAG 职位向量库</h3>
+<table>
+  <tr><td>task_id + job_id</td><td>UNIQUE</td><td>任务+职位唯一约束（UPSERT）</td></tr>
+  <tr><td>text_content</td><td>TEXT</td><td>拼接后的职位全文（用于生成 embedding）</td></tr>
+  <tr><td>embedding</td><td>vector(768)</td><td>nomic-embed-text 生成的 768 维向量</td></tr>
+  <tr><td>job_name</td><td>VARCHAR(255)</td><td>职位名称（Excel 原始）</td></tr>
+  <tr><td>job_category_l1/l2</td><td>VARCHAR(100)</td><td>一/二级分类（增强）</td></tr>
+  <tr><td>company_name</td><td>VARCHAR(255)</td><td>企业名称（Excel 原始）</td></tr>
+  <tr><td>company_industry</td><td>VARCHAR(100)</td><td>公司行业（增强）</td></tr>
+  <tr><td>work_city</td><td>VARCHAR(50)</td><td>工作城市（Excel 原始）</td></tr>
+  <tr><td>salary_monthly_min/max</td><td>INTEGER</td><td>月薪范围（增强）</td></tr>
+  <tr><td>key_skills</td><td>JSONB</td><td>关键技能（增强）</td></tr>
+</table>
+
+<h4>pgvector 索引</h4>
+<ul>
+  <li><strong>IVFFlat 索引</strong>：<code>embedding vector_cosine_ops</code>，100 个列表</li>
+  <li><strong>近似搜索</strong>：通过 <code>embedding &lt;=&gt; $1::vector</code> 计算余弦距离</li>
+  <li><strong>相似度转换</strong>：<code>1 - (embedding &lt;=&gt; query)</code> 得到余弦相似度</li>
+</ul>
+
 <h3>saved_queries — NL 查询历史</h3>
 <table>
   <tr><td>user_query</td><td>TEXT</td><td>用户自然语言</td></tr>
@@ -527,6 +615,32 @@ npm run dev
   <li>增强完成后进入「智能分析」查看标准化数据</li>
 </ol>
 <blockquote>增强基于 ON CONFLICT UPSERT，重复点击不会产生重复数据，可安全重跑。</blockquote>`
+  },
+  'guide-rag': {
+    title: '语义搜索',
+    content: `<ol>
+  <li>确保任务已完成爬取 + AI 增强（需要 <code>job_enrichments</code> 数据）</li>
+  <li>进入「语义搜索」页面</li>
+  <li>在「选择要索引的任务」下拉框中选择目标任务</li>
+  <li>点击「开始索引」按钮，系统自动：
+    <ul>
+      <li>从 Excel 读取原始职位字段（职位名称/企业/城市）</li>
+      <li>从 <code>job_enrichments</code> 读取增强字段（分类/技能/行业）</li>
+      <li>调用 Ollama nomic-embed-text 生成 768 维向量</li>
+      <li>存入 <code>job_embeddings</code> 表（pgvector）</li>
+    </ul>
+  </li>
+  <li>索引完成后，在搜索框输入自然语言查询</li>
+  <li>结果按余弦相似度降序排列，显示职位名称/公司/城市/薪资/技能等完整信息</li>
+</ol>
+<blockquote>索引使用 ON CONFLICT UPSERT，重复索引会更新已有数据。建议每个任务仅需索引一次。</blockquote>
+
+<h4>模型依赖</h4>
+<ul>
+  <li>需要 Ollama 运行 <code>nomic-embed-text</code> 模型（768 维）</li>
+  <li>首次索引会自动检查并尝试拉取模型</li>
+  <li>单条 200ms 间隔避免 Ollama 过载</li>
+</ul>`
   },
   'guide-insights': {
     title: 'AI 深度分析',
@@ -592,6 +706,38 @@ socket.emit('task:unsubscribe', { taskId: 'xxx' })</code></pre>
   <tr><td><code>insights:progress</code></td><td>{fileId, message}</td><td>报告生成进度</td></tr>
   <tr><td><code>insights:completed</code></td><td>{fileId, reportId, title, summary}</td><td>报告生成完成</td></tr>
 </table>`
+  },
+
+  // ========== 系统诊断手册 ==========
+  diagnostics: {
+    title: '系统诊断手册',
+    content: `<p>项目 <code>docs/diagnostics/</code> 目录下收录了 <strong>83 份诊断文档</strong>，按时间顺序记录了系统开发过程中的所有关键问题分析、根因定位和修复方案。</p>
+
+<h3>文档分类</h3>
+<table>
+  <tr><th>编号范围</th><th>时间段</th><th>主题</th></tr>
+  <tr><td>01-16</td><td>4/21-23</td><td>认证登录 / OAuth2 / 分析模块</td></tr>
+  <tr><td>17-22</td><td>4/24</td><td>爬虫基础配置 + 日志持久化</td></tr>
+  <tr><td>23-33</td><td>4/24 上午</td><td>任务进度问题分析（6 个任务逐一排查）</td></tr>
+  <tr><td>34-44</td><td>4/24 下午</td><td>智联招聘解析器深度修复（职位提取/企业名称/链接）</td></tr>
+  <tr><td>45-53</td><td>4/24 晚间</td><td>诊断日志补丁完善（策略 1/2/3 统计）</td></tr>
+  <tr><td>54-66</td><td>4/27</td><td>并发/浏览器崩溃/反爬修复</td></tr>
+  <tr><td>67-74</td><td>4/27</td><td>任务失败诊断 + 日志隔离</td></tr>
+  <tr><td>75-79</td><td>4/27 晚</td><td>WAF 对抗增强 + 项目文件清理</td></tr>
+  <tr><td>80-81</td><td>4/27</td><td>项目汇报 PPT + 核心技术总结</td></tr>
+  <tr><td>82-83</td><td>4/28</td><td>RAG 知识库构建修复 + 浏览器崩溃记录数虚高修复</td></tr>
+</table>
+
+<h3>典型诊断案例</h3>
+<ul>
+  <li><strong>#72 浏览器崩溃恢复 Excel 二进制误读</strong>：<code>fs.readFileSync</code> 读取 .xlsx 二进制当文本导致 record_count 虚高（82→31）</li>
+  <li><strong>#71 RAG 知识库 5 项修复</strong>：pgvector 类型找不到 / search_path 隔离 / workMode 类型遗漏 / Excel 字段缺失 / ON CONFLICT 被预检阻止</li>
+  <li><strong>#56 并发模式浏览器崩溃最终修复</strong>：BrowserPool 资源竞争导致崩溃，改为单浏览器 + 页面池模式</li>
+  <li><strong>#41 智联招聘 HTML 快照诊断</strong>：自动保存解析异常页面 HTML 用于离线 DOM 分析</li>
+  <li><strong>#25 任务进度为 0 根因</strong>：db 变量未从 client 模块导入导致静默失败（159 条数据但进度始终为 0）</li>
+</ul>
+
+<blockquote>诊断文档仅供开发维护参考，记录了每个问题的完整排查链路和修复代码。</blockquote>`
   },
 
   // ========== 常见问题 ==========
