@@ -1570,8 +1570,21 @@ strategy1Stats.failedExtractions++;
               const isDetachedFrame = error.message.includes('detached');
 
               if (isBrowserCrash || isDetachedFrame) {
-                // 🔧 如果是用户手动中止导致的浏览器断开，直接抛出，不触发恢复流程
+                // 🔧 如果是用户手动中止导致的浏览器断开，保存断点后再抛出
                 if (this.checkAborted()) {
+                  // 🔧 关键修复：catch 块中 throw 会跳过 while 循环末尾的 _resumeState 保存
+                  // 必须在这里提前保存，否则恢复时读不到断点信息→创建新Excel→计数重置
+                  try {
+                    const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                    if (abortResumeTask) {
+                      const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
+                      abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                      await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                      this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（异常路径）: 组合${currentCombination}, 第${currentPage}页`);
+                    }
+                  } catch (e: any) {
+                    // 保存失败不影响中止流程
+                  }
                   this.log('info', `[ZhilianCrawler] ⏹️ 用户中止导致的浏览器断开，跳过恢复`);
                   throw error;
                 }
@@ -1674,6 +1687,18 @@ strategy1Stats.failedExtractions++;
               }
 
               this.log('warn', `[ZhilianCrawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
+              // 🔧 防御：如果已中止，保存断点后再退出（极端情况：超时等非崩溃错误也可能在 abort 时发生）
+              if (this.checkAborted()) {
+                try {
+                  const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                  if (abortResumeTask) {
+                    const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
+                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（非崩溃异常路径）: 组合${currentCombination}, 第${currentPage}页`);
+                  }
+                } catch (e: any) {}
+              }
               break;
             } finally {
   if (page) {
