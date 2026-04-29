@@ -120,24 +120,38 @@ export class ZhilianCrawler {
         '--disable-accelerated-2d-canvas',
         '--disable-gpu',
         '--window-size=1920x1080',
-        // 🔧 新增稳定性参数
-        '--disable-web-security',  // 禁用Web安全策略（仅限爬虫）
-        '--disable-features=IsolateOrigins,site-per-process',  // 禁用站点隔离
-        '--disable-site-isolation-trials',  // 禁用站点隔离试验
-        '--disable-extensions',  // 禁用扩展
-        '--disable-background-networking',  // 禁用后台网络
-        '--disable-default-apps',  // 禁用默认应用
-        '--no-first-run',  // 跳过首次运行
-        '--disable-sync',  // 禁用同步
-        '--disable-translate',  // 禁用翻译
-        '--metrics-recording-only',  // 仅记录指标
-        '--safebrowsing-disable-auto-update'  // 禁用安全浏览更新
+        // 🔧 稳定性参数
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials',
+        '--disable-extensions',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--no-first-run',
+        '--disable-sync',
+        '--disable-translate',
+        '--metrics-recording-only',
+        '--safebrowsing-disable-auto-update',
+        // 🔧 内存与稳定性优化：防止OOM崩溃
+        '--js-flags="--max-old-space-size=512"',  // 限制JS堆内存512MB
+        '--disable-hang-monitor',                   // 禁用挂起监控，防止误杀
+        '--disable-background-timer-throttling',    // 禁用后台定时器节流
+        '--disable-renderer-backgrounding',         // 禁止渲染器降级
       ],
       // 🔧 添加超时控制
       timeout: 30000  // 30秒启动超时
     });
     
     this.log('info', `[ZhilianCrawler] ✅ 浏览器启动成功`);
+
+    // 🔧 关键修复：监听 abort 信号，用户停止任务时主动关闭浏览器
+    // 这会使所有正在进行的 page.goto/waitForSelector/newPage 立即失败，
+    // 配合 abortableSleep 实现秒级响应停止请求
+    const abortHandler = () => {
+      this.log('info', `[ZhilianCrawler] ⏹️ 收到中止信号，正在强制关闭浏览器...`);
+      browser.close().catch(() => {});
+    };
+    signal.addEventListener('abort', abortHandler, { once: true });
 
     try {
       // 遍历所有关键词和城市的组合
@@ -1105,8 +1119,14 @@ strategy1Stats.failedExtractions++;
                 const concurrency = config.concurrency != null ? config.concurrency : 2;
                 let wafDetected = false;  // 🔧 跟踪WAF拦截状态
                 // 🔧 断点续传：确定当前页的起始职位索引（仅恢复组合的恢复页面生效，其他为0）
-                const pageStartJobIndex = (resumeState && currentCombination === startCombinationIndex && currentPage === startPage)
+                let pageStartJobIndex = (resumeState && currentCombination === startCombinationIndex && currentPage === startPage)
                   ? globalStartJobIndex : 0;
+                // 🔧 安全钳：重新解析的职位数可能少于原始列表，防止索引越界导致职位丢失
+                if (pageStartJobIndex >= filteredJobs.length) {
+                  this.log('warn', `[ZhilianCrawler] ⚠️ 断点续传位置(${pageStartJobIndex + 1})超出重新解析的职位数(${filteredJobs.length})，页面列表可能已更新`);
+                  this.log('info', `[ZhilianCrawler] 📋 重置为0，依赖去重机制跳过已采集的职位`);
+                  pageStartJobIndex = 0;
+                }
                 this.log('info', `[ZhilianCrawler] 🚀启用${concurrency <= 1 ? '串行' : '并发'}模式: 并发数=${concurrency}, 总职位数=${filteredJobs.length}, 起始职位索引=${pageStartJobIndex}`);
 
                 if (concurrency <= 1) {
@@ -1144,12 +1164,12 @@ strategy1Stats.failedExtractions++;
                         ? 4000 + Math.random() * 4000   // 4-8秒（WAF模式）
                         : 2000 + Math.random() * 2000;  // 2-4秒（正常模式）
                       this.log('info', `[ZhilianCrawler] ⏳ 等待 ${(delay/1000).toFixed(1)} 秒后处理下一个...`);
-                      await new Promise(resolve => setTimeout(resolve, delay));
+                      await this.abortableSleep(delay);
                     }
                   }
                 } else {
                   // ✅ 并发模式：批次内并行处理，但加强资源管理
-                  const maxConcurrency = 3; // 降低并发上限，减少Chrome内存压力
+                  const maxConcurrency = 5;
                   const actualConcurrency = Math.min(concurrency, maxConcurrency);
                   const batchSize = actualConcurrency;
                   
@@ -1404,7 +1424,7 @@ strategy1Stats.failedExtractions++;
                         this.log('info', `[ZhilianCrawler] [${i + 1}/${filteredJobs.length}] 🔄 WAF串行: ${job.title}`);
                         const wafDelay = 5000 + Math.random() * 5000;
                         this.log('info', `[ZhilianCrawler] ⏳ WAF模式等待 ${(wafDelay/1000).toFixed(1)} 秒...`);
-                        await new Promise(resolve => setTimeout(resolve, wafDelay));
+                        await this.abortableSleep(wafDelay);
                         let jobData;
                         if (job.link) {
                           try {
@@ -1460,9 +1480,13 @@ strategy1Stats.failedExtractions++;
                   }
                 }
 
-                // 检查下一页 - 使用多套选择器策略
-                // @ts-ignore - 此代码在浏览器环境中运行
-                hasNextPage = await page.evaluate(() => {
+                // 🔧 关键修复：中止时不进行 hasNextPage 检查（浏览器可能已被关闭，eval 会抛错导致断点无法保存）
+                if (this.checkAborted()) {
+                  hasNextPage = false;
+                } else {
+                  // 检查下一页 - 使用多套选择器策略
+                  // @ts-ignore - 此代码在浏览器环境中运行
+                  hasNextPage = await page.evaluate(() => {
                   // 🔧 防御性检查: 确保document存在
                   if (!document || !document.querySelector) {
                     return false;
@@ -1498,7 +1522,8 @@ strategy1Stats.failedExtractions++;
                   
                   return false;
                 });
-                
+                }  // 🔧 关闭 else 块（abort 检查的 if-else）
+
                 this.log('info', `[ZhilianCrawler] 是否有下一页: ${hasNextPage}`);
               }
 
@@ -1513,6 +1538,20 @@ strategy1Stats.failedExtractions++;
                   level: 'success',
                   message: `✅ 第 ${currentPage} 页处理完成 | 耗时 ${pageDuration}秒 | 解析 ${jobList.length} 条 | 过滤后 ${filteredJobs.length} 条${hasNextPage ? ' | 继续下一页' : ' | 已是最后一页'}`
                 });
+              }
+
+              // 🔧 断点续传：每页处理完成后保存进度到DB config（仅非中止时保存）
+              if (!this.checkAborted()) {
+                try {
+                  const resumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                  if (resumeTask) {
+                    const resumeConfig = typeof resumeTask.config === 'string' ? JSON.parse(resumeTask.config) : resumeTask.config;
+                    resumeConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage + 1, jobIndex: 0 };
+                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(resumeConfig), taskId!);
+                  }
+                } catch (e: any) {
+                  // 保存失败不影响继续爬取
+                }
               }
 
             } catch (error: any) {
@@ -1531,6 +1570,11 @@ strategy1Stats.failedExtractions++;
               const isDetachedFrame = error.message.includes('detached');
 
               if (isBrowserCrash || isDetachedFrame) {
+                // 🔧 如果是用户手动中止导致的浏览器断开，直接抛出，不触发恢复流程
+                if (this.checkAborted()) {
+                  this.log('info', `[ZhilianCrawler] ⏹️ 用户中止导致的浏览器断开，跳过恢复`);
+                  throw error;
+                }
                 const errorType = isDetachedFrame ? '页面Frame分离' : '浏览器崩溃';
                 this.log('error', `[ZhilianCrawler] 🚨 检测到${errorType}！错误: ${error.message}`);
                 this.log('error', `[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
@@ -1652,9 +1696,22 @@ strategy1Stats.failedExtractions++;
             
             // 如果任务中止或没有下一页，退出循环
             if (this.checkAborted() || !hasNextPage) {
+              // 🔧 断点续传：中止时保存当前位置（不递增页码），确保恢复时从此页开始
+              if (this.checkAborted()) {
+                try {
+                  const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                  if (abortResumeTask) {
+                    const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
+                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存: 组合${currentCombination}, 第${currentPage}页`);
+                  }
+                } catch (e: any) {
+                  // 保存失败不影响继续
+                }
+              }
               break;
             }
-
             currentPage++;
 
             if (config.maxPages && currentPage > config.maxPages) {
@@ -1666,9 +1723,15 @@ strategy1Stats.failedExtractions++;
 
           }
           
+          // 🔧 修复：如果是用户中止，跳过"完成组合"逻辑，保留当前 _resumeState
+          if (this.checkAborted()) {
+            this.log('info', `[ZhilianCrawler] ⚠️ 组合 ${currentCombination}/${totalCombinationCount} 被中止，保留断点续传状态`);
+            // 不执行组合完成进度更新，让外层的 abort 检测处理返回
+          } else {
+
           this.log('info', `[ZhilianCrawler] ✅ 完成组合 ${currentCombination}/${totalCombinationCount}: 关键词="${keyword}", 城市="${city}"`);
           this.log('info', `[ZhilianCrawler]`);
-          
+
           // 🔧 关键修复：发送组合完成进度到前端并更新数据库
           if (io && taskId) {
             // 发送组合进度事件
@@ -1679,19 +1742,31 @@ strategy1Stats.failedExtractions++;
               keyword,
               city
             });
-            
+
             // 🔧 直接更新数据库进度（多组合场景）
             const progressPercent = Math.round((currentCombination / totalCombinationCount) * 99);
             try {
               await db.prepare(`
-                UPDATE tasks 
+                UPDATE tasks
                 SET progress = $1, current = $2, updated_at = CURRENT_TIMESTAMP
                 WHERE id = $3
               `).run(progressPercent, currentCombination, taskId);
-              
+
               this.log('info', `[ZhilianCrawler] 📊 进度更新: ${currentCombination}/${totalCombinationCount} (${progressPercent}%)`);
             } catch (dbError) {
               this.log('warn', `[ZhilianCrawler] ⚠️ 更新进度失败:`, dbError.message);
+            }
+
+            // 🔧 断点续传：组合完成后保存下一个组合的起始状态
+            try {
+              const comboResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId) as any;
+              if (comboResumeTask) {
+                const comboResumeConfig = typeof comboResumeTask.config === 'string' ? JSON.parse(comboResumeTask.config) : comboResumeTask.config;
+                comboResumeConfig._resumeState = { combinationIndex: currentCombination + 1, currentPage: 1, jobIndex: 0 };
+                await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(comboResumeConfig), taskId);
+              }
+            } catch (e: any) {
+              // 保存失败不影响继续爬取
             }
           }
           
@@ -1717,14 +1792,20 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
   (restartError as any).jobIndex = 0;     // ✅ 新页面从第1个职位开始
   throw restartError;
 }
+          }  // end else: 组合正常完成
         }
       }
-      
-      this.log('info', `[ZhilianCrawler]`);
-      this.log('info', `[ZhilianCrawler] =============================================`);
-      this.log('info', `[ZhilianCrawler] ✅✅✅ 所有 ${totalCombinationCount} 个组合处理完成!`);
-      this.log('info', `[ZhilianCrawler] =============================================`);
+
+      // 🔧 修复：如果被中止，不打印"所有组合完成"
+      if (!this.checkAborted()) {
+        this.log('info', `[ZhilianCrawler]`);
+        this.log('info', `[ZhilianCrawler] =============================================`);
+        this.log('info', `[ZhilianCrawler] ✅✅✅ 所有 ${totalCombinationCount} 个组合处理完成!`);
+        this.log('info', `[ZhilianCrawler] =============================================`);
+      }
     } finally {
+      // 🔧 清理 abort 监听器，防止 retry 时重复注册导致日志刷屏
+      signal.removeEventListener('abort', abortHandler);
       // 🔧 优化：安全关闭浏览器，添加超时和错误处理
       this.log('info', `[ZhilianCrawler] 🛑 正在关闭浏览器...`);
       
@@ -1763,11 +1844,34 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
     return (this as any).taskId || '';
   }
 
-  // 随机延迟
+  // 🔧 可中断延迟：监听 AbortSignal 的 abort 事件，立即中断等待
+  private abortableSleep(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      if (this.signal?.aborted) {
+        resolve();
+        return;
+      }
+      const cleanup = () => {
+        this.signal?.removeEventListener('abort', onAbort);
+      };
+      const onAbort = () => {
+        clearTimeout(timer);
+        cleanup();
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        cleanup();
+        resolve();
+      }, ms);
+      this.signal?.addEventListener('abort', onAbort);
+    });
+  }
+
+  // 随机延迟（可被 abort 中断）
   private async randomDelay(min: number = 2000, max: number = 5000): Promise<void> {
     if (this.signal?.aborted) return;
     const delay = Math.random() * (max - min) + min;
-    await new Promise(resolve => setTimeout(resolve, delay));
+    await this.abortableSleep(delay);
   }
 
   // 检查是否终止
@@ -1895,7 +1999,7 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
         
         // 等待动态内容加载
         this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await this.abortableSleep(2000);
 
         // 🔧 WAF专项检测：Security Verification页面直接放弃
         const isWaf = await page.evaluate(() => {
@@ -2126,14 +2230,14 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
           this.log('info', `[ZhilianCrawler] ✅ 关键元素已加载`);
         } catch (waitError: any) {
           this.log('warn', `[ZhilianCrawler] ⚠️ 关键元素等待超时，尝试延长等待时间...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await this.abortableSleep(2000);
         }
 
         this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await this.abortableSleep(2000);
       } else {
         this.log('info', `[ZhilianCrawler] ⚡ 跳过等待，直接尝试快速提取...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await this.abortableSleep(1000);
       }
       
       // 🔧 健康检查：验证页面是否真的加载成功
@@ -2182,7 +2286,7 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
 
         this.log('info', `[ZhilianCrawler] 🔄 尝试刷新页面...`);
         await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await this.abortableSleep(3000);
 
         const retryHealth = await page.evaluate(() => ({
           bodyLength: document.body ? document.body.textContent?.length || 0 : 0,

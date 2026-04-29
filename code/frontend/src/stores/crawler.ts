@@ -365,15 +365,26 @@ export const useCrawlerStore = defineStore('crawler', () => {
     }
   }
 
-  // 恢复任务
+  // 恢复任务（支持暂停/停止/失败的任务断点续传）
   async function resumeTask(taskId: string) {
     try {
       await taskApi.resumeTask(taskId)
+      // 重新加载任务列表以获取最新状态
+      await loadTasks()
+      // 订阅任务更新
+      subscribeTask(taskId)
+      // 更新当前任务引用
+      const updatedTask = Array.isArray(tasks.value)
+        ? tasks.value.find(t => t.id === taskId) || null
+        : null
+      if (updatedTask) {
+        setCurrentTask(updatedTask)
+      }
       updateTaskStatus(taskId, 'running')
-      ElMessage.success('任务已恢复')
-    } catch (error) {
+      ElMessage.success('任务已恢复，正在从断点处继续爬取')
+    } catch (error: any) {
       console.error('[Store] Resume task error:', error)
-      ElMessage.error('恢复任务失败')
+      ElMessage.error(error.response?.data?.error || error.message || '恢复任务失败')
     }
   }
 

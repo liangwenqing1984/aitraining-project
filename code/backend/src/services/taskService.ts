@@ -120,10 +120,10 @@ class TaskService {
   // 启动任务
   async startTask(taskId: string, config: TaskConfig) {
     const logger = new TaskLogger(taskId);
-    
+
     logger.info(`[TaskService] 开始启动任务: ${taskId}`);
     logger.info(`[TaskService] 任务配置:`, JSON.stringify(config, null, 2));
-    
+
     const controller = new AbortController();
     this.runningTasks.set(taskId, controller);
 
@@ -134,44 +134,85 @@ class TaskService {
     `).run(taskId);
     logger.info(`[TaskService] 任务状态已更新为 running`);
 
-    // 初始化进度
+    // 🔧 断点续传：检查config中是否有_resumeState
+    const resumeStateFromConfig = (config as any)._resumeState;
+    const hasResumeState = resumeStateFromConfig && resumeStateFromConfig.combinationIndex > 0;
+
+    // 读取任务当前数据（用于断点续传时保留进度）
+    const existingTask = await db.prepare(
+      'SELECT csv_path, record_count, progress, current FROM tasks WHERE id = $1'
+    ).get(taskId) as any;
+
+    let filepath: string;
+    let initialRecordCount = 0;
+    let initialProgress = 0;
+    let initialCurrent = 0;
+
+    if (hasResumeState && existingTask?.csvPath && fs.existsSync(existingTask.csvPath)) {
+      // 断点续传模式：复用已有Excel文件
+      filepath = existingTask.csvPath;
+      initialRecordCount = existingTask.record_count || 0;
+      initialProgress = existingTask.progress || 0;
+      initialCurrent = existingTask.current || 0;
+      logger.info(`[TaskService] 🔄 断点续传模式 - 复用已有Excel: ${filepath}`);
+      logger.info(`[TaskService] 📊 已有数据: ${initialRecordCount} 条, 进度: ${initialProgress}%`);
+      logger.info(`[TaskService] 📍 从组合索引 ${resumeStateFromConfig.combinationIndex}, 第 ${resumeStateFromConfig.currentPage} 页继续`);
+    } else {
+      // 新任务模式：创建新Excel文件
+      const filename = `job_data_${taskId}.xlsx`;
+      filepath = path.join(csvDir, filename);
+      await this.createExcelFile(filepath);
+      logger.info(`[TaskService] Excel文件已创建: ${filepath}`);
+
+      // 更新文件路径
+      await db.prepare(`
+        UPDATE tasks SET csv_path = $1 WHERE id = $2
+      `).run(filepath, taskId);
+      logger.info(`[TaskService] 文件路径已更新`);
+    }
+
+    // 初始化进度（断点续传时保留已有进度）
     this.taskProgress.set(taskId, {
       taskId,
       status: 'running',
-      progress: 0,
-      current: 0,
+      progress: initialProgress,
+      current: initialCurrent,
       total: 0,
-      recordCount: 0,
+      recordCount: initialRecordCount,
       speed: 0,
       startTime: Date.now(),
-      lastRecordCount: 0,
-      lastComboIndex: 0,       // 上次看到的组合编号
-      comboStartRecords: 0,     // 当前组合开始时的累计记录数
-      restartCount: 0           // 浏览器重启次数
+      lastRecordCount: initialRecordCount,
+      lastComboIndex: hasResumeState ? resumeStateFromConfig.combinationIndex : 0,
+      comboStartRecords: initialRecordCount,
+      restartCount: 0
     });
 
-    // 创建Excel文件(替代CSV)
-    const filename = `job_data_${taskId}.xlsx`;
-    const filepath = path.join(csvDir, filename);
-    await this.createExcelFile(filepath);
-    logger.info(`[TaskService] Excel文件已创建: ${filepath}`);
-
-    // 更新文件路径
-    await db.prepare(`
-      UPDATE tasks SET csv_path = $1 WHERE id = $2
-    `).run(filepath, taskId);
-    logger.info(`[TaskService] 文件路径已更新`);
+    // 确保文件路径在DB中是最新的
+    if (hasResumeState) {
+      await db.prepare(`
+        UPDATE tasks SET csv_path = $1 WHERE id = $2
+      `).run(filepath, taskId);
+    }
 
     // 发送初始状态消息
     io.to(`task:${taskId}`).emit('task:status', {
       taskId,
       status: 'running',
-      message: '任务已启动，准备开始爬取...'
+      message: hasResumeState
+        ? `任务已恢复，从断点继续爬取...（已有 ${initialRecordCount} 条数据）`
+        : '任务已启动，准备开始爬取...'
     });
     logger.info(`[TaskService] 已发送初始状态消息`);
 
+    // 🔧 断点续传：传递resumeState到executeCrawling
+    const resumeState = hasResumeState ? {
+      combinationIndex: resumeStateFromConfig.combinationIndex,
+      currentPage: resumeStateFromConfig.currentPage,
+      initialRecordCount
+    } : undefined;
+
     // 启动爬取过程（传入logger）
-    this.executeCrawling(taskId, config, controller, undefined, logger);
+    this.executeCrawling(taskId, config, controller, resumeState, logger);
   }
 
   // 执行爬取
@@ -189,6 +230,7 @@ class TaskService {
     let retryResumeState = resumeState;
     let retryLogger: TaskLogger | undefined = logger;
     let isRetry = false;
+    let totalRecords = 0;  // 🔧 提升作用域，使 catch 块可访问
 
     while (true) {
     try {
@@ -203,8 +245,8 @@ class TaskService {
         taskLogger.info(`[TaskService] ✅ 创建新的日志记录器`);
       }
 
-      // 执行爬取
-      let totalRecords = retryResumeState?.initialRecordCount || 0;
+      // 执行爬取（每次重试从初始记录数开始）
+      totalRecords = retryResumeState?.initialRecordCount || 0;
       let lastUpdateTime = Date.now();
       let lastRecordCount = totalRecords;
 
@@ -265,7 +307,7 @@ class TaskService {
         // 🔧 诊断：记录迭代次数
         let iterationCount = 0;
         
-        for await (const job of crawler.crawl(config, controller.signal)) {
+        for await (const job of crawler.crawl(retryConfig, controller.signal)) {
           iterationCount++;
           
           if (iterationCount === 1) {
@@ -438,11 +480,16 @@ class TaskService {
       if (controller.signal.aborted) {
         taskLogger.info(`[TaskService] ⏹️ 任务已被用户手动停止，保留 stopped 状态`);
 
+        // 🔧 修复：先将内存中准确的 record_count 同步到DB，确保断点续传读取到正确数量
+        await db.prepare(`
+          UPDATE tasks SET record_count = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
+        `).run(totalRecords, taskId);
+
         // 从DB读取当前进度（保持停止时的真实进度，不覆盖为100%）
         const stoppedTask = await db.prepare('SELECT progress, current, record_count FROM tasks WHERE id = $1').get(taskId) as any;
         const stoppedProgress = stoppedTask?.progress || 0;
         const stoppedCurrent = stoppedTask?.current || totalRecords;
-        const stoppedRecordCount = stoppedTask?.record_count || totalRecords;
+        const stoppedRecordCount = totalRecords;  // 使用内存中准确的值
 
         const endTime = Date.now();
         const taskProgressInfo = this.taskProgress.get(taskId);
@@ -639,11 +686,11 @@ class TaskService {
         }
       }
 
-      // 标记任务为失败
+      // 标记任务为失败（同时保存已采集的记录数，供断点续传使用）
       await db.prepare(`
-        UPDATE tasks SET status = 'failed', error_message = $1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2
-      `).run(error.message, taskId);
+        UPDATE tasks SET status = 'failed', error_message = $1, record_count = $2, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $3
+      `).run(error.message, totalRecords, taskId);
 
       // 🔧 关键修复：失败时也检查文件是否有数据，有数据则创建csv_files记录
       const failedTask = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
@@ -739,14 +786,21 @@ class TaskService {
     `).run(taskId);
   }
 
-  // 恢复任务
+  // 恢复任务（支持暂停、停止、失败的任务恢复）
   async resumeTask(taskId: string, config: TaskConfig) {
     const task = await db.prepare('SELECT * FROM tasks WHERE id = $1').get(taskId) as Task;
-    if (!task || task.status !== 'paused') {
+    if (!task) return;
+
+    // 🔧 支持暂停、停止、失败的任务断点续传
+    if (task.status !== 'paused' && task.status !== 'stopped' && task.status !== 'failed') {
       return;
     }
 
-    await this.startTask(taskId, config);
+    // 读取DB中的config（可能包含_resumeState），合并传入的config
+    const dbConfig = typeof task.config === 'string' ? JSON.parse(task.config) : task.config;
+    const mergedConfig = { ...dbConfig, ...config, _resumeState: (dbConfig as any)._resumeState || (config as any)._resumeState };
+
+    await this.startTask(taskId, mergedConfig);
   }
 
   // 创建Excel文件(替代CSV)

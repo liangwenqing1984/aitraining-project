@@ -398,6 +398,14 @@ function getConnectionStatusText() {
                   恢复
                 </el-button>
                 <el-button
+                  v-if="crawlerStore.currentTask.status === 'stopped' || crawlerStore.currentTask.status === 'failed'"
+                  type="success"
+                  size="small"
+                  @click="resumeTask"
+                >
+                  继续爬取
+                </el-button>
+                <el-button
                   v-if="crawlerStore.currentTask.status === 'running' || crawlerStore.currentTask.status === 'paused'"
                   type="danger"
                   size="small"

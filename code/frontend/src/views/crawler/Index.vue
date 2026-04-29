@@ -279,6 +279,11 @@ async function handleDeleteTask(taskId: string) {
   }
 }
 
+// 🔧 断点续传：继续执行已停止/失败的任务
+async function handleResumeTask(row: any) {
+  await crawlerStore.resumeTask(row.id)
+}
+
 </script>
 
 <template>
@@ -450,6 +455,9 @@ async function handleDeleteTask(taskId: string) {
             <el-button v-if="row.status === 'paused'" type="success" link size="small" @click="crawlerStore.resumeTask(row.id)">
               <el-icon class="action-icon"><RefreshRight /></el-icon>恢复
             </el-button>
+            <el-button v-if="row.status === 'stopped' || row.status === 'failed'" type="success" link size="small" @click="handleResumeTask(row)">
+              <el-icon class="action-icon"><RefreshRight /></el-icon>继续
+            </el-button>
 
             <!-- 监控/详情按钮 -->
             <el-button v-if="row.status === 'running' || row.status === 'paused'" type="primary" link size="small" @click="goToMonitor(row.id)">
@@ -472,7 +480,7 @@ async function handleDeleteTask(taskId: string) {
             
             <!-- 下载、分析、AI增强按钮：已完成或有数据的失败任务均可操作 -->
             <el-button
-              v-if="row.status === 'completed' || (row.status === 'failed' && row.recordCount > 0)"
+              v-if="row.status === 'completed' || ((row.status === 'failed' || row.status === 'stopped') && row.recordCount > 0)"
               type="success"
               link
               size="small"
@@ -481,7 +489,7 @@ async function handleDeleteTask(taskId: string) {
               <el-icon class="action-icon"><Download /></el-icon>下载
             </el-button>
             <el-button
-              v-if="row.status === 'completed' || (row.status === 'failed' && row.recordCount > 0)"
+              v-if="row.status === 'completed' || ((row.status === 'failed' || row.status === 'stopped') && row.recordCount > 0)"
               type="warning"
               link
               size="small"
@@ -490,7 +498,7 @@ async function handleDeleteTask(taskId: string) {
               <el-icon class="action-icon"><TrendCharts /></el-icon>分析
             </el-button>
             <el-button
-              v-if="row.status === 'completed' || (row.status === 'failed' && row.recordCount > 0)"
+              v-if="row.status === 'completed' || ((row.status === 'failed' || row.status === 'stopped') && row.recordCount > 0)"
               type="success"
               link
               size="small"
