@@ -30,11 +30,11 @@
           </div>
           <div class="card-action">
             <el-button
-              :type="card.configured ? 'primary' : 'success'"
+              type="success"
               size="small"
               plain
             >
-              {{ card.configured ? '编辑' : '添加' }}
+              添加
             </el-button>
           </div>
         </div>
@@ -66,11 +66,11 @@
           </div>
           <div class="card-action">
             <el-button
-              :type="card.configured ? 'primary' : 'success'"
+              type="success"
               size="small"
               plain
             >
-              {{ card.configured ? '编辑' : '添加' }}
+              添加
             </el-button>
           </div>
         </div>
