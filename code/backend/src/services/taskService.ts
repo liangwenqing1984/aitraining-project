@@ -421,34 +421,60 @@ class TaskService {
 
       }
 
-      // 任务完成
-      taskLogger.info(`[TaskService] 任务完成，共采集 ${totalRecords} 条数据`);
+      // 任务完成：检查是否实际采集到数据
       const endTime = Date.now();
-      
-      // 安全地获取startTime
       const taskProgressInfo = this.taskProgress.get(taskId);
       const startTime = taskProgressInfo?.startTime || Date.now();
       const duration = Math.round((endTime - startTime) / 1000);
 
-      db.prepare(`
-        UPDATE tasks
-        SET status = 'completed', progress = 100, current = $1, record_count = $2, end_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $3
-      `).run(totalRecords, totalRecords, taskId);
+      if (totalRecords === 0) {
+        // 0条记录：标记为失败，便于排查
+        const failReason = '爬取完成但未采集到任何数据，可能被反爬拦截或网站无匹配职位';
+        taskLogger.warn(`[TaskService] ⚠️ ${failReason}`);
 
-      // 先发送进度100%的消息
-      io.to(`task:${taskId}`).emit('task:progress', {
-        taskId,
-        status: 'completed',
-        progress: 100,
-        current: totalRecords,
-        total: totalRecords,
-        recordCount: totalRecords,
-        speed: 0,
-        message: `爬取完成！共采集 ${totalRecords} 条数据`
-      });
+        db.prepare(`
+          UPDATE tasks
+          SET status = 'failed', progress = 100, current = 0, record_count = 0,
+              error_message = $1, end_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2
+        `).run(failReason, taskId);
 
-      // 创建CSV文件记录
+        io.to(`task:${taskId}`).emit('task:failed', {
+          taskId,
+          error: failReason,
+          duration,
+        });
+      } else {
+        taskLogger.info(`[TaskService] 任务完成，共采集 ${totalRecords} 条数据`);
+
+        db.prepare(`
+          UPDATE tasks
+          SET status = 'completed', progress = 100, current = $1, record_count = $2, end_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $3
+        `).run(totalRecords, totalRecords, taskId);
+
+        // 先发送进度100%的消息
+        io.to(`task:${taskId}`).emit('task:progress', {
+          taskId,
+          status: 'completed',
+          progress: 100,
+          current: totalRecords,
+          total: totalRecords,
+          recordCount: totalRecords,
+          speed: 0,
+          message: `爬取完成！共采集 ${totalRecords} 条数据`
+        });
+
+        // 发送完成消息
+        io.to(`task:${taskId}`).emit('task:completed', {
+          taskId,
+          totalRecords,
+          duration,
+          csvPath: filepath
+        });
+      }
+
+      // 创建CSV文件记录（无论成功失败都记录）
       const csvId = uuidv4();
       const fileSize = fs.statSync(filepath).size;
       await db.prepare(`
@@ -456,15 +482,7 @@ class TaskService {
         VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
       `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
 
-      // 再发送完成消息
-      io.to(`task:${taskId}`).emit('task:completed', {
-        taskId,
-        totalRecords,
-        duration,
-        csvPath: filepath
-      });
-      
-      taskLogger.info(`[TaskService] 任务已完成并发送完成消息`);
+      taskLogger.info(`[TaskService] 任务处理完成`);
 
     } catch (error: any) {
       // 任务失败

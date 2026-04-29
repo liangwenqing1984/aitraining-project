@@ -72,6 +72,23 @@ export class Job51Crawler {
     });
 
     try {
+      // === 浏览器会话预热：先访问主页建立 cookies/session ===
+      this.log('info', `[Job51Crawler] 🔥 正在预热浏览器会话（访问主页）...`);
+      let warmupPage: any = null;
+      try {
+        warmupPage = await browser.newPage();
+        await warmupPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+        await warmupPage.goto('https://www.51job.com/', { waitUntil: 'networkidle2', timeout: 60000 });
+        const warmupHtml = await warmupPage.content();
+        this.log('info', `[Job51Crawler] ✅ 主页预热完成，获取 ${warmupHtml.length} 字节 (cookies已建立)`);
+      } catch (e: any) {
+        this.log('warn', `[Job51Crawler] ⚠️ 主页预热失败: ${e.message}，继续尝试搜索`);
+      } finally {
+        if (warmupPage) {
+          try { await warmupPage.close(); } catch { /* ignore */ }
+        }
+      }
+
       for (const keyword of keywords) {
         for (const city of cities) {
           currentCombination++;
@@ -165,7 +182,7 @@ export class Job51Crawler {
               if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
               fs.writeFileSync(path.join(debugDir, `job51_page_${currentPage}_${Date.now()}.html`), html);
 
-              // === AI 反爬接入点 1：页面分类 ===
+              // === AI 反爬接入点 1：页面分类 + 智能重试 ===
               const classification = await classifyPage(html, url);
               this.log('info', `[Job51Crawler] 🤖 AI分类: type=${classification.pageType}, confidence=${classification.confidence.toFixed(2)}`);
 
@@ -177,8 +194,43 @@ export class Job51Crawler {
                   this.log('error', `[Job51Crawler] 🚨 AI判定需终止: ${classification.reason}`);
                   break;
                 }
-                if (action.waitMs > 0) {
+
+                // empty/waf/error 页面：实际重载页面，而非仅等待
+                if (classification.pageType === 'empty' || classification.pageType === 'waf' || classification.pageType === 'error') {
                   this.antiCrawlState.consecutiveAntiCrawlPages++;
+                  const reloadWait = action.waitMs || 10000;
+                  this.log('warn', `[Job51Crawler] 🔄 页面异常(${classification.pageType})，等待 ${reloadWait/1000}s 后重载页面...`);
+
+                  await new Promise(r => setTimeout(r, reloadWait));
+
+                  // 重新加载页面
+                  try {
+                    await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+                    const reloadedHtml = await page.content();
+                    this.log('info', `[Job51Crawler] 🔄 重载后 HTML: ${reloadedHtml.length} 字符`);
+
+                    // 重载后再次分类
+                    const reClassification = await classifyPage(reloadedHtml, url);
+                    this.log('info', `[Job51Crawler] 🤖 重载后AI分类: type=${reClassification.pageType}, confidence=${reClassification.confidence.toFixed(2)}`);
+
+                    if (reClassification.pageType !== 'normal' && reClassification.confidence >= 0.5) {
+                      // 重载后仍然异常：尝试用备用 URL 格式
+                      this.log('warn', `[Job51Crawler] 🔄 重载后仍为 ${reClassification.pageType}，尝试备用 URL 格式...`);
+                      const altUrl = url.replace('search.51job.com/list/', 'search.51job.com/list/')
+                        .replace(',2,', ',1,');  // 尝试切换视图模式
+                      try {
+                        await page.goto(altUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                        const altHtml = await page.content();
+                        this.log('info', `[Job51Crawler] 🔄 备用URL HTML: ${altHtml.length} 字符`);
+                      } catch { /* 备用 URL 也失败就放弃这页 */ }
+                    } else {
+                      this.log('info', `[Job51Crawler] ✅ 页面重载后恢复正常`);
+                    }
+                  } catch (reloadErr: any) {
+                    this.log('error', `[Job51Crawler] ❌ 页面重载失败: ${reloadErr.message}`);
+                  }
+                } else if (action.waitMs > 0) {
+                  // captcha/login 等其他类型：等待即可
                   await new Promise(r => setTimeout(r, action.waitMs));
                 }
               } else {
