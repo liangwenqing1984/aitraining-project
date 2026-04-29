@@ -308,13 +308,15 @@ class TaskService {
             // 🔧 关键修复：无论单/多组合，都更新record_count（已采集记录数）
             // 但progress（进度百分比）的计算方式不同
             let progressPercent: number;
+            let comboCurrent: number = totalRecords;  // 默认传记录数（单组合），多组合传组合编号
 
             if (isMultiCombination) {
               // 多组合场景：主进度 = 已完成组合数/总组合数，干净直观
               // 爬虫每完成一个组合写入 current=已完成的组合编号
+              let completedCombo = 0;
               try {
                 const taskInfo = await db.prepare('SELECT current FROM tasks WHERE id = $1').get(taskId) as any;
-                const completedCombo = taskInfo?.current || 0;
+                completedCombo = taskInfo?.current || 0;
 
                 // 主进度 = 已完成组合比例（最大99%，留给任务完成时才设为100%）
                 progressPercent = Math.min(99, Math.round(completedCombo / totalCombinations * 100));
@@ -328,6 +330,7 @@ class TaskService {
                   progressPercent = 80 + Math.min(19, (totalRecords - 50) / 10);
                 }
               }
+              comboCurrent = completedCombo;  // 多组合：传组合编号
             } else {
               // 单组合场景：基于已采集数据量，使用渐进式估算
               // 前10条数据显示0-50%，10-50条显示50-80%，50条以上显示80-99%
@@ -390,7 +393,7 @@ class TaskService {
               status: 'running',
               progress: progressPercent,
               comboProgress: isMultiCombination ? comboProgress : 0,
-              current: totalRecords,
+              current: comboCurrent,
               total: totalRecords > 0 ? totalRecords : 100,
               recordCount: totalRecords,
               speed,
