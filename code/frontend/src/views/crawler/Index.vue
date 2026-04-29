@@ -413,7 +413,7 @@ async function handleDeleteTask(taskId: string) {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" width="420" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
             <!-- 任务控制按钮 -->
