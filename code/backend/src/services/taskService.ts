@@ -434,6 +434,56 @@ class TaskService {
 
       }
 
+      // 🔧 检查是否为用户手动停止（abort信号在退出for循环前已被触发）
+      if (controller.signal.aborted) {
+        taskLogger.info(`[TaskService] ⏹️ 任务已被用户手动停止，保留 stopped 状态`);
+
+        // 从DB读取当前进度（保持停止时的真实进度，不覆盖为100%）
+        const stoppedTask = await db.prepare('SELECT progress, current, record_count FROM tasks WHERE id = $1').get(taskId) as any;
+        const stoppedProgress = stoppedTask?.progress || 0;
+        const stoppedCurrent = stoppedTask?.current || totalRecords;
+        const stoppedRecordCount = stoppedTask?.record_count || totalRecords;
+
+        const endTime = Date.now();
+        const taskProgressInfo = this.taskProgress.get(taskId);
+        const startTime = taskProgressInfo?.startTime || Date.now();
+        const duration = Math.round((endTime - startTime) / 1000);
+
+        // 发送停止进度（保持真实进度，不覆盖为100%）
+        io.to(`task:${taskId}`).emit('task:progress', {
+          taskId,
+          status: 'stopped',
+          progress: stoppedProgress,
+          current: stoppedCurrent,
+          recordCount: stoppedRecordCount,
+          speed: 0,
+          message: `任务已停止，已采集 ${stoppedRecordCount} 条数据`
+        });
+
+        // 发送停止事件
+        io.to(`task:${taskId}`).emit('task:stopped', {
+          taskId,
+          totalRecords: stoppedRecordCount,
+          duration,
+          csvPath: filepath,
+          progress: stoppedProgress,
+          current: stoppedCurrent
+        });
+
+        // 有数据则创建文件记录
+        if (totalRecords > 0 && fs.existsSync(filepath)) {
+          const fileSize = fs.statSync(filepath).size;
+          const csvId = uuidv4();
+          await db.prepare(`
+            INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+          `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
+          taskLogger.info(`[TaskService] 📊 已停止，共采集 ${totalRecords} 条数据，文件记录已创建`);
+        }
+
+        break;  // 🔧 退出循环，进入清理
+      }
+
       // 任务完成：检查是否实际采集到数据
       const endTime = Date.now();
       const taskProgressInfo = this.taskProgress.get(taskId);

@@ -178,6 +178,13 @@ export const useCrawlerStore = defineStore('crawler', () => {
       }
     })
 
+    socket.value.on('task:stopped', (data: any) => {
+      updateTaskStopped(data.taskId, data)
+      if (currentTask.value?.id === data.taskId) {
+        addLogToTask(data.taskId, 'info', `任务已停止，共采集 ${data.totalRecords || 0} 条数据`)
+      }
+    })
+
     // 监听 AI 增强进度
     socket.value.on('enrichment:progress', (data: any) => {
       const { taskId, status, message } = data
@@ -474,6 +481,38 @@ export const useCrawlerStore = defineStore('crawler', () => {
       currentTask.value.recordCount = data.totalRecords
       currentTask.value.endTime = new Date().toISOString()
       console.log('[Store] 已更新 currentTask 状态为 completed')
+    }
+  }
+
+  // 任务停止（保持真实进度，不设100%）
+  function updateTaskStopped(taskId: string, data: any) {
+    const task = tasks.value.find(t => t.id === taskId)
+    if (task) {
+      task.status = 'stopped'
+      // 保持停止时的真实进度，不覆盖为100%
+      if (data.progress !== undefined) {
+        task.progress = data.progress
+      }
+      if (data.current !== undefined) {
+        task.current = data.current
+      }
+      if (data.totalRecords !== undefined) {
+        task.recordCount = data.totalRecords
+      }
+      task.endTime = new Date().toISOString()
+    }
+    if (currentTask.value?.id === taskId) {
+      currentTask.value.status = 'stopped'
+      if (data.progress !== undefined) {
+        currentTask.value.progress = data.progress
+      }
+      if (data.current !== undefined) {
+        currentTask.value.current = data.current
+      }
+      if (data.totalRecords !== undefined) {
+        currentTask.value.recordCount = data.totalRecords
+      }
+      currentTask.value.endTime = new Date().toISOString()
     }
   }
 
