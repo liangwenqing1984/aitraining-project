@@ -112,11 +112,19 @@
           <el-switch v-model="row.isActive" @change="handleStatusChange(row)" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160" fixed="right">
+      <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
-          <el-button link type="primary" size="small" @click="testConnection(row)">测试</el-button>
-          <el-button link type="primary" size="small" @click="editConfig(row)">编辑</el-button>
-          <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+          <div class="action-buttons">
+          <el-button link type="primary" size="small" @click="testConnection(row)">
+            <el-icon class="action-icon"><Link /></el-icon>测试
+          </el-button>
+          <el-button link type="primary" size="small" @click="editConfig(row)">
+            <el-icon class="action-icon"><Edit /></el-icon>编辑
+          </el-button>
+          <el-button link type="danger" size="small" @click="handleDelete(row)">
+            <el-icon class="action-icon"><Delete /></el-icon>删除
+          </el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -221,7 +229,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Loading } from '@element-plus/icons-vue'
+import { Plus, Loading, Link, Edit, Delete } from '@element-plus/icons-vue'
 import {
   listLLMConfigs, saveLLMConfig, deleteLLMConfig, checkLLMHealth,
   type LLMConfig, type HealthCheckResult
@@ -611,5 +619,17 @@ onMounted(() => {
 .test-loading {
   text-align: center;
   padding: 24px;
+}
+
+/* 操作列按钮 */
+.action-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.action-icon {
+  margin-right: 3px;
+  font-size: 14px;
 }
 </style>

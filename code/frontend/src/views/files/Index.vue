@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { fileApi, type CsvFile } from '@/api/file'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { View, Download, Delete } from '@element-plus/icons-vue'
 
 const files = ref<CsvFile[]>([])
 const total = ref(0)
@@ -300,17 +301,19 @@ function handleSizeChange(size: number) {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="240" fixed="right">
+        <el-table-column label="操作" width="260" fixed="right">
           <template #default="{ row }">
+            <div class="action-buttons">
             <el-button type="primary" link @click="preview(row)">
-              预览
+              <el-icon class="action-icon"><View /></el-icon>预览
             </el-button>
             <el-button type="primary" link @click="downloadFile(row)">
-              下载
+              <el-icon class="action-icon"><Download /></el-icon>下载
             </el-button>
             <el-button type="danger" link @click="deleteFile(row)">
-              删除
+              <el-icon class="action-icon"><Delete /></el-icon>删除
             </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -412,5 +415,17 @@ function handleSizeChange(size: number) {
 :deep(.el-table--border) {
   border-radius: 4px;
   overflow: hidden;
+}
+
+/* 操作列按钮 */
+.action-buttons {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.action-icon {
+  margin-right: 3px;
+  font-size: 14px;
 }
 </style>

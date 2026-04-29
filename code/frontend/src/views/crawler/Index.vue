@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { fileApi } from '@/api/file'
 import { startEnrichment as startEnrichApi, getEnrichmentStatus } from '@/api/llm'
-import { Plus, Document, VideoPlay, CircleCheck, DataAnalysis, Download, TrendCharts, Setting, Delete } from '@element-plus/icons-vue'
+import { Plus, Document, VideoPlay, VideoPause, RefreshRight, Monitor, CircleCheck, DataAnalysis, Download, TrendCharts, Setting, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Task } from '@/api/task'
 import StatCard from '@/components/StatCard.vue'
@@ -417,23 +417,33 @@ async function handleDeleteTask(taskId: string) {
           <template #default="{ row }">
             <div class="action-buttons">
             <!-- 任务控制按钮 -->
-            <el-button v-if="row.status === 'pending'" type="success" link size="small" @click="crawlerStore.startTask(row.id)">开始</el-button>
-            <el-button v-if="row.status === 'running'" type="danger" link size="small" @click="crawlerStore.stopTask(row.id)">停止</el-button>
-            <el-button v-if="row.status === 'paused'" type="success" link size="small" @click="crawlerStore.resumeTask(row.id)">恢复</el-button>
-            
+            <el-button v-if="row.status === 'pending'" type="success" link size="small" @click="crawlerStore.startTask(row.id)">
+              <el-icon class="action-icon"><VideoPlay /></el-icon>开始
+            </el-button>
+            <el-button v-if="row.status === 'running'" type="danger" link size="small" @click="crawlerStore.stopTask(row.id)">
+              <el-icon class="action-icon"><VideoPause /></el-icon>停止
+            </el-button>
+            <el-button v-if="row.status === 'paused'" type="success" link size="small" @click="crawlerStore.resumeTask(row.id)">
+              <el-icon class="action-icon"><RefreshRight /></el-icon>恢复
+            </el-button>
+
             <!-- 监控/详情按钮 -->
-            <el-button v-if="row.status === 'running' || row.status === 'paused'" type="primary" link size="small" @click="goToMonitor(row.id)">监控</el-button>
-            <el-button v-else type="primary" link size="small" @click="goToMonitor(row.id)">详情</el-button>
-            
+            <el-button v-if="row.status === 'running' || row.status === 'paused'" type="primary" link size="small" @click="goToMonitor(row.id)">
+              <el-icon class="action-icon"><Monitor /></el-icon>监控
+            </el-button>
+            <el-button v-else type="primary" link size="small" @click="goToMonitor(row.id)">
+              <el-icon class="action-icon"><Document /></el-icon>详情
+            </el-button>
+
             <!-- 配置按钮 -->
-            <el-button 
-              v-if="row.status !== 'running' && row.status !== 'paused'" 
-              type="warning" 
-              link 
+            <el-button
+              v-if="row.status !== 'running' && row.status !== 'paused'"
+              type="warning"
+              link
               size="small"
               @click="goToEdit(row.id)"
             >
-              配置
+              <el-icon class="action-icon"><Setting /></el-icon>配置
             </el-button>
             
             <!-- 下载和分析按钮 -->
