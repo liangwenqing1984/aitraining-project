@@ -5,129 +5,123 @@
       <p class="subtitle">配置大模型提供商，为数据增强、智能分析、自然语言查询等功能提供 AI 能力</p>
     </div>
 
-    <!-- 远程模型快捷卡片 -->
-    <div class="card-section">
-      <h3 class="section-title">远程模型</h3>
-      <div class="provider-cards provider-cards--remote">
-        <div
-          v-for="card in remoteCards"
-          :key="card.provider"
-          class="provider-card"
-          :class="{ 'is-configured': card.configured }"
-          @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
-        >
-          <div class="card-icon">
-            <el-avatar :size="40" :style="{ background: card.color }">
-              <span class="avatar-text">{{ card.label[0] }}</span>
-            </el-avatar>
-          </div>
-          <div class="card-body">
-            <div class="card-title">{{ card.label }}</div>
-            <template v-if="card.configured">
-              <div class="card-model">{{ card.config!.modelName }}</div>
-            </template>
-            <div v-else class="card-hint">点击配置</div>
-          </div>
-          <div class="card-action">
-            <el-button
-              type="success"
-              size="small"
-              plain
+    <div class="main-content">
+      <!-- 左侧：快捷卡片区 -->
+      <div class="cards-panel">
+        <div class="card-section">
+          <h3 class="section-title">远程模型</h3>
+          <div class="provider-cards provider-cards--remote">
+            <div
+              v-for="card in remoteCards"
+              :key="card.provider"
+              class="provider-card"
+              :class="{ 'is-configured': card.configured }"
+              @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
             >
-              添加
-            </el-button>
+              <div class="card-icon">
+                <el-avatar :size="36" :style="{ background: card.color }">
+                  <span class="avatar-text">{{ card.label[0] }}</span>
+                </el-avatar>
+              </div>
+              <div class="card-body">
+                <div class="card-title">{{ card.label }}</div>
+                <template v-if="card.configured">
+                  <div class="card-model">{{ card.config!.modelName }}</div>
+                </template>
+                <div v-else class="card-hint">点击配置</div>
+              </div>
+              <div class="card-action">
+                <el-button type="success" size="small" plain>添加</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-section">
+          <h3 class="section-title">本地模型</h3>
+          <div class="provider-cards provider-cards--local">
+            <div
+              v-for="card in localCards"
+              :key="card.provider"
+              class="provider-card"
+              :class="{ 'is-configured': card.configured }"
+              @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
+            >
+              <div class="card-icon">
+                <el-avatar :size="36" :style="{ background: card.color }">
+                  <span class="avatar-text">{{ card.label[0] }}</span>
+                </el-avatar>
+              </div>
+              <div class="card-body">
+                <div class="card-title">{{ card.label }}</div>
+                <template v-if="card.configured">
+                  <div class="card-model">{{ card.config!.modelName }}</div>
+                </template>
+                <div v-else class="card-hint">点击配置</div>
+              </div>
+              <div class="card-action">
+                <el-button type="success" size="small" plain>添加</el-button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- 本地模型快捷卡片 -->
-    <div class="card-section">
-      <h3 class="section-title">本地模型</h3>
-      <div class="provider-cards provider-cards--local">
-        <div
-          v-for="card in localCards"
-          :key="card.provider"
-          class="provider-card"
-          :class="{ 'is-configured': card.configured }"
-          @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
-        >
-          <div class="card-icon">
-            <el-avatar :size="40" :style="{ background: card.color }">
-              <span class="avatar-text">{{ card.label[0] }}</span>
-            </el-avatar>
-          </div>
-          <div class="card-body">
-            <div class="card-title">{{ card.label }}</div>
-            <template v-if="card.configured">
-              <div class="card-model">{{ card.config!.modelName }}</div>
-            </template>
-            <div v-else class="card-hint">点击配置</div>
-          </div>
-          <div class="card-action">
-            <el-button
-              type="success"
-              size="small"
-              plain
-            >
-              添加
-            </el-button>
-          </div>
+      <!-- 右侧：表格区 -->
+      <div class="table-panel">
+        <div class="action-bar">
+          <el-button type="primary" @click="showAddDialog">
+            <el-icon><Plus /></el-icon>
+            添加模型
+          </el-button>
         </div>
+
+        <el-table :data="configs" stripe v-loading="loading" class="config-table">
+          <el-table-column prop="provider" label="提供商" width="110">
+            <template #default="{ row }">
+              <el-tag :type="providerTagType(row.provider)">{{ providerLabel(row.provider) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="modelName" label="模型名称" min-width="180" />
+          <el-table-column prop="baseUrl" label="API 端点" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">
+              <span v-if="row.baseUrl">{{ row.baseUrl }}</span>
+              <span v-else class="default-text">{{ getDefaultUrl(row.provider) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="分配任务" min-width="170">
+            <template #default="{ row }">
+              <el-tag
+                v-for="task in row.taskRouting"
+                :key="task"
+                size="small"
+                class="task-tag"
+              >{{ taskLabel(task) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="70">
+            <template #default="{ row }">
+              <el-switch v-model="row.isActive" size="small" @change="handleStatusChange(row)" />
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="200" fixed="right">
+            <template #default="{ row }">
+              <div class="action-buttons">
+              <el-button link type="primary" size="small" @click="testConnection(row)">
+                <el-icon class="action-icon"><Link /></el-icon>测试
+              </el-button>
+              <el-button link type="primary" size="small" @click="editConfig(row)">
+                <el-icon class="action-icon"><Edit /></el-icon>编辑
+              </el-button>
+              <el-button link type="danger" size="small" @click="handleDelete(row)">
+                <el-icon class="action-icon"><Delete /></el-icon>删除
+              </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
       </div>
     </div>
-
-    <div class="action-bar">
-      <el-button type="primary" @click="showAddDialog">
-        <el-icon><Plus /></el-icon>
-        添加模型
-      </el-button>
-    </div>
-
-    <el-table :data="configs" stripe v-loading="loading" class="config-table">
-      <el-table-column prop="provider" label="提供商" width="120">
-        <template #default="{ row }">
-          <el-tag :type="providerTagType(row.provider)">{{ providerLabel(row.provider) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="modelName" label="模型名称" min-width="200" />
-      <el-table-column prop="baseUrl" label="API 端点" min-width="250">
-        <template #default="{ row }">
-          <span v-if="row.baseUrl">{{ row.baseUrl }}</span>
-          <span v-else class="default-text">{{ getDefaultUrl(row.provider) }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="分配任务" min-width="200">
-        <template #default="{ row }">
-          <el-tag
-            v-for="task in row.taskRouting"
-            :key="task"
-            size="small"
-            class="task-tag"
-          >{{ taskLabel(task) }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-switch v-model="row.isActive" @change="handleStatusChange(row)" />
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
-        <template #default="{ row }">
-          <div class="action-buttons">
-          <el-button link type="primary" size="small" @click="testConnection(row)">
-            <el-icon class="action-icon"><Link /></el-icon>测试
-          </el-button>
-          <el-button link type="primary" size="small" @click="editConfig(row)">
-            <el-icon class="action-icon"><Edit /></el-icon>编辑
-          </el-button>
-          <el-button link type="danger" size="small" @click="handleDelete(row)">
-            <el-icon class="action-icon"><Delete /></el-icon>删除
-          </el-button>
-          </div>
-        </template>
-      </el-table-column>
-    </el-table>
 
     <!-- 添加/编辑对话框 -->
     <el-dialog
@@ -478,7 +472,6 @@ onMounted(() => {
 <style scoped>
 .llm-settings {
   padding: 24px;
-  max-width: 1100px;
 }
 
 .page-header h2 {
@@ -491,13 +484,32 @@ onMounted(() => {
   margin: 0 0 20px;
 }
 
+/* ========== 双栏主布局 ========== */
+.main-content {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+/* 左侧卡片面板 */
+.cards-panel {
+  flex-shrink: 0;
+  width: 388px;
+}
+
+/* 右侧表格面板 */
+.table-panel {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ========== 提供商快捷卡片 ========== */
 .card-section {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .section-title {
-  margin: 0 0 12px;
-  font-size: 15px;
+  margin: 0 0 10px;
+  font-size: 14px;
   font-weight: 600;
   color: #606266;
   padding-left: 2px;
@@ -517,24 +529,24 @@ onMounted(() => {
 
 .provider-cards {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
-/* 远程模型：固定 4 列，8 卡满两行 */
+/* 远程模型：2 列 × 4 行 */
 .provider-cards--remote {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, 1fr);
 }
 
 /* 本地模型：自适应 */
 .provider-cards--local {
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
 
 .provider-card {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 16px 18px;
+  gap: 10px;
+  padding: 12px 14px;
   height: 100%;
   background: #fff;
   border: 1px solid #e4e7ed;
@@ -560,7 +572,7 @@ onMounted(() => {
   flex-shrink: 0;
 }
 .avatar-text {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   color: #fff;
   user-select: none;
@@ -571,22 +583,22 @@ onMounted(() => {
   min-width: 0;
 }
 .card-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #303133;
   margin-bottom: 2px;
 }
 .card-model {
-  font-size: 13px;
+  font-size: 12px;
   color: #606266;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .card-hint {
-  font-size: 12px;
+  font-size: 11px;
   color: #c0c4cc;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .card-action {
@@ -598,7 +610,7 @@ onMounted(() => {
 }
 
 .config-table {
-  margin-top: 8px;
+  margin-top: 0;
 }
 
 .task-tag {
