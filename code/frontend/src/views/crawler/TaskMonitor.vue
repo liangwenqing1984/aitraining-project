@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { taskApi } from '@/api/task'
@@ -13,8 +13,38 @@ const crawlerStore = useCrawlerStore()
 const taskId = route.params.id as string
 const logContainer = ref<HTMLElement>()
 const taskConfig = ref<any>(null)
+
+// 滚动数字动画
+const displayComboRecords = ref(0)
+const displayRecordCount = ref(0)
 const animateCombo = ref(false)
 const animateTotal = ref(false)
+let rollTimerCombo: ReturnType<typeof setInterval> | null = null
+let rollTimerTotal: ReturnType<typeof setInterval> | null = null
+
+function rollNumber(displayRef: Ref<number>, target: number, timerRef: { current: ReturnType<typeof setInterval> | null }, animateRef: Ref<boolean>) {
+  if (timerRef.current) clearInterval(timerRef.current)
+  const from = displayRef.value
+  if (from === target) return
+
+  const step = target > from ? 1 : -1
+  const totalSteps = Math.abs(target - from)
+  const baseInterval = 40  // 每步基准间隔(ms)
+  // 步数少时慢一点，步数多时快一点
+  const interval = totalSteps <= 3 ? 100 : totalSteps <= 10 ? baseInterval : Math.max(15, baseInterval - totalSteps)
+
+  let value = from
+  timerRef.current = setInterval(() => {
+    value += step
+    displayRef.value = value
+    animateRef.value = true
+    setTimeout(() => { animateRef.value = false }, 120)
+
+    if (value === target) {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    }
+  }, interval)
+}
 
 // 🔧 安全的时间格式化函数
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -86,6 +116,10 @@ onMounted(async () => {
     console.warn('[TaskMonitor] 未找到任务,taskId:', taskId)
     ElMessage.warning('任务不存在或数据加载失败')
   }
+
+  // 初始化滚动数字显示值
+  displayComboRecords.value = crawlerStore.currentTask?.comboRecords || 0
+  displayRecordCount.value = crawlerStore.currentTask?.recordCount || 0
 })
 
 // 🔧 新增: 加载历史日志
@@ -142,18 +176,16 @@ onUnmounted(() => {
   }
 })
 
-// 数字跳动动画：监听当前组合记录数和总记录数变化
-let animTimerCombo: ReturnType<typeof setTimeout> | null = null
-let animTimerTotal: ReturnType<typeof setTimeout> | null = null
-watch(() => crawlerStore.currentTask?.comboRecords, () => {
-  animateCombo.value = true
-  if (animTimerCombo) clearTimeout(animTimerCombo)
-  animTimerCombo = setTimeout(() => { animateCombo.value = false }, 200)
+// 数字滚动动画：监听当前组合记录数和总记录数变化
+watch(() => crawlerStore.currentTask?.comboRecords, (newVal) => {
+  if (newVal !== undefined && newVal !== null) {
+    rollNumber(displayComboRecords, newVal, { current: rollTimerCombo }, animateCombo)
+  }
 })
-watch(() => crawlerStore.currentTask?.recordCount, () => {
-  animateTotal.value = true
-  if (animTimerTotal) clearTimeout(animTimerTotal)
-  animTimerTotal = setTimeout(() => { animateTotal.value = false }, 200)
+watch(() => crawlerStore.currentTask?.recordCount, (newVal) => {
+  if (newVal !== undefined && newVal !== null) {
+    rollNumber(displayRecordCount, newVal, { current: rollTimerTotal }, animateTotal)
+  }
 })
 
 // 自动滚动日志 - 🔧 修复: 监听taskLogs Map而不是logs计算属性
@@ -410,11 +442,11 @@ function getConnectionStatusText() {
           <div class="progress-details">
             <div v-if="getComboInfo().isMultiCombo && crawlerStore.currentTask.status === 'running'" class="progress-item">
               <span class="label">当前组合采集</span>
-              <span class="value combo-animate" :class="{ counting: animateCombo }">{{ crawlerStore.currentTask?.comboRecords || 0 }}</span>
+              <span class="value combo-animate" :class="{ counting: animateCombo }">{{ displayComboRecords }}</span>
             </div>
             <div class="progress-item">
               <span class="label">已保存记录</span>
-              <span class="value combo-animate" :class="{ counting: animateTotal }">{{ crawlerStore.currentTask?.recordCount || 0 }}</span>
+              <span class="value combo-animate" :class="{ counting: animateTotal }">{{ displayRecordCount }}</span>
             </div>
           </div>
         </el-card>
