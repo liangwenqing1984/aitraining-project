@@ -253,7 +253,7 @@ function getComboInfo(task: Task): { totalCombos: number; isMultiCombo: boolean;
     const cities = config.cities || (config.city ? [config.city] : [''])
     const totalCombos = (keywords.length || 1) * (cities.length || 1)
     const isMultiCombo = totalCombos > 1
-    const currentCombo = task.current || 1
+    const currentCombo = task.current || 0
     return {
       totalCombos,
       isMultiCombo,
@@ -423,14 +423,6 @@ async function handleDeleteTask(taskId: string) {
               :percentage="row.progress"
               :status="row.status === 'completed' ? 'success' : undefined"
               :stroke-width="16"
-            />
-            <el-progress
-              v-if="getComboInfo(row).isMultiCombo && row.status === 'running'"
-              :percentage="row.comboProgress || 0"
-              :show-text="false"
-              :stroke-width="4"
-              color="#a0cfff"
-              class="combo-sub-progress"
             />
             <div v-if="getComboInfo(row).isMultiCombo" class="combo-info">{{ getComboInfo(row).comboText }}</div>
           </template>
@@ -691,8 +683,5 @@ async function handleDeleteTask(taskId: string) {
   margin-top: 2px;
   text-align: center;
   line-height: 1;
-}
-.combo-sub-progress {
-  margin-top: 3px;
 }
 </style>

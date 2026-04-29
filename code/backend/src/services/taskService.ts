@@ -361,16 +361,20 @@ class TaskService {
 
             try {
               // 更新数据库进度和记录数
-              await db.prepare(`
-                UPDATE tasks
-                SET progress = $1, current = $2, record_count = $3, updated_at = CURRENT_TIMESTAMP
-                WHERE id = $4
-              `).run(
-                progressPercent,
-                totalRecords,
-                totalRecords,
-                taskId
-              );
+              // ⚠️ 多组合场景下 current 由爬虫写入（已完成组合编号），此处不覆盖
+              if (isMultiCombination) {
+                await db.prepare(`
+                  UPDATE tasks
+                  SET progress = $1, record_count = $2, updated_at = CURRENT_TIMESTAMP
+                  WHERE id = $3
+                `).run(progressPercent, totalRecords, taskId);
+              } else {
+                await db.prepare(`
+                  UPDATE tasks
+                  SET progress = $1, current = $2, record_count = $3, updated_at = CURRENT_TIMESTAMP
+                  WHERE id = $4
+                `).run(progressPercent, totalRecords, totalRecords, taskId);
+              }
             } catch (dbError: any) {
               // 🔧 数据库更新失败不影响数据采集，仅记录日志
               taskLogger.warn(`[TaskService] 数据库进度更新失败（可忽略）: ${dbError.message}`);
