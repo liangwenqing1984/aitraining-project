@@ -176,6 +176,27 @@ function goBack() {
   router.push('/crawler')
 }
 
+// 获取多组合任务的组合信息
+function getComboInfo(): { totalCombos: number; isMultiCombo: boolean; comboText: string; currentCombo: number } {
+  try {
+    const config = taskConfig.value
+    if (!config) return { totalCombos: 1, isMultiCombo: false, comboText: '', currentCombo: 0 }
+    const keywords = config.keywords || (config.keyword ? [config.keyword] : [''])
+    const cities = config.cities || (config.city ? [config.city] : [''])
+    const totalCombos = (keywords.length || 1) * (cities.length || 1)
+    const isMultiCombo = totalCombos > 1
+    const currentCombo = crawlerStore.currentTask?.current || 0
+    return {
+      totalCombos,
+      isMultiCombo,
+      currentCombo,
+      comboText: isMultiCombo ? `${Math.min(currentCombo, totalCombos)}/${totalCombos} 组合` : '',
+    }
+  } catch {
+    return { totalCombos: 1, isMultiCombo: false, comboText: '', currentCombo: 0 }
+  }
+}
+
 function goToEdit() {
   router.push(`/crawler/edit/${taskId}`)
 }
@@ -340,21 +361,37 @@ function getConnectionStatusText() {
             </div>
           </template>
           
-          <el-progress
-            :percentage="crawlerStore.currentTask.progress"
-            :status="crawlerStore.currentTask.status === 'completed' ? 'success' : undefined"
-            :stroke-width="32"
-          >
-            <template #default="{ percentage }">
-              <span style="color: white; font-size: 16px; font-weight: bold">{{ percentage }}%</span>
-            </template>
-          </el-progress>
-          
-          <div class="progress-details">
-            <div class="progress-item">
-              <span class="label">当前采集:</span>
-              <span class="value">{{ crawlerStore.currentTask.current }}</span>
+          <!-- 整体组合进度 -->
+          <div class="progress-section">
+            <div class="progress-label">
+              <span>整体进度</span>
+              <span v-if="getComboInfo().isMultiCombo" class="combo-badge">{{ getComboInfo().comboText }}</span>
             </div>
+            <el-progress
+              :percentage="crawlerStore.currentTask.progress"
+              :status="crawlerStore.currentTask.status === 'completed' ? 'success' : undefined"
+              :stroke-width="28"
+            >
+              <template #default="{ percentage }">
+                <span style="color: white; font-size: 15px; font-weight: bold">{{ percentage }}%</span>
+              </template>
+            </el-progress>
+          </div>
+
+          <!-- 组合内进度（仅多组合任务显示） -->
+          <div v-if="getComboInfo().isMultiCombo && crawlerStore.currentTask.status === 'running'" class="progress-section combo-sub-section">
+            <div class="progress-label sub-label">
+              <span>当前组合内进度</span>
+              <span class="combo-detail">第 {{ getComboInfo().currentCombo + 1 }} 组合</span>
+            </div>
+            <el-progress
+              :percentage="crawlerStore.currentTask.comboProgress || 0"
+              :stroke-width="18"
+              color="#67c23a"
+            />
+          </div>
+
+          <div class="progress-details">
             <div class="progress-item">
               <span class="label">已保存记录:</span>
               <span class="value">{{ crawlerStore.currentTask?.recordCount || 0 }}</span>
@@ -448,8 +485,47 @@ function getConnectionStatusText() {
   flex-wrap: wrap;
 }
 
+.progress-section {
+  margin-bottom: 12px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-regular);
+}
+
+.combo-badge {
+  font-size: 12px;
+  color: #409eff;
+  background: #ecf5ff;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.combo-sub-section {
+  padding: 12px;
+  background: var(--color-bg-page);
+  border-radius: var(--radius-md);
+}
+
+.sub-label {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.combo-detail {
+  font-size: 12px;
+  color: #67c23a;
+}
+
 .progress-details {
-  margin-top: 20px;
+  margin-top: 16px;
   display: flex;
   justify-content: space-around;
   padding: 16px;
