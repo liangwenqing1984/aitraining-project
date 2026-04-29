@@ -25,14 +25,6 @@
             <div class="card-title">{{ card.label }}</div>
             <template v-if="card.configured">
               <div class="card-model">{{ card.config!.modelName }}</div>
-              <div class="card-tasks">
-                <el-tag
-                  v-for="t in card.config!.taskRouting"
-                  :key="t"
-                  size="small"
-                  class="card-task-tag"
-                >{{ taskLabel(t) }}</el-tag>
-              </div>
             </template>
             <div v-else class="card-hint">点击配置</div>
           </div>
@@ -69,14 +61,6 @@
             <div class="card-title">{{ card.label }}</div>
             <template v-if="card.configured">
               <div class="card-model">{{ card.config!.modelName }}</div>
-              <div class="card-tasks">
-                <el-tag
-                  v-for="t in card.config!.taskRouting"
-                  :key="t"
-                  size="small"
-                  class="card-task-tag"
-                >{{ taskLabel(t) }}</el-tag>
-              </div>
             </template>
             <div v-else class="card-hint">点击配置</div>
           </div>
@@ -577,10 +561,6 @@ onMounted(() => {
 .card-body {
   flex: 1;
   min-width: 0;
-  min-height: 62px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
 }
 .card-title {
   font-size: 15px;
@@ -594,15 +574,6 @@ onMounted(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.card-tasks {
-  margin-top: 4px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-}
-.card-task-tag {
-  font-size: 11px !important;
 }
 .card-hint {
   font-size: 12px;
