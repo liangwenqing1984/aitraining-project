@@ -543,6 +543,7 @@ onMounted(() => {
   align-items: center;
   gap: 14px;
   padding: 16px 18px;
+  height: 100%;
   background: #fff;
   border: 1px solid #e4e7ed;
   border-radius: 10px;
@@ -576,6 +577,10 @@ onMounted(() => {
 .card-body {
   flex: 1;
   min-width: 0;
+  min-height: 62px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 .card-title {
   font-size: 15px;
