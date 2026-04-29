@@ -9,10 +9,10 @@
       <!-- 左侧：快捷卡片区 -->
       <div class="cards-panel">
         <div class="card-section">
-          <h3 class="section-title">远程模型</h3>
-          <div class="provider-cards provider-cards--remote">
+          <h3 class="section-title">本地模型</h3>
+          <div class="provider-cards">
             <div
-              v-for="card in remoteCards"
+              v-for="card in localCards"
               :key="card.provider"
               class="provider-card"
               :class="{ 'is-configured': card.configured }"
@@ -38,10 +38,10 @@
         </div>
 
         <div class="card-section">
-          <h3 class="section-title">本地模型</h3>
-          <div class="provider-cards provider-cards--local">
+          <h3 class="section-title">远程模型</h3>
+          <div class="provider-cards">
             <div
-              v-for="card in localCards"
+              v-for="card in remoteCards"
               :key="card.provider"
               class="provider-card"
               :class="{ 'is-configured': card.configured }"
@@ -494,26 +494,27 @@ onMounted(() => {
 /* 左侧卡片面板 */
 .cards-panel {
   flex-shrink: 0;
-  width: 380px;
+  width: 240px;
 }
 
 /* 右侧表格面板 */
 .table-panel {
   flex: 1;
-  min-width: 520px;
+  min-width: 0;
   overflow: hidden;
 }
 
 /* 窄屏时切换为上下堆叠布局 */
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
   .main-content {
     flex-direction: column;
   }
   .cards-panel {
     width: 100%;
   }
-  .provider-cards--remote {
-    grid-template-columns: repeat(4, 1fr);
+  .provider-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
   .table-panel {
     min-width: 0;
@@ -547,18 +548,9 @@ onMounted(() => {
 }
 
 .provider-cards {
-  display: grid;
-  gap: 12px;
-}
-
-/* 远程模型：2 列 × 4 行 */
-.provider-cards--remote {
-  grid-template-columns: repeat(2, 1fr);
-}
-
-/* 本地模型：自适应 */
-.provider-cards--local {
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .provider-card {
