@@ -5,43 +5,90 @@
       <p class="subtitle">配置大模型提供商，为数据增强、智能分析、自然语言查询等功能提供 AI 能力</p>
     </div>
 
-    <!-- 模型提供商快捷卡片 -->
-    <div class="provider-cards">
-      <div
-        v-for="card in providerCards"
-        :key="card.provider"
-        class="provider-card"
-        :class="{ 'is-configured': card.configured }"
-        @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
-      >
-        <div class="card-icon">
-          <el-avatar :size="40" :style="{ background: card.color }">
-            <span class="avatar-text">{{ card.label[0] }}</span>
-          </el-avatar>
+    <!-- 远程模型快捷卡片 -->
+    <div class="card-section">
+      <h3 class="section-title">远程模型</h3>
+      <div class="provider-cards provider-cards--remote">
+        <div
+          v-for="card in remoteCards"
+          :key="card.provider"
+          class="provider-card"
+          :class="{ 'is-configured': card.configured }"
+          @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
+        >
+          <div class="card-icon">
+            <el-avatar :size="40" :style="{ background: card.color }">
+              <span class="avatar-text">{{ card.label[0] }}</span>
+            </el-avatar>
+          </div>
+          <div class="card-body">
+            <div class="card-title">{{ card.label }}</div>
+            <template v-if="card.configured">
+              <div class="card-model">{{ card.config!.modelName }}</div>
+              <div class="card-tasks">
+                <el-tag
+                  v-for="t in card.config!.taskRouting"
+                  :key="t"
+                  size="small"
+                  class="card-task-tag"
+                >{{ taskLabel(t) }}</el-tag>
+              </div>
+            </template>
+            <div v-else class="card-hint">点击配置</div>
+          </div>
+          <div class="card-action">
+            <el-button
+              :type="card.configured ? 'primary' : 'success'"
+              size="small"
+              plain
+            >
+              {{ card.configured ? '编辑' : '添加' }}
+            </el-button>
+          </div>
         </div>
-        <div class="card-body">
-          <div class="card-title">{{ card.label }}</div>
-          <template v-if="card.configured">
-            <div class="card-model">{{ card.config!.modelName }}</div>
-            <div class="card-tasks">
-              <el-tag
-                v-for="t in card.config!.taskRouting"
-                :key="t"
-                size="small"
-                class="card-task-tag"
-              >{{ taskLabel(t) }}</el-tag>
-            </div>
-          </template>
-          <div v-else class="card-hint">点击配置</div>
-        </div>
-        <div class="card-action">
-          <el-button
-            :type="card.configured ? 'primary' : 'success'"
-            size="small"
-            plain
-          >
-            {{ card.configured ? '编辑' : '添加' }}
-          </el-button>
+      </div>
+    </div>
+
+    <!-- 本地模型快捷卡片 -->
+    <div class="card-section">
+      <h3 class="section-title">本地模型</h3>
+      <div class="provider-cards provider-cards--local">
+        <div
+          v-for="card in localCards"
+          :key="card.provider"
+          class="provider-card"
+          :class="{ 'is-configured': card.configured }"
+          @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
+        >
+          <div class="card-icon">
+            <el-avatar :size="40" :style="{ background: card.color }">
+              <span class="avatar-text">{{ card.label[0] }}</span>
+            </el-avatar>
+          </div>
+          <div class="card-body">
+            <div class="card-title">{{ card.label }}</div>
+            <template v-if="card.configured">
+              <div class="card-model">{{ card.config!.modelName }}</div>
+              <div class="card-tasks">
+                <el-tag
+                  v-for="t in card.config!.taskRouting"
+                  :key="t"
+                  size="small"
+                  class="card-task-tag"
+                >{{ taskLabel(t) }}</el-tag>
+              </div>
+            </template>
+            <div v-else class="card-hint">点击配置</div>
+          </div>
+          <div class="card-action">
+            <el-button
+              :type="card.configured ? 'primary' : 'success'"
+              size="small"
+              plain
+            >
+              {{ card.configured ? '编辑' : '添加' }}
+            </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -99,7 +146,7 @@
     >
       <el-form :model="form" label-width="100px" label-position="left">
         <el-form-item label="提供商" required>
-          <el-select v-model="form.provider" placeholder="选择提供商" style="width: 100%">
+          <el-select v-model="form.provider" placeholder="选择提供商" style="width: 100%" @change="onProviderChange">
             <el-option label="OpenAI (GPT-4o 等)" value="openai" />
             <el-option label="Anthropic (Claude)" value="anthropic" />
             <el-option label="DeepSeek" value="deepseek" />
@@ -109,10 +156,21 @@
         </el-form-item>
 
         <el-form-item label="模型名称" required>
-          <el-input
+          <el-select
             v-model="form.modelName"
-            :placeholder="form.provider === 'ollama' ? '例如: qwen3:14b' : '例如: gpt-4o'"
-          />
+            filterable
+            allow-create
+            default-first-option
+            placeholder="选择或输入模型名称"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="m in modelPresets[form.provider] || []"
+              :key="m"
+              :label="m"
+              :value="m"
+            />
+          </el-select>
         </el-form-item>
 
         <el-form-item label="API Key">
@@ -129,6 +187,7 @@
             v-model="form.baseUrl"
             :placeholder="getDefaultUrl(form.provider)"
           />
+          <div class="form-tip">默认端点已自动填入，可按需修改</div>
         </el-form-item>
 
         <el-form-item label="任务分配" required>
@@ -221,26 +280,59 @@ function providerLabel(p: string): string {
 }
 
 // 模型提供商快捷卡片
-const providerCardDefs = [
+const remoteCardDefs = [
   { provider: 'deepseek', label: 'DeepSeek', color: '#4a6cf7' },
   { provider: 'openai',   label: 'OpenAI',   color: '#10a37f' },
   { provider: 'anthropic',label: 'Anthropic', color: '#d97757' },
   { provider: 'zhipu',    label: '智谱 AI',  color: '#5b5ea6' },
+]
+
+const localCardDefs = [
   { provider: 'ollama',   label: 'Ollama',   color: '#f59e0b' },
 ]
 
-const providerCards = computed(() =>
-  providerCardDefs.map(def => {
+const remoteCards = computed(() =>
+  remoteCardDefs.map(def => {
     const config = configs.value.find(c => c.provider === def.provider && c.isActive)
     return { ...def, configured: !!config, config: config || null }
   })
 )
+
+const localCards = computed(() =>
+  localCardDefs.map(def => {
+    const config = configs.value.find(c => c.provider === def.provider && c.isActive)
+    return { ...def, configured: !!config, config: config || null }
+  })
+)
+
+// 各提供商的预设模型列表
+const modelPresets: Record<string, string[]> = {
+  deepseek:  ['deepseek-v4-pro', 'deepseek-chat', 'deepseek-reasoner'],
+  openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o3-mini', 'o1', 'o1-mini'],
+  anthropic: ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-3-5-sonnet'],
+  zhipu:     ['glm-4-plus', 'glm-4-flash', 'glm-4-long', 'glm-4v-plus'],
+  ollama:    ['qwen3:14b', 'qwen3:4b', 'llama3:8b', 'nomic-embed-text', 'mistral:7b', 'deepseek-r1:8b'],
+}
+
+function onProviderChange(provider: string) {
+  // 自动填入默认端点
+  if (!form.value.baseUrl) {
+    form.value.baseUrl = getDefaultUrl(provider)
+  }
+  // 自动推荐任务分配
+  if (form.value.taskRouting.length === 0) {
+    form.value.taskRouting = provider === 'ollama'
+      ? ['enrichment', 'anti-crawl']
+      : ['enrichment', 'insights', 'query']
+  }
+}
 
 function quickAdd(provider: string) {
   editingId.value = null
   form.value = {
     ...defaultForm,
     provider,
+    baseUrl: getDefaultUrl(provider),
     taskRouting: provider === 'ollama' ? ['enrichment', 'anti-crawl'] : ['enrichment', 'insights', 'query'],
   }
   dialogVisible.value = true
@@ -280,7 +372,10 @@ async function loadConfigs() {
 
 function showAddDialog() {
   editingId.value = null
-  form.value = { ...defaultForm }
+  form.value = {
+    ...defaultForm,
+    baseUrl: getDefaultUrl(defaultForm.provider),
+  }
   dialogVisible.value = true
 }
 
@@ -386,11 +481,42 @@ onMounted(() => {
 }
 
 /* ========== 提供商快捷卡片 ========== */
+.card-section {
+  margin-bottom: 20px;
+}
+.section-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #606266;
+  padding-left: 2px;
+}
+.section-title::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 14px;
+  background: #409eff;
+  border-radius: 2px;
+  margin-right: 8px;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
 .provider-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 16px;
-  margin-bottom: 24px;
+}
+
+/* 远程模型：固定 2 列，4 卡满两行 */
+.provider-cards--remote {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* 本地模型：自适应 */
+.provider-cards--local {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
 }
 
 .provider-card {
