@@ -495,6 +495,23 @@ onMounted(() => {
 .cards-panel {
   flex-shrink: 0;
   width: 240px;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.cards-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.cards-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cards-panel::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+.cards-panel::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }
 
 /* 右侧表格面板 */
@@ -511,6 +528,8 @@ onMounted(() => {
   }
   .cards-panel {
     width: 100%;
+    max-height: none;
+    overflow-y: visible;
   }
   .provider-cards {
     display: grid;
