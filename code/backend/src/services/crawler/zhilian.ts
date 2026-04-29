@@ -1202,7 +1202,7 @@ strategy1Stats.failedExtractions++;
                       try {
                         if (!browser.isConnected()) {
                           this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器连接已断开`);
-                          return { success: false, data: null, index: globalIndex };
+                          return { success: false, data: null, index: globalIndex, error: 'BROWSER_DISCONNECTED' };
                         }
                         
                         // 🔧 额外检查：如果标签页太多，等待一下
@@ -1213,7 +1213,7 @@ strategy1Stats.failedExtractions++;
                         }
                       } catch (e: any) {
                         this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器状态检查失败: ${e.message}`);
-                        return { success: false, data: null, index: globalIndex };
+                        return { success: false, data: null, index: globalIndex, error: 'BROWSER_DISCONNECTED' };
                       }
                       
                       this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🚀 并发抓取: ${job.title}`);
@@ -1350,10 +1350,20 @@ strategy1Stats.failedExtractions++;
                     const successCount = batchResults.filter(r => r.status === 'fulfilled' && r.value.success).length;
                     const failCount = batchResults.filter(r => r.status === 'fulfilled' && !r.value.success).length;
                     const browserDisconnected = batchResults.some(r =>
-                      r.status === 'fulfilled' && r.value.error === 'BROWSER_DISCONNECTED'
+                      r.status === 'fulfilled' && (
+                        r.value.error === 'BROWSER_DISCONNECTED' ||
+                        r.value.error === 'BROWSER_CRASHED'
+                      )
                     );
 
                     this.log('info', `[ZhilianCrawler] 📊 批次完成: 成功${successCount}条, 失败${failCount}条`);
+
+                    // 🔧 如果批次中所有任务都失败了，且浏览器已断开，立即中断
+                    const allFailed = successCount === 0 && failCount === batch.length;
+                    if (allFailed && !browser.isConnected()) {
+                      this.log('error', `[ZhilianCrawler] 💥 批次全失败且浏览器已断开，立即停止`);
+                      break;
+                    }
 
                     // 🔧 检测WAF拦截：任意详情页被WAF拦截，立即停止并发
                     const wafInBatch = batchResults.some(r =>
@@ -1496,10 +1506,11 @@ strategy1Stats.failedExtractions++;
               const pageDuration = ((pageEndTime - pageStartTime) / 1000).toFixed(2);
               
               // 🔧 关键修复：检测浏览器崩溃错误
-              const isBrowserCrash = error.message.includes('Connection closed') || 
+              const isBrowserCrash = error.message.includes('Connection closed') ||
                                      error.message.includes('Session closed') ||
                                      error.message.includes('Target closed') ||
                                      error.message.includes('Protocol error') ||
+                                     error.message.includes('detached') ||
                                      error.message.includes('浏览器连接已断开') ||
                                      error.message.includes('BROWSER_RESTART_SCHEDULED');
 
