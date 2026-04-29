@@ -245,6 +245,25 @@ function getCachedKeywordDetails(task: Task): KeywordDetailInfo {
   return keywordDetailsCache.value[task.id] || { keywords: [], cities: [], companies: [], displayText: '-' }
 }
 
+// 获取多组合任务的组合信息
+function getComboInfo(task: Task): { totalCombos: number; isMultiCombo: boolean; comboText: string } {
+  try {
+    const config = typeof task.config === 'string' ? JSON.parse(task.config) : task.config
+    const keywords = config.keywords || (config.keyword ? [config.keyword] : [''])
+    const cities = config.cities || (config.city ? [config.city] : [''])
+    const totalCombos = (keywords.length || 1) * (cities.length || 1)
+    const isMultiCombo = totalCombos > 1
+    const currentCombo = task.current || 1
+    return {
+      totalCombos,
+      isMultiCombo,
+      comboText: isMultiCombo ? `${Math.min(currentCombo, totalCombos)}/${totalCombos} 组合` : '',
+    }
+  } catch {
+    return { totalCombos: 1, isMultiCombo: false, comboText: '' }
+  }
+}
+
 // 删除任务 - 带确认弹窗
 async function handleDeleteTask(taskId: string) {
   try {
@@ -398,9 +417,10 @@ async function handleDeleteTask(taskId: string) {
             <el-tag :type="getStatusType(row.status)">{{ getStatusName(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="150">
+        <el-table-column label="进度" width="170">
           <template #default="{ row }">
             <el-progress :percentage="row.progress" :status="row.status === 'completed' ? 'success' : undefined" />
+            <div v-if="getComboInfo(row).isMultiCombo" class="combo-info">{{ getComboInfo(row).comboText }}</div>
           </template>
         </el-table-column>
         <el-table-column label="记录数" width="100">
@@ -650,5 +670,14 @@ async function handleDeleteTask(taskId: string) {
 .action-icon {
   margin-right: 2px;
   font-size: 13px;
+}
+
+/* 组合进度信息 */
+.combo-info {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 2px;
+  text-align: center;
+  line-height: 1;
 }
 </style>
