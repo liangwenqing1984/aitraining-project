@@ -8,6 +8,15 @@
     <div class="main-content">
       <!-- 左侧：快捷卡片区 -->
       <div class="cards-panel">
+        <div class="search-box">
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索模型..."
+            clearable
+            :prefix-icon="Search"
+            size="small"
+          />
+        </div>
         <div class="card-section">
           <h3 class="section-title">本地模型</h3>
           <div class="provider-cards">
@@ -223,7 +232,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Loading, Link, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Loading, Link, Edit, Delete, Search } from '@element-plus/icons-vue'
 import {
   listLLMConfigs, saveLLMConfig, deleteLLMConfig, checkLLMHealth,
   type LLMConfig, type HealthCheckResult
@@ -237,6 +246,7 @@ const editingId = ref<number | null>(null)
 const testDialogVisible = ref(false)
 const testing = ref(false)
 const testResult = ref<HealthCheckResult | null>(null)
+const searchQuery = ref('')
 
 const defaultForm: LLMConfig = {
   provider: 'openai',
@@ -287,19 +297,35 @@ const localCardDefs = [
   { provider: 'ollama',   label: 'Ollama',   color: '#f59e0b' },
 ]
 
-const remoteCards = computed(() =>
-  remoteCardDefs.map(def => {
-    const config = configs.value.find(c => c.provider === def.provider && c.isActive)
-    return { ...def, configured: !!config, config: config || null }
-  })
-)
+const remoteCards = computed(() => {
+  const q = searchQuery.value.toLowerCase()
+  return remoteCardDefs
+    .map(def => {
+      const config = configs.value.find(c => c.provider === def.provider && c.isActive)
+      return { ...def, configured: !!config, config: config || null }
+    })
+    .filter(card => {
+      if (!q) return true
+      return card.label.toLowerCase().includes(q)
+        || card.provider.toLowerCase().includes(q)
+        || card.config?.modelName?.toLowerCase().includes(q)
+    })
+})
 
-const localCards = computed(() =>
-  localCardDefs.map(def => {
-    const config = configs.value.find(c => c.provider === def.provider && c.isActive)
-    return { ...def, configured: !!config, config: config || null }
-  })
-)
+const localCards = computed(() => {
+  const q = searchQuery.value.toLowerCase()
+  return localCardDefs
+    .map(def => {
+      const config = configs.value.find(c => c.provider === def.provider && c.isActive)
+      return { ...def, configured: !!config, config: config || null }
+    })
+    .filter(card => {
+      if (!q) return true
+      return card.label.toLowerCase().includes(q)
+        || card.provider.toLowerCase().includes(q)
+        || card.config?.modelName?.toLowerCase().includes(q)
+    })
+})
 
 // 各提供商的预设模型列表
 const modelPresets: Record<string, string[]> = {
@@ -540,6 +566,11 @@ onMounted(() => {
     width: 100%;
     overflow: visible;
   }
+}
+
+/* 搜索框 */
+.search-box {
+  margin-bottom: 16px;
 }
 
 /* ========== 提供商快捷卡片 ========== */
