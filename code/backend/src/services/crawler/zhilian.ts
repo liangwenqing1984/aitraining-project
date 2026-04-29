@@ -1661,8 +1661,9 @@ strategy1Stats.failedExtractions++;
           
           // 🔧 主动重启机制：每处理20个组合后主动关闭并重启浏览器
 const COMBINATIONS_PER_BROWSER = 5;
-if (currentCombination % COMBINATIONS_PER_BROWSER === 0 && currentCombination < totalCombinationCount) {
-  this.log('info', `[ZhilianCrawler] 🔄 已处理 ${currentCombination} 个组合，主动重启浏览器以防止资源泄漏...`);
+const combosSinceRestart = currentCombination - Math.max(0, startCombinationIndex);
+if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 0 && currentCombination < totalCombinationCount) {
+  this.log('info', `[ZhilianCrawler] 🔄 已处理 ${combosSinceRestart} 个组合（自上次重启），主动重启浏览器以防止资源泄漏...`);
   
   if (io && taskId) {
     io.to(`task:${taskId}`).emit('task:log', {

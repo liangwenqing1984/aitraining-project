@@ -146,7 +146,8 @@ class TaskService {
       startTime: Date.now(),
       lastRecordCount: 0,
       lastComboIndex: 0,       // 上次看到的组合编号
-      comboStartRecords: 0     // 当前组合开始时的累计记录数
+      comboStartRecords: 0,     // 当前组合开始时的累计记录数
+      restartCount: 0           // 浏览器重启次数
     });
 
     // 创建Excel文件(替代CSV)
@@ -482,8 +483,20 @@ class TaskService {
 
       if (isBrowserCrash || isPlannedRestart) {
         const restartReason = isPlannedRestart ? '计划内重启' : '浏览器崩溃';
-        taskLogger?.info(`[TaskService] 🔄 检测到${restartReason}，准备重启并重试...`);
-        
+
+        // 🔧 防止无限重启：检查重启次数
+        const progressInfo = this.taskProgress.get(taskId);
+        if (progressInfo) {
+          progressInfo.restartCount = (progressInfo.restartCount || 0) + 1;
+          const MAX_RESTARTS = 10;
+          if (progressInfo.restartCount > MAX_RESTARTS) {
+            taskLogger?.error(`[TaskService] ❌ 已达最大重启次数(${MAX_RESTARTS})，放弃重试`);
+            throw new Error(`浏览器重启次数超过上限(${MAX_RESTARTS})，任务终止`);
+          }
+        }
+
+        taskLogger?.info(`[TaskService] 🔄 检测到${restartReason}，准备重启并重试(第${progressInfo?.restartCount || 1}次)...`);
+
         // 🔧 关键修复1：读取当前Excel/CSV文件的行数作为初始记录数
         let initialRecordCount = 0;
         try {
