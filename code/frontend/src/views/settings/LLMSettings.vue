@@ -151,6 +151,10 @@
             <el-option label="Anthropic (Claude)" value="anthropic" />
             <el-option label="DeepSeek" value="deepseek" />
             <el-option label="智谱 (GLM)" value="zhipu" />
+            <el-option label="通义千问 (Qwen)" value="qwen" />
+            <el-option label="文心一言 (ERNIE)" value="baidu" />
+            <el-option label="豆包 (Doubao)" value="bytedance" />
+            <el-option label="月之暗面 (Moonshot)" value="moonshot" />
             <el-option label="Ollama (本地模型)" value="ollama" />
           </el-select>
         </el-form-item>
@@ -274,17 +278,23 @@ function providerLabel(p: string): string {
   const map: Record<string, string> = {
     openai: 'OpenAI', anthropic: 'Anthropic',
     deepseek: 'DeepSeek', zhipu: '智谱',
+    qwen: '通义千问', baidu: '文心一言',
+    bytedance: '豆包', moonshot: '月之暗面',
     ollama: 'Ollama'
   }
   return map[p] || p
 }
 
-// 模型提供商快捷卡片
+// 模型提供商快捷卡片（远程 8 个 = 4列×2行）
 const remoteCardDefs = [
-  { provider: 'deepseek', label: 'DeepSeek', color: '#4a6cf7' },
-  { provider: 'openai',   label: 'OpenAI',   color: '#10a37f' },
-  { provider: 'anthropic',label: 'Anthropic', color: '#d97757' },
-  { provider: 'zhipu',    label: '智谱 AI',  color: '#5b5ea6' },
+  { provider: 'deepseek',  label: 'DeepSeek',     color: '#4a6cf7' },
+  { provider: 'openai',    label: 'OpenAI',       color: '#10a37f' },
+  { provider: 'anthropic', label: 'Anthropic',    color: '#d97757' },
+  { provider: 'zhipu',     label: '智谱 AI',      color: '#5b5ea6' },
+  { provider: 'qwen',      label: '通义千问',     color: '#3b5998' },
+  { provider: 'baidu',     label: '文心一言',     color: '#2468e0' },
+  { provider: 'bytedance', label: '豆包',         color: '#3772ff' },
+  { provider: 'moonshot',  label: '月之暗面',     color: '#8b5cf6' },
 ]
 
 const localCardDefs = [
@@ -311,6 +321,10 @@ const modelPresets: Record<string, string[]> = {
   openai:    ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o3-mini', 'o1', 'o1-mini'],
   anthropic: ['claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-3-5-sonnet'],
   zhipu:     ['glm-4-plus', 'glm-4-flash', 'glm-4-long', 'glm-4v-plus'],
+  qwen:      ['qwen-max', 'qwen-plus', 'qwen-turbo', 'qwen3-235b-a22b', 'qwq-32b'],
+  baidu:     ['ernie-4.5', 'ernie-4.0-turbo', 'ernie-3.5', 'ernie-speed'],
+  bytedance: ['doubao-pro-256k', 'doubao-lite-32k', 'doubao-vision-pro'],
+  moonshot:  ['kimi-k2', 'moonshot-v1-128k', 'moonshot-v1-32k', 'kimi-thinking'],
   ollama:    ['qwen3:14b', 'qwen3:4b', 'llama3:8b', 'nomic-embed-text', 'mistral:7b', 'deepseek-r1:8b'],
 }
 
@@ -342,6 +356,7 @@ function providerTagType(p: string): string {
   const map: Record<string, string> = {
     openai: 'success', anthropic: '',
     deepseek: 'primary', zhipu: 'danger',
+    qwen: 'info', baidu: '', bytedance: 'primary', moonshot: 'warning',
     ollama: 'warning'
   }
   return map[p] || 'info'
@@ -353,6 +368,10 @@ function getDefaultUrl(p: string): string {
     anthropic: 'https://api.anthropic.com',
     deepseek: 'https://api.deepseek.com',
     zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+    qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    baidu: 'https://qianfan.baidubce.com/v2',
+    bytedance: 'https://ark.cn-beijing.volces.com/api/v3',
+    moonshot: 'https://api.moonshot.cn/v1',
     ollama: 'http://localhost:11434',
   }
   return map[p] || ''
@@ -509,9 +528,9 @@ onMounted(() => {
   gap: 16px;
 }
 
-/* 远程模型：固定 2 列，4 卡满两行 */
+/* 远程模型：固定 4 列，8 卡满两行 */
 .provider-cards--remote {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 }
 
 /* 本地模型：自适应 */
