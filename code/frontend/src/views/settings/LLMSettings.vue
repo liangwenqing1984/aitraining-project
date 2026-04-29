@@ -5,6 +5,47 @@
       <p class="subtitle">配置大模型提供商，为数据增强、智能分析、自然语言查询等功能提供 AI 能力</p>
     </div>
 
+    <!-- 模型提供商快捷卡片 -->
+    <div class="provider-cards">
+      <div
+        v-for="card in providerCards"
+        :key="card.provider"
+        class="provider-card"
+        :class="{ 'is-configured': card.configured }"
+        @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
+      >
+        <div class="card-icon">
+          <el-avatar :size="40" :style="{ background: card.color }">
+            <span class="avatar-text">{{ card.label[0] }}</span>
+          </el-avatar>
+        </div>
+        <div class="card-body">
+          <div class="card-title">{{ card.label }}</div>
+          <template v-if="card.configured">
+            <div class="card-model">{{ card.config!.modelName }}</div>
+            <div class="card-tasks">
+              <el-tag
+                v-for="t in card.config!.taskRouting"
+                :key="t"
+                size="small"
+                class="card-task-tag"
+              >{{ taskLabel(t) }}</el-tag>
+            </div>
+          </template>
+          <div v-else class="card-hint">点击配置</div>
+        </div>
+        <div class="card-action">
+          <el-button
+            :type="card.configured ? 'primary' : 'success'"
+            size="small"
+            plain
+          >
+            {{ card.configured ? '编辑' : '添加' }}
+          </el-button>
+        </div>
+      </div>
+    </div>
+
     <div class="action-bar">
       <el-button type="primary" @click="showAddDialog">
         <el-icon><Plus /></el-icon>
@@ -131,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Loading } from '@element-plus/icons-vue'
 import {
@@ -177,6 +218,32 @@ function providerLabel(p: string): string {
     ollama: 'Ollama'
   }
   return map[p] || p
+}
+
+// 模型提供商快捷卡片
+const providerCardDefs = [
+  { provider: 'deepseek', label: 'DeepSeek', color: '#4a6cf7' },
+  { provider: 'openai',   label: 'OpenAI',   color: '#10a37f' },
+  { provider: 'anthropic',label: 'Anthropic', color: '#d97757' },
+  { provider: 'zhipu',    label: '智谱 AI',  color: '#5b5ea6' },
+  { provider: 'ollama',   label: 'Ollama',   color: '#f59e0b' },
+]
+
+const providerCards = computed(() =>
+  providerCardDefs.map(def => {
+    const config = configs.value.find(c => c.provider === def.provider && c.isActive)
+    return { ...def, configured: !!config, config: config || null }
+  })
+)
+
+function quickAdd(provider: string) {
+  editingId.value = null
+  form.value = {
+    ...defaultForm,
+    provider,
+    taskRouting: provider === 'ollama' ? ['enrichment', 'anti-crawl'] : ['enrichment', 'insights', 'query'],
+  }
+  dialogVisible.value = true
 }
 
 function providerTagType(p: string): string {
@@ -316,6 +383,85 @@ onMounted(() => {
 .subtitle {
   color: #909399;
   margin: 0 0 20px;
+}
+
+/* ========== 提供商快捷卡片 ========== */
+.provider-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.provider-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 200ms ease-out;
+}
+.provider-card:hover {
+  border-color: #409eff;
+  box-shadow: 0 4px 16px rgba(64, 158, 255, 0.12);
+  transform: translateY(-2px);
+}
+.provider-card:active {
+  transform: scale(0.98);
+}
+
+.provider-card.is-configured {
+  border-color: #e0ecf5;
+  background: #fafcff;
+}
+
+.card-icon {
+  flex-shrink: 0;
+}
+.avatar-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  user-select: none;
+}
+
+.card-body {
+  flex: 1;
+  min-width: 0;
+}
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 2px;
+}
+.card-model {
+  font-size: 13px;
+  color: #606266;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-tasks {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.card-task-tag {
+  font-size: 11px !important;
+}
+.card-hint {
+  font-size: 12px;
+  color: #c0c4cc;
+  margin-top: 4px;
+}
+
+.card-action {
+  flex-shrink: 0;
 }
 
 .action-bar {
