@@ -32,6 +32,7 @@ export interface Task {
   status: 'pending' | 'running' | 'paused' | 'completed' | 'stopped' | 'failed'
   progress: number
   comboProgress: number
+  comboRecords: number
   total: number
   current: number
   recordCount: number

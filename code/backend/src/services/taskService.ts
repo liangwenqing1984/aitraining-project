@@ -354,6 +354,7 @@ class TaskService {
             // 🔧 组合内进度：基于当前组合内的记录增量（非总累计），
             // 每个新组合开始时重置基准记录数
             let comboProgress = 0;
+            let comboRecords = 0;  // 当前组合内的记录数
             if (isMultiCombination) {
               const taskInfo2 = this.taskProgress.get(taskId);
               if (taskInfo2) {
@@ -362,7 +363,7 @@ class TaskService {
                   taskInfo2.lastComboIndex = comboCurrent as number;
                   taskInfo2.comboStartRecords = totalRecords;
                 }
-                const comboRecords = totalRecords - (taskInfo2.comboStartRecords || 0);
+                comboRecords = totalRecords - (taskInfo2.comboStartRecords || 0);
                 if (comboRecords <= 5) {
                   comboProgress = (comboRecords / 5) * 30;
                 } else if (comboRecords <= 15) {
@@ -405,6 +406,7 @@ class TaskService {
               status: 'running',
               progress: progressPercent,
               comboProgress: isMultiCombination ? comboProgress : 0,
+              comboRecords: isMultiCombination ? comboRecords : 0,
               current: comboCurrent,
               total: totalRecords > 0 ? totalRecords : 100,
               recordCount: totalRecords,

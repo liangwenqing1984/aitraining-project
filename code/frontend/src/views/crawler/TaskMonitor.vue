@@ -13,6 +13,8 @@ const crawlerStore = useCrawlerStore()
 const taskId = route.params.id as string
 const logContainer = ref<HTMLElement>()
 const taskConfig = ref<any>(null)
+const animateCombo = ref(false)
+const animateTotal = ref(false)
 
 // 🔧 安全的时间格式化函数
 function formatDateTime(dateStr: string | null | undefined): string {
@@ -138,6 +140,20 @@ onUnmounted(() => {
     console.log('[TaskMonitor] ⚠️ 任务仍在运行，保持WebSocket连接 (status:', task?.status, ')')
     // 不取消订阅，让Socket继续接收进度更新
   }
+})
+
+// 数字跳动动画：监听当前组合记录数和总记录数变化
+let animTimerCombo: ReturnType<typeof setTimeout> | null = null
+let animTimerTotal: ReturnType<typeof setTimeout> | null = null
+watch(() => crawlerStore.currentTask?.comboRecords, () => {
+  animateCombo.value = true
+  if (animTimerCombo) clearTimeout(animTimerCombo)
+  animTimerCombo = setTimeout(() => { animateCombo.value = false }, 200)
+})
+watch(() => crawlerStore.currentTask?.recordCount, () => {
+  animateTotal.value = true
+  if (animTimerTotal) clearTimeout(animTimerTotal)
+  animTimerTotal = setTimeout(() => { animateTotal.value = false }, 200)
 })
 
 // 自动滚动日志 - 🔧 修复: 监听taskLogs Map而不是logs计算属性
@@ -392,9 +408,13 @@ function getConnectionStatusText() {
           </div>
 
           <div class="progress-details">
+            <div v-if="getComboInfo().isMultiCombo && crawlerStore.currentTask.status === 'running'" class="progress-item">
+              <span class="label">当前组合采集</span>
+              <span class="value combo-animate" :class="{ counting: animateCombo }">{{ crawlerStore.currentTask?.comboRecords || 0 }}</span>
+            </div>
             <div class="progress-item">
-              <span class="label">已保存记录:</span>
-              <span class="value">{{ crawlerStore.currentTask?.recordCount || 0 }}</span>
+              <span class="label">已保存记录</span>
+              <span class="value combo-animate" :class="{ counting: animateTotal }">{{ crawlerStore.currentTask?.recordCount || 0 }}</span>
             </div>
           </div>
         </el-card>
@@ -549,6 +569,15 @@ function getConnectionStatusText() {
   color: var(--color-text-regular);
   font-size: 20px;
   font-weight: bold;
+}
+
+/* 数字跳动动画 */
+.combo-animate {
+  transition: transform 0.15s ease-out;
+}
+.combo-animate.counting {
+  transform: scale(1.25);
+  color: #409eff;
 }
 
 .log-card {
