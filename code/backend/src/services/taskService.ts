@@ -176,34 +176,47 @@ class TaskService {
 
   // 执行爬取
   private async executeCrawling(
-    taskId: string, 
-    config: TaskConfig, 
+    taskId: string,
+    config: TaskConfig,
     controller: AbortController,
     resumeState?: { combinationIndex: number; currentPage: number; initialRecordCount: number },
-    logger?: TaskLogger  // 🔧 修改参数类型：从ConsoleInterceptor改为TaskLogger
+    logger?: TaskLogger
   ) {
-    let taskLogger: TaskLogger | null = null; // 🔧 在try外部声明
+    let taskLogger: TaskLogger | undefined;
 
+    // 🔧 循环重试机制：替代递归调用，避免深层调用栈
+    let retryConfig = config;
+    let retryResumeState = resumeState;
+    let retryLogger: TaskLogger | undefined = logger;
+    let isRetry = false;
+
+    while (true) {
     try {
       // 🔧 关键修复：如果已有logger则复用，否则创建新的
-      if (logger) {
-        taskLogger = logger;
-        taskLogger.info(`[TaskService] 🔄 使用已有的日志记录器`);
+      if (retryLogger) {
+        taskLogger = retryLogger;
+        if (!isRetry) {
+          taskLogger.info(`[TaskService] 🔄 使用已有的日志记录器`);
+        }
       } else {
         taskLogger = new TaskLogger(taskId);
         taskLogger.info(`[TaskService] ✅ 创建新的日志记录器`);
       }
-      
+
       // 执行爬取
-      let totalRecords = resumeState?.initialRecordCount || 0;
+      let totalRecords = retryResumeState?.initialRecordCount || 0;
       let lastUpdateTime = Date.now();
       let lastRecordCount = totalRecords;
-      
+
       // 🔧 关键修复：如果是重启任务，从已有CSV文件读取初始记录数
       let initDedupPromise: Promise<void> | null = null;
-      if (resumeState) {
-        taskLogger.info(`[TaskService] 🔄 断点续传模式 - 起始记录数: ${totalRecords}`);
-        taskLogger.info(`[TaskService] 📍 从组合索引 ${resumeState.combinationIndex}, 第 ${resumeState.currentPage} 页继续`);
+      if (retryResumeState) {
+        if (!isRetry) {
+          taskLogger.info(`[TaskService] 🔄 断点续传模式 - 起始记录数: ${totalRecords}`);
+          taskLogger.info(`[TaskService] 📍 从组合索引 ${retryResumeState.combinationIndex}, 第 ${retryResumeState.currentPage} 页继续`);
+        } else {
+          taskLogger.info(`[TaskService] 🔄 重试模式 - 已采集: ${totalRecords} 条，从组合索引 ${retryResumeState.combinationIndex} 继续`);
+        }
 
         io.to(`task:${taskId}`).emit('task:log', {
           taskId,
@@ -218,12 +231,12 @@ class TaskService {
       const filename = path.basename(filepath);
 
       // 🔧 去重：从已有Excel文件读取已写入的jobId集合，防止断点续传产生重复数据
-      if (resumeState) {
+      if (retryResumeState) {
         initDedupPromise = this.initWrittenJobIds(filepath, taskId, taskLogger);
         await initDedupPromise;
       }
 
-      for (const site of config.sites) {
+      for (const site of retryConfig.sites) {
         taskLogger.info(`[TaskService] 开始爬取站点: ${site}`);
         
         if (controller.signal.aborted) {
@@ -483,6 +496,7 @@ class TaskService {
       `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
 
       taskLogger.info(`[TaskService] 任务处理完成`);
+      break;  // 🔧 成功完成，退出循环
 
     } catch (error: any) {
       // 任务失败
@@ -504,91 +518,74 @@ class TaskService {
 
         // 🔧 防止无限重启：检查重启次数
         const progressInfo = this.taskProgress.get(taskId);
+        let canRetry = true;
         if (progressInfo) {
           progressInfo.restartCount = (progressInfo.restartCount || 0) + 1;
           const MAX_RESTARTS = 10;
           if (progressInfo.restartCount > MAX_RESTARTS) {
             taskLogger?.error(`[TaskService] ❌ 已达最大重启次数(${MAX_RESTARTS})，放弃重试`);
-            throw new Error(`浏览器重启次数超过上限(${MAX_RESTARTS})，任务终止`);
+            canRetry = false;
+            // 🔧 循环模式：不抛异常，继续执行到下方失败处理
           }
         }
 
-        taskLogger?.info(`[TaskService] 🔄 检测到${restartReason}，准备重启并重试(第${progressInfo?.restartCount || 1}次)...`);
+        if (canRetry) {
+          taskLogger?.info(`[TaskService] 🔄 检测到${restartReason}，准备重启并重试(第${progressInfo?.restartCount || 1}次)...`);
 
-        // 🔧 关键修复1：读取当前Excel/CSV文件的行数作为初始记录数
-        let initialRecordCount = 0;
-        try {
-          const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
-          const filepath = task?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
+          // 🔧 关键修复1：读取当前Excel/CSV文件的行数作为初始记录数
+          let initialRecordCount = 0;
+          try {
+            const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
+            const filepath = task?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
 
-          if (fs.existsSync(filepath)) {
-            const ext = path.extname(filepath).toLowerCase();
-            if (ext === '.xlsx') {
-              const workbook = new ExcelJS.Workbook();
-              await workbook.xlsx.readFile(filepath);
-              const worksheet = workbook.worksheets[0];
-              if (worksheet) {
-                // 减去表头行
-                initialRecordCount = Math.max(0, worksheet.rowCount - 1);
-                taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从Excel文件读取）`);
+            if (fs.existsSync(filepath)) {
+              const ext = path.extname(filepath).toLowerCase();
+              if (ext === '.xlsx') {
+                const workbook = new ExcelJS.Workbook();
+                await workbook.xlsx.readFile(filepath);
+                const worksheet = workbook.worksheets[0];
+                if (worksheet) {
+                  initialRecordCount = Math.max(0, worksheet.rowCount - 1);
+                  taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从Excel文件读取）`);
+                }
+              } else {
+                const fileContent = fs.readFileSync(filepath, 'utf-8');
+                const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
+                initialRecordCount = Math.max(0, lines.length - 1);
+                taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从CSV文件读取）`);
               }
-            } else {
-              const fileContent = fs.readFileSync(filepath, 'utf-8');
-              const lines = fileContent.split('\n').filter(line => line.trim().length > 0);
-              // 减去表头行
-              initialRecordCount = Math.max(0, lines.length - 1);
-              taskLogger?.info(`[TaskService] 📊 已爬取数据: ${initialRecordCount} 条（从CSV文件读取）`);
             }
+          } catch (readError: any) {
+            taskLogger?.warn(`[TaskService] ⚠️ 读取文件失败，将从0开始计数:`, readError.message);
           }
-        } catch (readError: any) {
-          taskLogger?.warn(`[TaskService] ⚠️ 读取文件失败，将从0开始计数:`, readError.message);
-        }
-        
-        // 🔧 关键修复2：提取错误中的位置信息
-        const combinationIndex = error.combinationIndex || 0;
-        const currentPage = error.currentPage || 1;
-        const jobIndex = error.jobIndex || 0;
 
-        taskLogger?.info(`[TaskService] 📍 失败位置: 组合索引=${combinationIndex}, 页码=${currentPage}, 职位索引=${jobIndex}`);
+          // 🔧 关键修复2：提取错误中的位置信息
+          const combinationIndex = error.combinationIndex || 0;
+          const currentPage = error.currentPage || 1;
+          const jobIndex = error.jobIndex || 0;
 
-        // 发送重启日志到前端
-        io.to(`task:${taskId}`).emit('task:log', {
-          taskId,
-          level: 'warning',
-          message: `🔄 浏览器崩溃，正在重启并从第${combinationIndex}个组合、第${currentPage}页继续...`
-        });
+          taskLogger?.info(`[TaskService] 📍 失败位置: 组合索引=${combinationIndex}, 页码=${currentPage}, 职位索引=${jobIndex}`);
 
-        // 🔧 等待3秒后重启浏览器并重试
-        await new Promise(resolve => setTimeout(resolve, 3000));
+          // 发送重启日志到前端
+          io.to(`task:${taskId}`).emit('task:log', {
+            taskId,
+            level: 'warning',
+            message: `🔄 浏览器崩溃，正在重启并从第${combinationIndex}个组合、第${currentPage}页继续...`
+          });
 
-        try {
-          // 重新执行爬取任务（从当前位置继续）
-          taskLogger?.info(`[TaskService] 🚀 重新启动爬虫任务...`);
-          
-          // 🔧 关键修复3：传递恢复状态，包括起始记录数和失败位置
-          const resumeState = {
-            combinationIndex,
-            currentPage,
-            initialRecordCount
+          // 🔧 等待3秒后重启浏览器并重试
+          await new Promise(resolve => setTimeout(resolve, 3000));
+
+          // 🔧 循环重试：设置变量后 continue，避免递归调用栈爆炸
+          taskLogger?.info(`[TaskService] 🚀 设置重试状态，循环重试（第${progressInfo?.restartCount || 1}次）...`);
+          retryConfig = {
+            ...retryConfig,
+            _resumeState: { combinationIndex, currentPage, jobIndex }
           };
-          
-          // 🔧 关键修复4：将恢复状态注入config，传递给爬虫
-          const configWithResume = {
-            ...config,
-            _resumeState: {
-              combinationIndex,
-              currentPage,
-              jobIndex
-            }
-          };
-          
-          // 🔧 关键修复5：传递当前拦截器，避免重复创建
-          await this.executeCrawling(taskId, configWithResume, controller, resumeState, logger || undefined);
-          return; // 重试成功后直接返回，不执行下方的失败逻辑
-        } catch (retryError: any) {
-          // 如果重试也失败，则标记为最终失败
-          taskLogger?.error(`[TaskService] ❌ 重试后仍然失败:`, retryError.message);
-          error = retryError; // 使用重试的错误信息
+          retryResumeState = { combinationIndex, currentPage, initialRecordCount };
+          retryLogger = taskLogger;
+          isRetry = true;
+          continue;
         }
       }
 
@@ -608,18 +605,19 @@ class TaskService {
         error: error.message,
         duration
       });
-      
-    } finally {
-      // 🔧 关键修复：只有当前创建的拦截器才需要停止（复用的拦截器由外层管理）
-      if (logger) {
-        logger.close();
-        taskLogger?.info(`[TaskService] ✅ 日志记录器已停止`);
-      }
-      
-      taskLogger?.info(`[TaskService] 清理任务资源`);
-      this.runningTasks.delete(taskId);
-      this.taskProgress.delete(taskId);
+      break;  // 🔧 最终失败，退出循环
+
     }
+  }  // while(true) 循环结束
+
+  // 🔧 清理资源（仅在任务真正结束时执行，不在retry时执行）
+  if (logger) {
+    logger.close();
+    taskLogger?.info(`[TaskService] ✅ 日志记录器已停止`);
+  }
+  taskLogger?.info(`[TaskService] 清理任务资源`);
+  this.runningTasks.delete(taskId);
+  this.taskProgress.delete(taskId);
   }
 
   // 停止任务

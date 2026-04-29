@@ -244,26 +244,39 @@ export class ZhilianCrawler {
               });
             }
 
+            // 🔧 detached Frame 恢复：支持页面重载复用，避免重复创建
             let page: any = null;
+            let isNewPage = true;
+            if (typeof (this as any)._recoveredPage !== 'undefined' && !(this as any)._recoveredPage.isClosed()) {
+              page = (this as any)._recoveredPage;
+              (this as any)._recoveredPage = undefined;
+              isNewPage = false;
+              this.log('info', `[ZhilianCrawler] 🔄 复用恢复的页面，跳过新页面创建`);
+            } else {
+              page = null;
+            }
             let currentJobIndex = 0;  // 🔧 断点续传：追踪当前页内处理的职位索引
             try {
-              
-              page = await browser.newPage();
-              
-              // 设置用户代理和视口 - 添加错误处理
-              try {
-                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-                await page.setViewport({ width: 1920, height: 1080 });
-              } catch (setupError: any) {
-                this.log('error', `[ZhilianCrawler] ❌ 页面初始化失败:`, setupError.message);
-                // 如果页面初始化就失败，直接关闭并抛出
-                try { await page.close(); } catch (e) {}
-                throw new Error(`页面初始化失败: ${setupError.message}`);
+
+              if (!page) {
+                page = await browser.newPage();
+
+                // 设置用户代理和视口 - 添加错误处理
+                try {
+                  await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+                  await page.setViewport({ width: 1920, height: 1080 });
+                } catch (setupError: any) {
+                  this.log('error', `[ZhilianCrawler] ❌ 页面初始化失败:`, setupError.message);
+                  // 如果页面初始化就失败，直接关闭并抛出
+                  try { await page.close(); } catch (e) {}
+                  throw new Error(`页面初始化失败: ${setupError.message}`);
+                }
               }
 
-              // 🚀 优化：拦截不必要的资源以加速页面加载
-              await page.setRequestInterception(true);
-              page.on('request', (request) => {
+              // 🚀 优化：拦截不必要的资源以加速页面加载（仅新页面需要设置）
+              if (isNewPage) {
+                await page.setRequestInterception(true);
+                page.on('request', (request) => {
                 // 🔧 优化：允许样式表和字体，确保页面正常渲染和JS执行
                 const allowedTypes = ['document', 'script', 'xhr', 'fetch', 'websocket', 'stylesheet', 'font'];
                 const resourceType = request.resourceType();
@@ -275,6 +288,7 @@ export class ZhilianCrawler {
                   request.abort();
                 }
               });
+              }  // end if (isNewPage)
 
               // 🔄 重试机制：最多重试2次
               let loadSuccess = false;
@@ -1510,22 +1524,44 @@ strategy1Stats.failedExtractions++;
                                      error.message.includes('Session closed') ||
                                      error.message.includes('Target closed') ||
                                      error.message.includes('Protocol error') ||
-                                     error.message.includes('detached') ||
                                      error.message.includes('浏览器连接已断开') ||
                                      error.message.includes('BROWSER_RESTART_SCHEDULED');
 
-              if (isBrowserCrash) {
-                this.log('error', `[ZhilianCrawler] 🚨 检测到浏览器崩溃！错误: ${error.message}`);
+              // 🔧 detached Frame 单独处理：先尝试恢复页面而非直接重启浏览器
+              const isDetachedFrame = error.message.includes('detached');
+
+              if (isBrowserCrash || isDetachedFrame) {
+                const errorType = isDetachedFrame ? '页面Frame分离' : '浏览器崩溃';
+                this.log('error', `[ZhilianCrawler] 🚨 检测到${errorType}！错误: ${error.message}`);
                 this.log('error', `[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
-                
+
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
                     taskId,
                     level: 'error',
-                    message: `🚨 浏览器进程崩溃，正在清理资源...`
+                    message: `🚨 ${errorType}，正在尝试恢复...`
                   });
                 }
-                
+
+                // 🔧 detached Frame 恢复策略：先尝试重新加载当前页面而非重启浏览器
+                if (isDetachedFrame && browser.isConnected()) {
+                  this.log('info', `[ZhilianCrawler] 🔄 尝试恢复列表页（页面重载，不重启浏览器）...`);
+                  try {
+                    if (page && !page.isClosed()) {
+                      await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+                      this.log('info', `[ZhilianCrawler] ✅ 列表页重载成功，继续当前页处理`);
+                      // 等待DOM渲染
+                      await this.randomDelay(3000, 4000);
+                      // 🔧 将恢复的页面暂存，供while循环顶部复用
+                      (this as any)._recoveredPage = page;
+                      continue;  // 🔧 回到while顶部，复用恢复的页面
+                    }
+                  } catch (reloadError: any) {
+                    this.log('warn', `[ZhilianCrawler] ⚠️ 列表页重载失败: ${reloadError.message}，升级为浏览器重启`);
+                  }
+                }
+
+                // 🔧 真正的浏览器崩溃处理
                 if (page) {
                   try {
                     await page.close().catch(() => {});
@@ -1534,7 +1570,7 @@ strategy1Stats.failedExtractions++;
                     this.log('warn', `[ZhilianCrawler] ⚠️ 关闭页面失败:`, e);
                   }
                 }
-                
+
                 try {
                   if (browser.isConnected()) {
                     await browser.close().catch(() => {});
@@ -1543,7 +1579,7 @@ strategy1Stats.failedExtractions++;
                 } catch (closeErr) {
                   this.log('warn', `[ZhilianCrawler] ⚠️ 关闭浏览器失败:`, closeErr);
                 }
-                
+
                 const crashError = new Error(`BROWSER_CRASH_RECOVERABLE: ${error.message}`);
                 (crashError as any).canRecover = true;
                 // 🔧 关键修复：附加当前爬取状态，用于断点续传
