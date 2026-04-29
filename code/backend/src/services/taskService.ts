@@ -310,36 +310,14 @@ class TaskService {
             let progressPercent: number;
 
             if (isMultiCombination) {
-              // 多组合场景：以爬虫的组合进度为主，记录数为辅
-              // 爬虫每完成一个组合立即写入 progress = (currentCombo/totalCombos)*99
-              // 这里读取爬虫写入的组合进度，并在组合内根据记录数做微调
+              // 多组合场景：主进度 = 已完成组合数/总组合数，干净直观
+              // 爬虫每完成一个组合写入 current=已完成的组合编号
               try {
-                const taskInfo = await db.prepare('SELECT progress, current FROM tasks WHERE id = $1').get(taskId) as any;
-                const comboProgress = taskInfo?.progress || 0;       // 爬虫写入的组合进度（已完成组合的比例）
-                const completedCombo = taskInfo?.current || 0;       // 已完成的组合编号（0=尚无组合完成）
+                const taskInfo = await db.prepare('SELECT current FROM tasks WHERE id = $1').get(taskId) as any;
+                const completedCombo = taskInfo?.current || 0;
 
-                // 每个组合占总进度的份额
-                const perCombo = 100 / totalCombinations;
-
-                // 已完成组合的基础进度
-                const completedBase = Math.round(completedCombo / totalCombinations * 100);
-
-                // 当前组合内的进度：基于记录数的估算，但按组合份额缩放
-                // 记录估算值 progressPercent 为 0-99，映射到当前组合的份额内
-                const recordEstimate = (() => {
-                  if (totalRecords <= 10) return (totalRecords / 10) * 50;
-                  if (totalRecords <= 50) return 50 + ((totalRecords - 10) / 40) * 30;
-                  return 80 + Math.min(19, (totalRecords - 50) / 10);
-                })();
-
-                // 组合内进度 = 记录估算百分比 × 每个组合的份额
-                const withinCombo = (recordEstimate / 100) * perCombo;
-
-                // 最终进度 = 已完成组合基准 + 当前组合内进度
-                progressPercent = Math.round(completedBase + withinCombo);
-
-                // 确保不低于爬虫写入的组合进度（已完成组合不应倒退）
-                progressPercent = Math.max(progressPercent, comboProgress);
+                // 主进度 = 已完成组合比例（最大99%，留给任务完成时才设为100%）
+                progressPercent = Math.min(99, Math.round(completedCombo / totalCombinations * 100));
               } catch (e) {
                 // DB读取失败时回退到记录估算
                 if (totalRecords <= 10) {
@@ -364,9 +342,22 @@ class TaskService {
 
             // 确保进度不超过99%
             progressPercent = Math.min(99, Math.max(0, progressPercent));
-            
+
             // 🔧 关键修复：PostgreSQL的INTEGER字段不接受小数，必须取整
             progressPercent = Math.round(progressPercent);
+
+            // 🔧 组合内进度：记录数估算（0-99%），用于多组合任务显示当前组合内的爬取进展
+            let comboProgress = 0;
+            if (isMultiCombination) {
+              if (totalRecords <= 10) {
+                comboProgress = (totalRecords / 10) * 50;
+              } else if (totalRecords <= 50) {
+                comboProgress = 50 + ((totalRecords - 10) / 40) * 30;
+              } else {
+                comboProgress = 80 + Math.min(19, (totalRecords - 50) / 10);
+              }
+              comboProgress = Math.round(Math.min(99, comboProgress));
+            }
 
             try {
               // 更新数据库进度和记录数
@@ -388,12 +379,13 @@ class TaskService {
             // 🔧 调试：检查WebSocket房间内的客户端数量
             const room = io.sockets.adapter.rooms.get(`task:${taskId}`);
             const clientCount = room ? room.size : 0;
-            taskLogger.info(`[TaskService] 📡 准备推送进度 - 房间内客户端数: ${clientCount}, progress: ${progressPercent}%, records: ${totalRecords}`);
+            taskLogger.info(`[TaskService] 📡 准备推送进度 - 房间内客户端数: ${clientCount}, progress: ${progressPercent}%, comboProgress: ${comboProgress}%, records: ${totalRecords}`);
 
             io.to(`task:${taskId}`).emit('task:progress', {
               taskId,
               status: 'running',
               progress: progressPercent,
+              comboProgress: isMultiCombination ? comboProgress : 0,
               current: totalRecords,
               total: totalRecords > 0 ? totalRecords : 100,
               recordCount: totalRecords,

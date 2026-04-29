@@ -417,9 +417,21 @@ async function handleDeleteTask(taskId: string) {
             <el-tag :type="getStatusType(row.status)">{{ getStatusName(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="170">
+        <el-table-column label="进度" width="180">
           <template #default="{ row }">
-            <el-progress :percentage="row.progress" :status="row.status === 'completed' ? 'success' : undefined" />
+            <el-progress
+              :percentage="row.progress"
+              :status="row.status === 'completed' ? 'success' : undefined"
+              :stroke-width="16"
+            />
+            <el-progress
+              v-if="getComboInfo(row).isMultiCombo && row.status === 'running'"
+              :percentage="row.comboProgress || 0"
+              :show-text="false"
+              :stroke-width="4"
+              color="#a0cfff"
+              class="combo-sub-progress"
+            />
             <div v-if="getComboInfo(row).isMultiCombo" class="combo-info">{{ getComboInfo(row).comboText }}</div>
           </template>
         </el-table-column>
@@ -679,5 +691,8 @@ async function handleDeleteTask(taskId: string) {
   margin-top: 2px;
   text-align: center;
   line-height: 1;
+}
+.combo-sub-progress {
+  margin-top: 3px;
 }
 </style>

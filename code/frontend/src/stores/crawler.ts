@@ -414,12 +414,14 @@ export const useCrawlerStore = defineStore('crawler', () => {
     const task = tasks.value.find(t => t.id === taskId)
     if (task) {
       task.progress = data.progress
+      task.comboProgress = data.comboProgress || 0
       task.current = data.current
       task.recordCount = data.recordCount
     }
     if (currentTask.value?.id === taskId) {
       Object.assign(currentTask.value, {
         progress: data.progress,
+        comboProgress: data.comboProgress || 0,
         current: data.current,
         recordCount: data.recordCount
       })

@@ -31,6 +31,7 @@ export interface Task {
   config: string
   status: 'pending' | 'running' | 'paused' | 'completed' | 'stopped' | 'failed'
   progress: number
+  comboProgress: number
   total: number
   current: number
   recordCount: number
