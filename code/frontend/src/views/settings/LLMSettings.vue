@@ -494,13 +494,32 @@ onMounted(() => {
 /* 左侧卡片面板 */
 .cards-panel {
   flex-shrink: 0;
-  width: 388px;
+  width: 380px;
 }
 
 /* 右侧表格面板 */
 .table-panel {
   flex: 1;
-  min-width: 0;
+  min-width: 520px;
+  overflow: hidden;
+}
+
+/* 窄屏时切换为上下堆叠布局 */
+@media (max-width: 1024px) {
+  .main-content {
+    flex-direction: column;
+  }
+  .cards-panel {
+    width: 100%;
+  }
+  .provider-cards--remote {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .table-panel {
+    min-width: 0;
+    width: 100%;
+    overflow: visible;
+  }
 }
 
 /* ========== 提供商快捷卡片 ========== */
