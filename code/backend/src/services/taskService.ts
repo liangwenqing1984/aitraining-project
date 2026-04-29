@@ -144,7 +144,9 @@ class TaskService {
       recordCount: 0,
       speed: 0,
       startTime: Date.now(),
-      lastRecordCount: 0
+      lastRecordCount: 0,
+      lastComboIndex: 0,       // 上次看到的组合编号
+      comboStartRecords: 0     // 当前组合开始时的累计记录数
     });
 
     // 创建Excel文件(替代CSV)
@@ -349,17 +351,27 @@ class TaskService {
             // 🔧 关键修复：PostgreSQL的INTEGER字段不接受小数，必须取整
             progressPercent = Math.round(progressPercent);
 
-            // 🔧 组合内进度：记录数估算（0-99%），用于多组合任务显示当前组合内的爬取进展
+            // 🔧 组合内进度：基于当前组合内的记录增量（非总累计），
+            // 每个新组合开始时重置基准记录数
             let comboProgress = 0;
             if (isMultiCombination) {
-              if (totalRecords <= 10) {
-                comboProgress = (totalRecords / 10) * 50;
-              } else if (totalRecords <= 50) {
-                comboProgress = 50 + ((totalRecords - 10) / 40) * 30;
-              } else {
-                comboProgress = 80 + Math.min(19, (totalRecords - 50) / 10);
+              const taskInfo2 = this.taskProgress.get(taskId);
+              if (taskInfo2) {
+                // 检测组合变化：当 completedCombo 增大时，记录新基准
+                if ((comboCurrent as number) > taskInfo2.lastComboIndex) {
+                  taskInfo2.lastComboIndex = comboCurrent as number;
+                  taskInfo2.comboStartRecords = totalRecords;
+                }
+                const comboRecords = totalRecords - (taskInfo2.comboStartRecords || 0);
+                if (comboRecords <= 5) {
+                  comboProgress = (comboRecords / 5) * 30;
+                } else if (comboRecords <= 15) {
+                  comboProgress = 30 + ((comboRecords - 5) / 10) * 40;
+                } else {
+                  comboProgress = 70 + Math.min(29, (comboRecords - 15) / 5 * 5);
+                }
+                comboProgress = Math.round(Math.min(99, comboProgress));
               }
-              comboProgress = Math.round(Math.min(99, comboProgress));
             }
 
             try {
