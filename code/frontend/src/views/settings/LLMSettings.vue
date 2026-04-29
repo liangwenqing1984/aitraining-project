@@ -1,7 +1,7 @@
 <template>
   <div class="llm-settings">
     <div class="page-header">
-      <h2>LLM 模型配置</h2>
+      <h2>模型配置</h2>
       <p class="subtitle">配置大模型提供商，为数据增强、智能分析、自然语言查询等功能提供 AI 能力</p>
     </div>
 

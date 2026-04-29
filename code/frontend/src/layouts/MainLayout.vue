@@ -47,7 +47,7 @@ const menuItems = [
   { path: '/query', title: '智能查询', icon: TrendCharts },
   { path: '/rag', title: '语义搜索', icon: Search },
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
-  { path: '/settings/llm', title: 'AI 配置', icon: Setting },
+  { path: '/settings/llm', title: '模型配置', icon: Setting },
   { path: '/docs', title: '文档', icon: Document },
   { path: '/about', title: '关于', icon: InfoFilled }
 ]
