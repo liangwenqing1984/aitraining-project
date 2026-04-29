@@ -470,9 +470,9 @@ async function handleDeleteTask(taskId: string) {
               <el-icon class="action-icon"><Setting /></el-icon>配置
             </el-button>
             
-            <!-- 下载和分析按钮 -->
+            <!-- 下载、分析、AI增强按钮：已完成或有数据的失败任务均可操作 -->
             <el-button
-              v-if="row.status === 'completed'"
+              v-if="row.status === 'completed' || (row.status === 'failed' && row.recordCount > 0)"
               type="success"
               link
               size="small"
@@ -481,7 +481,7 @@ async function handleDeleteTask(taskId: string) {
               <el-icon class="action-icon"><Download /></el-icon>下载
             </el-button>
             <el-button
-              v-if="row.status === 'completed'"
+              v-if="row.status === 'completed' || (row.status === 'failed' && row.recordCount > 0)"
               type="warning"
               link
               size="small"
@@ -490,7 +490,7 @@ async function handleDeleteTask(taskId: string) {
               <el-icon class="action-icon"><TrendCharts /></el-icon>分析
             </el-button>
             <el-button
-              v-if="row.status === 'completed'"
+              v-if="row.status === 'completed' || (row.status === 'failed' && row.recordCount > 0)"
               type="success"
               link
               size="small"

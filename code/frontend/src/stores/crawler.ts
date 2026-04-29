@@ -165,10 +165,16 @@ export const useCrawlerStore = defineStore('crawler', () => {
     })
 
     socket.value.on('task:error', (data: any) => {
-      updateTaskError(data.taskId, data.error)
-      // 🔧 修复: 只在当前任务是此任务时才添加日志
+      updateTaskError(data.taskId, data.error, data.recordCount)
       if (currentTask.value?.id === data.taskId) {
         addLogToTask(data.taskId, 'error', data.error)
+      }
+    })
+
+    socket.value.on('task:failed', (data: any) => {
+      updateTaskError(data.taskId, data.error, data.recordCount)
+      if (currentTask.value?.id === data.taskId) {
+        addLogToTask(data.taskId, 'error', `任务失败: ${data.error}`)
       }
     })
 
@@ -472,11 +478,14 @@ export const useCrawlerStore = defineStore('crawler', () => {
   }
 
   // 任务错误
-  function updateTaskError(taskId: string, error: string) {
+  function updateTaskError(taskId: string, error: string, recordCount?: number) {
     const task = tasks.value.find(t => t.id === taskId)
     if (task) {
       task.status = 'failed'
       task.errorMessage = error
+      if (recordCount !== undefined) {
+        task.recordCount = recordCount
+      }
     }
   }
 

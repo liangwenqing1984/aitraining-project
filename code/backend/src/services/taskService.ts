@@ -595,6 +595,55 @@ class TaskService {
         WHERE id = $2
       `).run(error.message, taskId);
 
+      // 🔧 关键修复：失败时也检查文件是否有数据，有数据则创建csv_files记录
+      const failedTask = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
+      const failFilepath = failedTask?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
+      let failRecordCount = 0;
+      let failFileSize = 0;
+      let hasFailedData = false;
+
+      if (fs.existsSync(failFilepath)) {
+        const ext = path.extname(failFilepath).toLowerCase();
+        if (ext === '.xlsx') {
+          try {
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.readFile(failFilepath);
+            const worksheet = workbook.worksheets[0];
+            if (worksheet && worksheet.rowCount > 1) {
+              failRecordCount = Math.max(0, worksheet.rowCount - 1);
+              failFileSize = fs.statSync(failFilepath).size;
+              hasFailedData = failRecordCount > 0;
+            }
+          } catch { /* ignore read errors */ }
+        } else {
+          try {
+            const content = fs.readFileSync(failFilepath, 'utf-8');
+            const lines = content.split('\n').filter(line => line.trim().length > 0);
+            if (lines.length > 1) {
+              failRecordCount = Math.max(0, lines.length - 1);
+              failFileSize = fs.statSync(failFilepath).size;
+              hasFailedData = failRecordCount > 0;
+            }
+          } catch { /* ignore read errors */ }
+        }
+      }
+
+      if (hasFailedData && failFileSize > 0) {
+        const failCsvId = uuidv4();
+        const failFilename = path.basename(failFilepath);
+        await db.prepare(`
+          INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+        `).run(failCsvId, taskId, failFilename, failFilepath, failFileSize, failRecordCount, config.sites[0]);
+
+        // 同步更新任务的record_count
+        await db.prepare(`
+          UPDATE tasks SET record_count = $1 WHERE id = $2
+        `).run(failRecordCount, taskId);
+
+        taskLogger?.info(`[TaskService] 📊 任务失败但已保存 ${failRecordCount} 条数据到文件: ${failFilename}`);
+      }
+
       const taskProgressInfo = this.taskProgress.get(taskId);
       const startTime = taskProgressInfo?.startTime || Date.now();
       const endTime = Date.now();
@@ -603,7 +652,9 @@ class TaskService {
       io.to(`task:${taskId}`).emit('task:failed', {
         taskId,
         error: error.message,
-        duration
+        duration,
+        recordCount: failRecordCount || 0,
+        csvPath: failFilepath
       });
       break;  // 🔧 最终失败，退出循环
 
