@@ -1557,7 +1557,7 @@ strategy1Stats.failedExtractions++;
             } catch (error: any) {
               const pageEndTime = Date.now();
               const pageDuration = ((pageEndTime - pageStartTime) / 1000).toFixed(2);
-              
+
               // 🔧 关键修复：检测浏览器崩溃错误
               const isBrowserCrash = error.message.includes('Connection closed') ||
                                      error.message.includes('Session closed') ||
@@ -1569,25 +1569,25 @@ strategy1Stats.failedExtractions++;
               // 🔧 detached Frame 单独处理：先尝试恢复页面而非直接重启浏览器
               const isDetachedFrame = error.message.includes('detached');
 
-              if (isBrowserCrash || isDetachedFrame) {
-                // 🔧 如果是用户手动中止导致的浏览器断开，保存断点后再抛出
-                if (this.checkAborted()) {
-                  // 🔧 关键修复：catch 块中 throw 会跳过 while 循环末尾的 _resumeState 保存
-                  // 必须在这里提前保存，否则恢复时读不到断点信息→创建新Excel→计数重置
-                  try {
-                    const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
-                    if (abortResumeTask) {
-                      const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
-                      abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
-                      await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
-                      this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（异常路径）: 组合${currentCombination}, 第${currentPage}页`);
-                    }
-                  } catch (e: any) {
-                    // 保存失败不影响中止流程
+              // 🔧 关键修复：用户中止时优雅退出，不抛错
+              // 之前 throw error → generator 异常退出 → taskService catch → 任务标为 failed
+              // 正确做法：保存断点 + 设 hasNextPage=false → 循环正常退出 → stop handler 执行 → 任务标为 stopped
+              if (this.checkAborted()) {
+                this.log('info', `[ZhilianCrawler] ⏹️ 检测到中止信号，正在优雅退出...`);
+                try {
+                  const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                  if (abortResumeTask) {
+                    const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
+                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（异常路径）: 组合${currentCombination}, 第${currentPage}页`);
                   }
-                  this.log('info', `[ZhilianCrawler] ⏹️ 用户中止导致的浏览器断开，跳过恢复`);
-                  throw error;
+                } catch (e: any) {
+                  this.log('error', `[ZhilianCrawler] ❌ 保存中止断点失败:`, e.message);
                 }
+                hasNextPage = false;  // 让 while 循环条件失效，自然退出
+                // 不抛错，落到 catch 块末尾 → finally 清理 → while 条件检查 → 优雅退出
+              } else if (isBrowserCrash || isDetachedFrame) {
                 const errorType = isDetachedFrame ? '页面Frame分离' : '浏览器崩溃';
                 this.log('error', `[ZhilianCrawler] 🚨 检测到${errorType}！错误: ${error.message}`);
                 this.log('error', `[ZhilianCrawler] 📊 浏览器进程PID: ${browser.process()?.pid || '未知'}`);
@@ -1644,16 +1644,16 @@ strategy1Stats.failedExtractions++;
                 (crashError as any).currentPage = currentPage;
                 (crashError as any).jobIndex = currentJobIndex;
                 throw crashError;
-              }
-
+              } else {
+              // 🔧 非崩溃、非中止错误：记录日志后跳过当前页
               // 🔧 优化：根据错误类型记录不同的日志级别
-              const isPageLoadError = error.message.includes('未能提取到职位标题') || 
+              const isPageLoadError = error.message.includes('未能提取到职位标题') ||
                                       error.message.includes('页面可能加载不完整') ||
                                       error.message.includes('TimeoutError');
-              
+
               if (isPageLoadError) {
                 this.log('warn', `[ZhilianCrawler] ⚠️ 第 ${currentPage} 页加载不完整或超时: ${error.message}`);
-                
+
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
                     taskId,
@@ -1666,7 +1666,7 @@ strategy1Stats.failedExtractions++;
                 if (error.stack) {
                   this.log('error', `[ZhilianCrawler] 错误堆栈:`, error.stack);
                 }
-                
+
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
                     taskId,
@@ -1675,7 +1675,7 @@ strategy1Stats.failedExtractions++;
                   });
                 }
               }
-              
+
               // 🔧 关键修复：确保页面被关闭，避免资源泄漏
               if (page) {
                 try {
@@ -1687,19 +1687,8 @@ strategy1Stats.failedExtractions++;
               }
 
               this.log('warn', `[ZhilianCrawler] ⚠️ 由于请求失败，跳过当前页面的数据爬取`);
-              // 🔧 防御：如果已中止，保存断点后再退出（极端情况：超时等非崩溃错误也可能在 abort 时发生）
-              if (this.checkAborted()) {
-                try {
-                  const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
-                  if (abortResumeTask) {
-                    const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
-                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
-                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
-                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（非崩溃异常路径）: 组合${currentCombination}, 第${currentPage}页`);
-                  }
-                } catch (e: any) {}
-              }
               break;
+              }
             } finally {
   if (page) {
     try {
