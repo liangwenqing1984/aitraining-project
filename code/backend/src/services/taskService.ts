@@ -161,7 +161,7 @@ class TaskService {
       // 新任务模式：创建新Excel文件
       const filename = `job_data_${taskId}.xlsx`;
       filepath = path.join(csvDir, filename);
-      await this.createExcelFile(filepath);
+      await this.createExcelFile(filepath, config.sites[0]);
       logger.info(`[TaskService] Excel文件已创建: ${filepath}`);
 
       // 更新文件路径
@@ -839,9 +839,12 @@ class TaskService {
   }
 
   // 创建Excel文件(替代CSV)
-  private async createExcelFile(filepath: string) {
-    const { CSV_FIELDS } = await import('../config/constants');
-    
+  private async createExcelFile(filepath: string, site?: string) {
+    const { CSV_FIELDS, CSV_FIELDS_51JOB } = await import('../config/constants');
+
+    const is51job = site === '51job';
+    const fields = is51job ? CSV_FIELDS_51JOB : CSV_FIELDS;
+
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('职位数据', {
       views: [
@@ -850,12 +853,12 @@ class TaskService {
     });
 
     // 添加表头
-    const headerRow = worksheet.addRow(CSV_FIELDS);
-    
+    const headerRow = worksheet.addRow(fields);
+
     // 设置表头样式: 粗体、背景色、居中、边框
-    headerRow.font = { 
-      bold: true, 
-      size: 11, 
+    headerRow.font = {
+      bold: true,
+      size: 11,
       name: 'Microsoft YaHei',
       color: { argb: 'FFFFFFFF' }  // 白色文字
     };
@@ -864,10 +867,10 @@ class TaskService {
       pattern: 'solid',
       fgColor: { argb: 'FF4472C4' }  // 深蓝色背景
     };
-    headerRow.alignment = { 
-      horizontal: 'center', 
-      vertical: 'middle', 
-      wrapText: true 
+    headerRow.alignment = {
+      horizontal: 'center',
+      vertical: 'middle',
+      wrapText: true
     };
     headerRow.height = 25;  // 表头行高
 
@@ -881,8 +884,30 @@ class TaskService {
       };
     });
 
-    // 设置列宽(根据字段内容自适应)
-    const columnWidths = [
+    // 设置列宽（根据来源不同）
+    const columnWidths = is51job ? [
+      25,  // 公司名称
+      25,  // 经营范围
+      12,  // 公司规模
+      25,  // 注册地址
+      25,  // 工作地址
+      20,  // 岗位名称
+      12,  // 职能类别
+      12,  // 职称分类
+      12,  // 工作经验
+      10,  // 学历
+      12,  // 发布时间
+      15,  // 薪资
+      10,  // 工作类型
+      10,  // 是否紧急招聘
+      35,  // 职位描述
+      10,  // 城市
+      12,  // 企业类型
+      30,  // 职位详情链接
+      30,  // 公司详情链接
+      12,  // 数据来源
+      20,  // 职位ID（去重用）
+    ] : [
       25,  // 企业名称
       20,  // 职位ID
       20,  // 职位名称
@@ -901,7 +926,7 @@ class TaskService {
       15,  // 岗位招聘人数
       15,  // 岗位更新日期
       12,  // 工作性质
-      12   // 数据来源
+      12,  // 数据来源
     ];
 
     worksheet.columns.forEach((column, index) => {
@@ -910,7 +935,7 @@ class TaskService {
 
     // 保存工作簿
     await workbook.xlsx.writeFile(filepath);
-    console.log(`[TaskService] Excel文件已创建: ${filepath}`);
+    console.log(`[TaskService] Excel文件已创建 (${site || 'zhilian'}): ${filepath}`);
   }
 
   // 🔧 去重：从现有Excel文件读取已写入的jobId集合
@@ -930,10 +955,18 @@ class TaskService {
       }
 
       const jobIds = new Set<string>();
-      // jobId是第2列（索引1），跳过表头行
+      // 动态查找"职位ID"列的位置
+      const headerRow = worksheet.getRow(1);
+      let jobIdColIndex = 2; // 默认B列
+      headerRow.eachCell((cell, colNumber) => {
+        if (cell.value?.toString()?.trim() === '职位ID') {
+          jobIdColIndex = colNumber;
+        }
+      });
+      // 跳过表头行
       worksheet.eachRow((row, rowNumber) => {
         if (rowNumber === 1) return; // 跳过表头
-        const jobIdCell = row.getCell(2); // B列 = 职位ID
+        const jobIdCell = row.getCell(jobIdColIndex);
         const jobId = jobIdCell?.value?.toString()?.trim();
         if (jobId) {
           jobIds.add(jobId);
@@ -965,28 +998,15 @@ class TaskService {
         throw new Error('工作表不存在');
       }
 
-      // 添加数据行
-      const dataRow = worksheet.addRow([
-        job.companyName,       // 企业名称
-        job.jobId,             // 职位ID
-        job.jobName,           // 职位名称
-        job.jobCategory,       // 职位分类
-        job.jobTags,           // 职位标签
-        job.jobDescription,    // 职位描述
-        job.salaryRange,       // 薪资范围
-        job.workCity,          // 工作城市
-        job.workExperience,    // 工作经验
-        job.workAddress,       // 工作地址
-        job.education,         // 学历
-        job.companyCode,       // 公司代码
-        job.companyNature,     // 公司性质
-        job.businessScope,     // 经营范围
-        job.companyScale,      // 公司规模
-        job.recruitmentCount,  // 岗位招聘人数
-        job.updateDate,        // 岗位更新日期
-        job.workType,          // 工作性质
-        job.dataSource         // 数据来源
-      ]);
+      // 根据数据来源选择字段顺序
+      const is51job = job.dataSource === '前程无忧';
+      const keys = is51job
+        ? (await import('../config/constants')).JOB51_EXCEL_KEYS
+        : (await import('../config/constants')).ZHILIAN_EXCEL_KEYS;
+
+      // 添加数据行（按来源特定顺序）
+      const rowValues = keys.map(key => (job as any)[key] || '');
+      const dataRow = worksheet.addRow(rowValues);
 
       // 设置数据行样式: 固定行高、边框、字体
       dataRow.height = 20;  // 固定行高
@@ -1051,27 +1071,10 @@ class TaskService {
 
   // 追加CSV行(保留作为备选)
   private async appendCsvRow(filepath: string, job: JobData) {
-    const row = [
-      this.escapeCsv(job.companyName),       // 企业名称
-      this.escapeCsv(job.jobId),             // 职位ID
-      this.escapeCsv(job.jobName),           // 职位名称
-      this.escapeCsv(job.jobCategory),       // 职位分类
-      this.escapeCsv(job.jobTags),           // 职位标签
-      this.escapeCsv(job.jobDescription),    // 职位描述
-      this.escapeCsv(job.salaryRange),       // 薪资范围
-      this.escapeCsv(job.workCity),          // 工作城市
-      this.escapeCsv(job.workExperience),    // 工作经验
-      this.escapeCsv(job.workAddress),       // 工作地址
-      this.escapeCsv(job.education),         // 学历
-      this.escapeCsv(job.companyCode),       // 公司代码
-      this.escapeCsv(job.companyNature),     // 公司性质
-      this.escapeCsv(job.businessScope),     // 经营范围
-      this.escapeCsv(job.companyScale),      // 公司规模
-      this.escapeCsv(job.recruitmentCount),  // 岗位招聘人数
-      this.escapeCsv(job.updateDate),        // 岗位更新日期
-      this.escapeCsv(job.workType),          // 工作性质
-      this.escapeCsv(job.dataSource)         // 数据来源
-    ].join(',') + '\n';
+    const { ZHILIAN_EXCEL_KEYS, JOB51_EXCEL_KEYS } = await import('../config/constants');
+    const is51job = job.dataSource === '前程无忧';
+    const keys = is51job ? JOB51_EXCEL_KEYS : ZHILIAN_EXCEL_KEYS;
+    const row = keys.map(key => this.escapeCsv((job as any)[key] || '')).join(',') + '\n';
 
     fs.appendFileSync(filepath, row, 'utf-8');
   }

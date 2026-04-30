@@ -1,4 +1,4 @@
-// CSV字段定义（按顺序）
+// ==================== 智联招聘Excel字段定义（原有顺序） ====================
 export const CSV_FIELDS = [
   '企业名称',
   '职位ID',
@@ -21,7 +21,51 @@ export const CSV_FIELDS = [
   '数据来源'
 ];
 
-// CSV字段映射（英文->中文）
+// 智联招聘：JobData key → Excel列顺序映射
+export const ZHILIAN_EXCEL_KEYS: (keyof import('../types').JobData)[] = [
+  'companyName', 'jobId', 'jobName', 'jobCategory', 'jobTags',
+  'jobDescription', 'salaryRange', 'workCity', 'workExperience', 'workAddress',
+  'education', 'companyCode', 'companyNature', 'businessScope', 'companyScale',
+  'recruitmentCount', 'updateDate', 'workType', 'dataSource'
+];
+
+// ==================== 前程无忧Excel字段定义（新顺序，含新字段） ====================
+export const CSV_FIELDS_51JOB = [
+  '公司名称',
+  '经营范围',
+  '公司规模',
+  '注册地址',
+  '工作地址',
+  '岗位名称',
+  '职能类别',
+  '职称分类',
+  '工作经验',
+  '学历',
+  '发布时间',
+  '薪资',
+  '工作类型',
+  '是否紧急招聘',
+  '职位描述',
+  '城市',
+  '企业类型',
+  '职位详情链接',
+  '公司详情链接',
+  '数据来源',
+  '职位ID'  // 内部去重用，放在最后
+];
+
+// 前程无忧：JobData key → Excel列顺序映射
+export const JOB51_EXCEL_KEYS: (keyof import('../types').JobData)[] = [
+  'companyName', 'businessScope', 'companyScale', 'registeredAddress', 'workAddress',
+  'jobName', 'jobCategory', 'titleCategory', 'workExperience', 'education',
+  'updateDate', 'salaryRange', 'workType', 'isUrgent', 'jobDescription',
+  'workCity', 'companyNature', 'jobDetailUrl', 'companyDetailUrl', 'dataSource',
+  'jobId'
+];
+
+// ==================== 字段映射 ====================
+
+// 智联招聘：字段映射（英文->中文）
 export const CSV_FIELD_MAP: Record<string, string> = {
   companyName: '企业名称',
   jobId: '职位ID',
@@ -42,6 +86,31 @@ export const CSV_FIELD_MAP: Record<string, string> = {
   updateDate: '岗位更新日期',
   workType: '工作性质',
   dataSource: '数据来源'
+};
+
+// 前程无忧：字段映射（英文->中文）
+export const CSV_FIELD_MAP_51JOB: Record<string, string> = {
+  companyName: '公司名称',
+  businessScope: '经营范围',
+  companyScale: '公司规模',
+  registeredAddress: '注册地址',
+  workAddress: '工作地址',
+  jobName: '岗位名称',
+  jobCategory: '职能类别',
+  titleCategory: '职称分类',
+  workExperience: '工作经验',
+  education: '学历',
+  updateDate: '发布时间',
+  salaryRange: '薪资',
+  workType: '工作类型',
+  isUrgent: '是否紧急招聘',
+  jobDescription: '职位描述',
+  workCity: '城市',
+  companyNature: '企业类型',
+  jobDetailUrl: '职位详情链接',
+  companyDetailUrl: '公司详情链接',
+  dataSource: '数据来源',
+  jobId: '职位ID',
 };
 
 // 智联招聘城市代码映射表（基于已知规律推测，黑龙江省已验证）

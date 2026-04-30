@@ -47,25 +47,31 @@ export interface Task {
 
 // 职位数据
 export interface JobData {
-  companyName: string;      // 企业名称
-  jobId: string;            // 职位ID
-  jobName: string;          // 职位名称
-  jobCategory: string;      // 职位分类
-  jobTags: string;          // 职位标签
-  jobDescription: string;   // 职位描述
-  salaryRange: string;      // 薪资范围
-  workCity: string;         // 工作城市
-  workExperience: string;   // 工作经验
-  workAddress: string;      // 工作地址
-  education: string;        // 学历
-  companyCode: string;      // 公司代码
-  companyNature: string;    // 公司性质
-  businessScope: string;    // 经营范围
-  companyScale: string;     // 公司规模
-  recruitmentCount: string; // 岗位招聘人数
-  updateDate: string;       // 岗位更新日期
-  workType: string;         // 工作性质
-  dataSource: string;       // 数据来源
+  companyName: string;        // 企业名称
+  jobId: string;              // 职位ID
+  jobName: string;            // 职位名称
+  jobCategory: string;        // 职位分类
+  jobTags: string;            // 职位标签
+  jobDescription: string;     // 职位描述
+  salaryRange: string;        // 薪资范围
+  workCity: string;           // 工作城市
+  workExperience: string;     // 工作经验
+  workAddress: string;        // 工作地址
+  education: string;          // 学历
+  companyCode: string;        // 公司代码
+  companyNature: string;      // 公司性质
+  businessScope: string;      // 经营范围
+  companyScale: string;       // 公司规模
+  recruitmentCount: string;   // 岗位招聘人数
+  updateDate: string;         // 岗位更新日期
+  workType: string;           // 工作性质
+  dataSource: string;         // 数据来源
+  // ===== 51job 新增字段 =====
+  registeredAddress: string;  // 注册地址
+  titleCategory: string;      // 职称分类
+  isUrgent: string;           // 是否紧急招聘
+  jobDetailUrl: string;       // 职位详情链接
+  companyDetailUrl: string;   // 公司详情链接
 }
 
 // CSV文件记录

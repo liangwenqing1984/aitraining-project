@@ -288,6 +288,16 @@ export class Job51Crawler {
                       || (item.jobId ? `https://jobs.51job.com/${city || 'all'}/${item.jobId}.html` : '')
                       || (item.encryptJobId ? `https://we.51job.com/pc/detail?jobId=${item.encryptJobId}` : ''),
                     jobId: item.jobId || item.encryptJobId || item.id || '',
+                    // 51job 新增字段
+                    titleCategory: item.jobType || item.jobCategory || item.typeName || item.categoryName || '',
+                    isUrgent: item.isUrgent || item.urgentJob || item.urgent || item.isEmergent || '',
+                    companyDetailUrl: item.companyHref || item.coUrl || item.companyUrl
+                      || (item.coId ? `https://jobs.51job.com/company/${item.coId}.html` : '')
+                      || (item.companyId ? `https://we.51job.com/pc/company?companyId=${item.companyId}` : ''),
+                    registeredAddress: item.companyAddress || item.regAddress || item.registeredAddress || '',
+                    businessScope: item.businessScope || item.bizScope || item.companyBusiness || '',
+                    companyScale: item.companyScale || item.coSize || item.scale || '',
+                    companyNature: item.companyNature || item.coType || item.companyType || item.nature || '',
                   }));
                 }
               }
@@ -314,12 +324,16 @@ export class Job51Crawler {
                             const a = el.querySelector('a') || el.closest('a');
                             const title = el.querySelector('[class*="title"], [class*="name"], [class*="job"], h3, h2')?.textContent?.trim()
                               || a?.textContent?.trim() || el.textContent?.trim().substring(0, 60) || '';
+                            const companyEl = el.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"]');
                             return {
                               title,
-                              company: el.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"]')?.textContent?.trim() || '',
+                              company: companyEl?.textContent?.trim() || '',
                               salary: el.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]')?.textContent?.trim() || '',
                               city: el.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"]')?.textContent?.trim() || '',
                               link: a?.href || el.getAttribute('href') || '',
+                              titleCategory: el.querySelector('[class*="jobType"], [class*="category"], [class*="type"]')?.textContent?.trim() || '',
+                              isUrgent: (el.textContent || '').includes('急聘') || (el.textContent || '').includes('急') ? '是' : '',
+                              companyDetailUrl: (companyEl?.closest('a') || el.querySelector('a[href*="/company/"], a[href*="coId"]')) as any ? (companyEl?.closest('a') as HTMLAnchorElement)?.href || el.querySelector('a[href*="/company/"], a[href*="coId"]')?.getAttribute('href') || '' : '',
                             };
                           });
                         }, s.selector);
@@ -506,12 +520,17 @@ export class Job51Crawler {
 
           if (title && title.length > 3 && title.length < 100 && !seen.has(title)) {
             seen.add(title);
+            const companyName = companyEl?.textContent?.trim() || '';
+            const companyLink = (companyEl?.closest('a') || container.querySelector('a[href*="/company/"], a[href*="coId"], a[href*="comDetail"]')) as HTMLAnchorElement | null;
             jobs.push({
               title,
-              company: companyEl?.textContent?.trim() || '',
+              company: companyName,
               salary: salaryEl?.textContent?.trim() || '',
               city: cityEl?.textContent?.trim() || '',
               link: link.startsWith('http') ? link : `https:${link}`,
+              titleCategory: container.querySelector('[class*="jobType"], [class*="category"], [class*="type"]')?.textContent?.trim() || '',
+              isUrgent: (container.textContent || '').includes('急聘') || (container.textContent || '').match(/急(?!救|诊|性)/) ? '是' : '',
+              companyDetailUrl: companyLink?.href || '',
             });
           }
         }
@@ -636,6 +655,36 @@ export class Job51Crawler {
           result.companyScale = get('[class*="scale"], [class*="size"], .tCompany_sidebar .com_scale, [class*="company_size"]');
           result.address = get('[class*="address"], .bmsg address, [class*="location"], .tBorderL_msg .fp, [class*="workplace"]');
 
+          // 经营范围
+          result.businessScope = get('[class*="business"], [class*="bizScope"], [class*="scope"], [class*="businessScope"]');
+
+          // 注册地址（可能与工作地址不同）
+          result.registeredAddress = get('[class*="regAddress"], [class*="registered"], [class*="reg_address"], [class*="companyAddress"]');
+
+          // 职称分类
+          result.titleCategory = get('[class*="jobType"], [class*="jobCategory"], [class*="category"], [class*="positionType"], [class*="title"]');
+
+          // 职能类别
+          result.jobCategory = get('[class*="function"], [class*="funcCategory"], [class*="jobCat"], [class*="job_category"]');
+
+          // 是否紧急招聘（检测"急"标签）
+          const urgentEls = document.querySelectorAll('[class*="urgent"], [class*="urgent"], [class*="emergency"], .urgent-tag, .hot-tag, span:not([class])');
+          let isUrgent = '';
+          urgentEls.forEach((el: Element) => {
+            if ((el.textContent || '').trim() === '急' || (el.textContent || '').includes('急聘')) {
+              isUrgent = '是';
+            }
+          });
+          // 也检查页面整体文本
+          if (!isUrgent && (document.body.innerText || '').includes('急聘')) {
+            isUrgent = '是';
+          }
+          result.isUrgent = isUrgent;
+
+          // 公司详情链接
+          const companyLinkEl = document.querySelector('a[href*="/company/"], a[href*="/pc/company"], a[href*="coId"], [class*="company"] a[href*="51job"]');
+          result.companyDetailUrl = (companyLinkEl as HTMLAnchorElement)?.href || '';
+
           // 更新时间
           const updateEl = document.querySelector('[class*="update"], [class*="refresh"], [class*="time"], [class*="publish"], [class*="date"]');
           result.updateDateText = updateEl?.textContent?.trim() || '';
@@ -691,15 +740,21 @@ export class Job51Crawler {
       workAddress: detail.address || '',
       jobDescription: detail.jobDescription || '',
       jobTags: detail.jobTags || '',
-      jobCategory: '',
-      companyNature: detail.companyNature || '',
-      companyScale: detail.companyScale || '',
-      businessScope: '',
+      jobCategory: detail.jobCategory || basicInfo.titleCategory || '',
+      companyNature: detail.companyNature || basicInfo.companyNature || '',
+      companyScale: detail.companyScale || basicInfo.companyScale || '',
+      businessScope: detail.businessScope || basicInfo.businessScope || '',
       recruitmentCount: detail.recruitmentCount || '',
       workType: detail.workType || '全职',
       companyCode: '',
       updateDate,
       dataSource: '前程无忧',
+      // 51job 新增字段
+      registeredAddress: detail.registeredAddress || basicInfo.registeredAddress || '',
+      titleCategory: detail.titleCategory || basicInfo.titleCategory || '',
+      isUrgent: detail.isUrgent || basicInfo.isUrgent || '',
+      jobDetailUrl: basicInfo.link || '',
+      companyDetailUrl: detail.companyDetailUrl || basicInfo.companyDetailUrl || '',
     };
   }
 
@@ -715,15 +770,21 @@ export class Job51Crawler {
       workAddress: '',
       jobDescription: '',
       jobTags: '',
-      jobCategory: '',
-      companyNature: '',
-      companyScale: '',
-      businessScope: '',
+      jobCategory: basicInfo.titleCategory || '',
+      companyNature: basicInfo.companyNature || '',
+      companyScale: basicInfo.companyScale || '',
+      businessScope: basicInfo.businessScope || '',
       recruitmentCount: '',
       workType: '全职',
       companyCode: '',
       updateDate: new Date().toISOString().split('T')[0],
       dataSource: '前程无忧',
+      // 51job 新增字段
+      registeredAddress: basicInfo.registeredAddress || '',
+      titleCategory: basicInfo.titleCategory || '',
+      isUrgent: basicInfo.isUrgent || '',
+      jobDetailUrl: basicInfo.link || '',
+      companyDetailUrl: basicInfo.companyDetailUrl || '',
     };
   }
 
