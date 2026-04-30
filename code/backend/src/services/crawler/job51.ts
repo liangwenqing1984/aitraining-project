@@ -81,7 +81,19 @@ export class Job51Crawler {
         this.log('info', `[Job51Crawler] 🔥 正在预热浏览器会话（第${warmupAttempt + 1}次尝试）...`);
         let warmupPage: any = null;
         try {
-          warmupPage = await browser.newPage();
+          // 预热页面创建（带重试，防 CDP 竞争）
+          for (let pa = 0; pa < 2; pa++) {
+            try {
+              warmupPage = await browser.newPage();
+              break;
+            } catch (newPageErr: any) {
+              if (newPageErr.message?.includes('main frame too early') && pa < 1) {
+                await this.randomDelay(2000, 4000);
+                continue;
+              }
+              throw newPageErr;
+            }
+          }
           await warmupPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
           await warmupPage.goto('https://we.51job.com/', { waitUntil: 'networkidle2', timeout: 60000 });
           await new Promise(r => setTimeout(r, 3000));
@@ -106,7 +118,18 @@ export class Job51Crawler {
         }
       }
       if (!warmupSuccess) {
-        this.log('error', `[Job51Crawler] ❌ 浏览器预热2次均失败，可能IP已被限制，继续尝试但可能无法获取数据`);
+        this.log('warn', `[Job51Crawler] ⚠️ 浏览器预热2次均失败，可能IP已被WAF限制`);
+        // 预热失败后不立即继续 — 给浏览器恢复时间
+        await this.randomDelay(3000, 6000);
+        // 检查浏览器是否仍然健康
+        if (!browser.isConnected()) {
+          this.log('error', `[Job51Crawler] ❌ 浏览器在预热后已断开连接，无法继续`);
+          return;
+        }
+        this.log('info', `[Job51Crawler] 🔄 浏览器仍连接，跳过预热直接尝试爬取...`);
+      } else {
+        // 预热成功后也短暂休息，避免新页面创建与预热页面关闭的 CDP 竞争
+        await this.randomDelay(1000, 2000);
       }
 
       for (const keyword of keywords) {
@@ -139,8 +162,29 @@ export class Job51Crawler {
               });
             }
 
-            const page = await browser.newPage();
+            let page: any = null;
             try {
+              // 浏览器新页面创建（带重试，防 CDP 竞争导致的 "main frame too early"）
+              for (let pageAttempt = 0; pageAttempt < 2; pageAttempt++) {
+                try {
+                  if (!browser.isConnected()) {
+                    throw new Error('浏览器连接已断开，无法创建新页面');
+                  }
+                  page = await browser.newPage();
+                  break;
+                } catch (newPageErr: any) {
+                  if (newPageErr.message?.includes('main frame too early') && pageAttempt < 1) {
+                    this.log('warn', `[Job51Crawler] ⚠️ 页面创建CDP竞争，等待后重试...`);
+                    await this.randomDelay(2000, 4000);
+                    continue;
+                  }
+                  throw newPageErr;
+                }
+              }
+              if (!page) {
+                throw new Error('无法创建新页面（已重试）');
+              }
+
               await this.setupPageFingerprint(page);
 
               // 资源拦截：允许 document/script/xhr/fetch/stylesheet
