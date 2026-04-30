@@ -38,7 +38,6 @@ export const CSV_FIELDS_51JOB = [
   '工作地址',
   '岗位名称',
   '职能类别',
-  '职称分类',
   '工作经验',
   '学历',
   '发布时间',
@@ -57,7 +56,7 @@ export const CSV_FIELDS_51JOB = [
 // 前程无忧：JobData key → Excel列顺序映射
 export const JOB51_EXCEL_KEYS: (keyof import('../types').JobData)[] = [
   'companyName', 'businessScope', 'companyScale', 'registeredAddress', 'workAddress',
-  'jobName', 'jobCategory', 'titleCategory', 'workExperience', 'education',
+  'jobName', 'jobCategory', 'workExperience', 'education',
   'updateDate', 'salaryRange', 'workType', 'isUrgent', 'jobDescription',
   'workCity', 'companyNature', 'jobDetailUrl', 'companyDetailUrl', 'dataSource',
   'jobId'
@@ -97,7 +96,6 @@ export const CSV_FIELD_MAP_51JOB: Record<string, string> = {
   workAddress: '工作地址',
   jobName: '岗位名称',
   jobCategory: '职能类别',
-  titleCategory: '职称分类',
   workExperience: '工作经验',
   education: '学历',
   updateDate: '发布时间',

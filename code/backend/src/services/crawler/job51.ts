@@ -46,6 +46,9 @@ export class Job51Crawler {
 
     const totalCombinationCount = keywords.length * cities.length;
     let currentCombination = 0;
+    let sessionInitialized = false;
+    let totalYielded = 0;
+    let wafDetected = false;
     const taskId = this.getTaskId(config);
 
     this.log('info', `[Job51Crawler] ========== 开始爬取 ==========`);
@@ -95,8 +98,8 @@ export class Job51Crawler {
           let hasNextPage = true;
 
           while (hasNextPage && !this.checkAborted()) {
-            // 新 51job URL 格式：we.51job.com/pc/search?keyword=...&city=...&page=...
-            const url = `https://we.51job.com/pc/search?keyword=${encodeURIComponent(keyword)}&city=${cityCode}&page=${currentPage}&pageSize=20`;
+            // 51job 搜索 URL：添加 reportType=1 绕过 Aliyun WAF（实测无此参数返回 7884 字节 WAF，加上后返回 642KB 正常页面）
+            const url = `https://we.51job.com/pc/search?keyword=${encodeURIComponent(keyword)}&city=${cityCode}&page=${currentPage}&reportType=1`;
             const pageStartTime = Date.now();
 
             this.log('info', `[Job51Crawler] 📄 第 ${currentPage} 页: ${url}`);
@@ -133,6 +136,27 @@ export class Job51Crawler {
 
               await this.setupPageFingerprint(page);
 
+              // === 会话初始化：首次访问前先浏览首页建立 cookie/session ===
+              let usedHomepageSearch = false;
+              if (!sessionInitialized) {
+                this.log('info', `[Job51Crawler] 🏠 首次访问，先浏览51job首页建立会话...`);
+                try {
+                  await page.goto('https://www.51job.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+                  // 模拟人类行为：等待后缓慢滚动
+                  await new Promise(r => setTimeout(r, 3000 + Math.random() * 4000));
+                  await page.evaluate(function() {
+                    window.scrollTo(0, 200 + Math.floor(Math.random() * 500));
+                  });
+                  await new Promise(r => setTimeout(r, 1500 + Math.random() * 2000));
+                  this.log('info', `[Job51Crawler] ✅ 会话初始化完成，cookie已建立`);
+                  // 注意：不在此处执行首页搜索 → 51job首页搜索表单不支持自动化提交（回车+form.submit均不触发导航）
+                  // 直接使用下面带 reportType=1 的搜索 URL 即可绕过 WAF
+                } catch (homeErr: any) {
+                  this.log('warn', `[Job51Crawler] ⚠️ 首页访问失败(${homeErr.message})，继续尝试搜索...`);
+                }
+                sessionInitialized = true;
+              }
+
               // 资源拦截：允许 document/script/xhr/fetch/stylesheet
               await page.setRequestInterception(true);
               page.on('request', (request) => {
@@ -162,30 +186,48 @@ export class Job51Crawler {
               });
 
               // === SPA 感知加载（核心修复）===
-              await page.goto(url, {
-                waitUntil: 'networkidle2',
-                timeout: 90000,
-              });
+              if (!usedHomepageSearch) {
+                await page.goto(url, {
+                  waitUntil: 'networkidle2',
+                  timeout: 90000,
+                });
 
-              // 等待 SPA 渲染职位列表（新版 Vue.js 站点）
-              try {
-                await page.waitForSelector(
-                  '[class*="jobItem"], [class*="job-item"], [class*="jobList"] [class*="item"], #app [class*="result"] [class*="item"], .el-card, [class*="card"][class*="job"], .van-list__item, #app .list-item',
-                  { timeout: 15000, visible: true }
-                );
-                this.log('info', `[Job51Crawler] ✅ SPA 内容渲染成功`);
-              } catch {
-                this.log('warn', `[Job51Crawler] ⚠️ SPA 职位列表未在预期时间内出现，尝试从已加载的 DOM/XHR 提取`);
-              }
-
-              // 额外滚动触发懒加载
-              await page.evaluate(async () => {
-                for (let i = 0; i < 3; i++) {
-                  window.scrollTo(0, document.body.scrollHeight);
-                  await new Promise(r => setTimeout(r, 800));
+                // 等待 SPA 渲染职位列表（新版 Vue.js 站点）
+                try {
+                  await page.waitForSelector(
+                    '[class*="jobItem"], [class*="job-item"], [class*="jobList"] [class*="item"], #app [class*="result"] [class*="item"], .el-card, [class*="card"][class*="job"], .van-list__item, #app .list-item',
+                    { timeout: 15000, visible: true }
+                  );
+                  this.log('info', `[Job51Crawler] ✅ SPA 内容渲染成功`);
+                } catch {
+                  this.log('warn', `[Job51Crawler] ⚠️ SPA 职位列表未在预期时间内出现，尝试从已加载的 DOM/XHR 提取`);
                 }
-              });
-              await this.randomDelay(2000, 3000);
+
+                // 额外滚动触发懒加载
+                await page.evaluate(async () => {
+                  for (let i = 0; i < 3; i++) {
+                    window.scrollTo(0, document.body.scrollHeight);
+                    await new Promise(r => setTimeout(r, 800));
+                  }
+                });
+                await this.randomDelay(2000, 3000);
+              } else {
+                // 首页搜索已跳转到搜索结果，等待 SPA 渲染
+                this.log('info', `[Job51Crawler] 📄 使用首页搜索跳转结果，等待页面渲染...`);
+                try {
+                  await page.waitForSelector(
+                    '.joblist-item, [class*="joblist-item"], [class*="jobItem"], [class*="job-item"], [class*="jobList"] [class*="item"], #app [class*="result"] [class*="item"], .el-card, [class*="card"][class*="job"], .van-list__item, #app .list-item, div.el, div.e',
+                    { timeout: 15000, visible: true }
+                  );
+                } catch { /* 搜索页可能使用不同结构 */ }
+                await page.evaluate(async () => {
+                  for (let i = 0; i < 2; i++) {
+                    window.scrollTo(0, document.body.scrollHeight);
+                    await new Promise(r => setTimeout(r, 600));
+                  }
+                });
+                await this.randomDelay(1500, 2500);
+              }
 
               // 获取渲染后的完整 HTML
               let html = await page.content();
@@ -202,6 +244,7 @@ export class Job51Crawler {
               if (htmlLength < MIN_PAGE_HTML) {
                 this.log('warn', `[Job51Crawler] 🛡️ 页面HTML过小(${htmlLength}字节 < ${MIN_PAGE_HTML})，疑似WAF拦截`);
                 this.antiCrawlState.consecutiveAntiCrawlPages++;
+                wafDetected = true;
 
                 await new Promise(r => setTimeout(r, 10000));
                 try {
@@ -211,16 +254,43 @@ export class Job51Crawler {
                   this.log('info', `[Job51Crawler] 🔄 重载后HTML: ${htmlLength}字符`);
 
                   if (htmlLength < MIN_PAGE_HTML) {
-                    this.log('warn', `[Job51Crawler] 🔄 重载后仍过小，尝试不带pageSize的备用URL...`);
-                    const altUrl = url.replace(/&pageSize=\d+/, '');
+                    this.log('warn', `[Job51Crawler] 🔄 重载后仍过小，尝试去掉reportType参数...`);
+                    // 主URL带reportType=1，如果被WAF拦截则尝试去掉该参数
+                    const altUrl = url.replace('&reportType=1', '').replace('?reportType=1&', '?').replace('?reportType=1', '');
                     await page.goto(altUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                     html = await page.content();
                     htmlLength = html.length;
                     this.log('info', `[Job51Crawler] 🔄 备用URL HTML: ${htmlLength}字符`);
+
+                    // 如果备用 URL 仍然返回 WAF，回首页通过搜索表单重新搜索（带完整人类行为链）
+                    if (htmlLength < MIN_PAGE_HTML) {
+                      this.log('warn', `[Job51Crawler] 🔄 备用URL仍过小(${htmlLength}字符)，回首页通过搜索表单重新搜索...`);
+                      try {
+                        // 先回首页
+                        await page.goto('https://www.51job.com/', { waitUntil: 'networkidle2', timeout: 30000 });
+                        await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
+                        // 在首页执行搜索
+                        const retrySearchOk = await this.searchViaHomepage(page, keyword, city);
+                        if (retrySearchOk) {
+                          await new Promise(r => setTimeout(r, 2000));
+                          html = await page.content();
+                          htmlLength = html.length;
+                          this.log('info', `[Job51Crawler] 🔄 首页搜索回退 HTML: ${htmlLength}字符`);
+                        } else {
+                          this.log('warn', `[Job51Crawler] 🔄 首页搜索回退也失败`);
+                        }
+                      } catch (retryErr: any) {
+                        this.log('error', `[Job51Crawler] ❌ 首页搜索回退失败: ${retryErr.message}`);
+                      }
+                    }
                   }
                 } catch (reloadErr: any) {
                   this.log('error', `[Job51Crawler] ❌ 页面重载失败: ${reloadErr.message}`);
                 }
+                // 保存恢复后的 HTML 快照用于诊断
+                try {
+                  fs.writeFileSync(path.join(debugDir, `job51_page_${currentPage}_recovered_${Date.now()}.html`), html);
+                } catch { /* ignore */ }
               }
 
               // === AI 反爬接入点 1：页面分类 + 智能重试（仅大页面调用AI） ===
@@ -262,9 +332,8 @@ export class Job51Crawler {
                     this.log('info', `[Job51Crawler] 🤖 重载后AI分类: type=${reClassification.pageType}, confidence=${reClassification.confidence.toFixed(2)}`);
 
                     if (reClassification.pageType !== 'normal' && reClassification.confidence >= 0.5) {
-                      // 重载后仍异常：尝试移除 pageSize 参数或调整 page 参数重试
-                      this.log('warn', `[Job51Crawler] 🔄 重载后仍为 ${reClassification.pageType}，尝试备用参数格式...`);
-                      const altUrl = url.replace(/&pageSize=\d+/, '&pageSize=10');
+                      this.log('warn', `[Job51Crawler] 🔄 重载后仍为 ${reClassification.pageType}，尝试去掉reportType...`);
+                      const altUrl = url.replace('&reportType=1', '').replace('?reportType=1&', '?').replace('?reportType=1', '');
                       try {
                         await page.goto(altUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                         const altHtml = await page.content();
@@ -436,6 +505,9 @@ export class Job51Crawler {
                 ? filteredJobs.slice(0, config.maxRecordsPerPage)
                 : filteredJobs;
 
+              // === 关闭搜索页释放浏览器资源（防止并发详情页抓取时浏览器崩溃） ===
+              try { await page.close(); } catch { /* ignore */ }
+
               // === 处理职位：列表数据 + 详情页抓取（支持并发） ===
               const concurrency = config.concurrency || 1;
               const maxConcurrency = Math.min(concurrency, 3);
@@ -468,6 +540,7 @@ export class Job51Crawler {
                     jobData = this.generateBasicJob(job, config);
                   }
 
+                  totalYielded++;
                   yield jobData;
 
                   if ((i + 1) % 5 === 0 && io) {
@@ -525,6 +598,7 @@ export class Job51Crawler {
                   let collectedInBatch = 0;
                   for (const result of batchResults) {
                     if (result.status === 'fulfilled' && result.value.success) {
+                      totalYielded++;
                       yield result.value.data;
                       collectedInBatch++;
                       if (result.value.index % 5 === 0 && io) {
@@ -534,6 +608,7 @@ export class Job51Crawler {
                         });
                       }
                     } else if (result.status === 'fulfilled') {
+                      totalYielded++;
                       yield result.value.data;
                       collectedInBatch++;
                     } else {
@@ -585,9 +660,166 @@ export class Job51Crawler {
           this.log('info', `[Job51Crawler] ✅ 组合 ${currentCombination}/${totalCombinationCount} 完成`);
         }
       }
+      // WAF 恢复：如果整个会话被 WAF 拦截且 0 数据，触发浏览器重启重试
+      if (totalYielded === 0 && wafDetected) {
+        const restartErr = new Error('BROWSER_RESTART_SCHEDULED: 检测到WAF拦截，零数据产出，触发浏览器重启');
+        (restartErr as any).shouldRestart = true;
+        throw restartErr;
+      }
+
       this.log('info', `[Job51Crawler] ========== 全部完成 ==========`);
     } finally {
       try { await browser.close(); } catch { /* ignore */ }
+    }
+  }
+
+  // ==================== 旧版搜索 URL 构建 ====================
+
+  /**
+   * 构建 51job 旧版服务端渲染搜索 URL（search.51job.com/list/...）
+   * 旧版 URL 使用不同的子域名和路径，WAF 规则可能不同，可作为新版 SPA URL 被 WAF 封锁时的回退
+   * 格式: search.51job.com/list/CITYCODE,000000,0000,00,9,99,KEYWORD,2,PAGE.html
+   */
+  private buildOldFormatUrl(keyword: string, cityCode: string, page: number): string {
+    const encodedKeyword = encodeURIComponent(keyword);
+    return `https://search.51job.com/list/${cityCode},000000,0000,00,9,99,${encodedKeyword},2,${page}.html`;
+  }
+
+  // ==================== 首页搜索表单交互 ====================
+
+  /**
+   * 在已加载的 51job 首页上通过搜索表单提交搜索，模拟人类行为路径
+   * 相比直接 URL 导航，首页→搜索的自然链路更不容易触发 WAF
+   * 返回 true 表示搜索成功并已跳转到搜索结果页
+   */
+  private async searchViaHomepage(page: any, keyword: string, city: string): Promise<boolean> {
+    const currentUrl = page.url();
+    this.log('info', `[Job51Crawler] 🔍 在首页搜索框中输入关键词并搜索...`);
+
+    try {
+      // 多种搜索输入框选择器覆盖不同版本首页
+      const inputSelectors = [
+        '#kwdselectid', '#keywordInput', '#kwdSelect', '#kwd',
+        'input[name="keyword"]', 'input[name="kwd"]',
+        'input[placeholder*="搜索"]', 'input[placeholder*="职位"]',
+        'input[placeholder*="关键词"]', 'input[placeholder*="工作"]',
+        '.searchInput input', '#searchInput',
+        '.topSearch input[type="text"]', '.search-bar input[type="text"]',
+        '[class*="search"] input[type="text"]', '.hpSearch input',
+        '.h_search input', '#searchField',
+      ];
+
+      const inputFound = await page.evaluate((selectors: string[], kw: string) => {
+        const doc = document as any;
+        for (const sel of selectors) {
+          const input = doc.querySelector(sel) as HTMLInputElement;
+          if (input && (input.offsetParent !== null || input.getBoundingClientRect().width > 0)) {
+            input.focus();
+            input.value = '';
+            // 使用原生 setter 触发 React/Vue 数据绑定
+            const nativeSetter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype, 'value'
+            )?.set;
+            if (nativeSetter) {
+              nativeSetter.call(input, kw);
+            } else {
+              input.value = kw;
+            }
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('blur', { bubbles: true }));
+            return sel;
+          }
+        }
+        return null;
+      }, inputSelectors, keyword);
+
+      if (!inputFound) {
+        this.log('warn', `[Job51Crawler] ⚠️ 未找到首页搜索输入框，回退到直接URL导航`);
+        return false;
+      }
+      this.log('info', `[Job51Crawler] 🔍 找到搜索框: ${inputFound}，已输入关键词`);
+
+      // 人类输入间隔
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1500));
+
+      // 尝试点击搜索按钮，失败则按回车
+      const buttonSelectors = [
+        'button[type="submit"]', '.searchBtn', '#searchSubmit',
+        '.topSearch button', '.search-bar button', '.btnSearch',
+        '[class*="search"] button', '.hpSearch button',
+        '.h_search button', 'input[type="submit"]',
+        '.search_box button', '#btnSearch',
+      ];
+
+      const buttonClicked = await page.evaluate((selectors: string[]) => {
+        for (const sel of selectors) {
+          const btn = document.querySelector(sel) as HTMLElement;
+          if (btn && (btn.offsetParent !== null || btn.getBoundingClientRect().width > 0)) {
+            btn.click();
+            return sel;
+          }
+        }
+        return null;
+      }, buttonSelectors);
+
+      if (!buttonClicked) {
+        this.log('info', `[Job51Crawler] 🔍 未找到搜索按钮，尝试回车+表单提交...`);
+        // 先尝试回车
+        await page.keyboard.press('Enter');
+        await new Promise(r => setTimeout(r, 500));
+        // 再尝试触发表单提交（某些网站需要）
+        try {
+          await page.evaluate(() => {
+            const form = document.querySelector('form');
+            if (form) {
+              form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+            }
+          });
+        } catch { /* ignore */ }
+      } else {
+        this.log('info', `[Job51Crawler] 🔍 点击搜索按钮: ${buttonClicked}`);
+      }
+
+      // 等待页面导航或 URL 变化（缩短超时，SPA路由不会触发waitForNavigation）
+      try {
+        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
+        await new Promise(r => setTimeout(r, 2000));
+        const newUrl = page.url();
+        this.log('info', `[Job51Crawler] 🔍 首页搜索后跳转到: ${newUrl.substring(0, 120)}`);
+        // 如果 URL 变化了（且不是停留在首页），说明搜索成功
+        if (newUrl !== currentUrl && !newUrl.includes('www.51job.com')) {
+          this.log('info', `[Job51Crawler] ✅ 首页搜索成功，已跳转到搜索结果页`);
+          return true;
+        }
+        // URL 可能还是 www.51job.com 但内容已更新（SPA 路由）
+        if (newUrl.includes('www.51job.com') && newUrl !== currentUrl) {
+          this.log('info', `[Job51Crawler] 🔍 URL仍在51job域下，检查页面内容...`);
+          return true;
+        }
+        return newUrl !== currentUrl;
+      } catch {
+        // waitForNavigation 超时，可能 SPA 路由不触发导航事件
+        // 快速检查 URL 是否已在搜索前改变
+        await new Promise(r => setTimeout(r, 1500));
+        const newUrl = page.url();
+        if (newUrl !== currentUrl) {
+          this.log('info', `[Job51Crawler] 🔍 URL已变化: ${newUrl.substring(0, 120)}`);
+          return true;
+        }
+        // 再等2秒检查（某些 SPA 路由有延迟）
+        await new Promise(r => setTimeout(r, 2000));
+        const finalUrl = page.url();
+        if (finalUrl !== currentUrl) {
+          this.log('info', `[Job51Crawler] 🔍 URL延迟变化: ${finalUrl.substring(0, 120)}`);
+          return true;
+        }
+        this.log('warn', `[Job51Crawler] ⚠️ 首页搜索后URL未变化（${currentUrl}），可能搜索表单不支持自动化提交`);
+        return false;
+      }
+    } catch (err: any) {
+      this.log('warn', `[Job51Crawler] ⚠️ 首页搜索异常: ${err.message}`);
+      return false;
     }
   }
 
@@ -645,8 +877,58 @@ export class Job51Crawler {
       var jobs = [];
       var seen = new Set();
 
+      // 策略 S：神策埋点 sensorsdata 属性（51job SPA 在每个职位卡片上嵌入完整JSON数据）
+      var sensorEls = document.querySelectorAll('[sensorsdata]');
+      for (var si = 0; si < sensorEls.length; si++) {
+        try {
+          var raw = sensorEls[si].getAttribute('sensorsdata');
+          if (!raw) continue;
+          var sd = JSON.parse(raw);
+          var jobId = sd.jobId || sd.encryptJobId || '';
+          var title = sd.jobTitle || sd.jobName || '';
+          if (!title || title.length < 2 || seen.has(title)) continue;
+
+          // 从同卡片中查找公司名称（sensorsdata 不含公司名）
+          var card = sensorEls[si].closest('[class*="joblist-item"]') || sensorEls[si];
+          var companyEl = card.querySelector('.cname, [class*="cname"], [class*="company"]');
+          var company = (companyEl && companyEl.textContent && companyEl.textContent.trim()) || '';
+
+          var jobArea = sd.jobArea || sd.city || sd.workCity || '';
+          // 解析城市：从 "北京·朝阳区" 中提取城市名和区域
+          var cityPart = jobArea.split('·')[0] || jobArea;
+          var district = jobArea.split('·')[1] || '';
+
+          var link = '';
+          if (jobId) {
+            var citySlug = cityPart || 'all';
+            link = 'https://jobs.51job.com/' + encodeURIComponent(citySlug) + '/' + jobId + '.html';
+          }
+
+          seen.add(title);
+          jobs.push({
+            title: title,
+            company: company,
+            salary: sd.jobSalary || sd.salary || sd.provideSalary || '',
+            city: jobArea,
+            link: link,
+            jobId: jobId,
+            education: sd.jobDegree || sd.degree || sd.education || '',
+            experience: sd.jobYear || sd.workYear || sd.experience || sd.workExperience || '',
+            titleCategory: sd.funcType || sd.jobType || '',
+            isUrgent: sd.isPromote === '是' ? '是' : '',
+            companyDetailUrl: sd.companyId ? 'https://jobs.51job.com/company/' + sd.companyId + '.html' : '',
+          });
+        } catch (e) { /* sensorsdata 解析失败，跳过 */ }
+      }
+      if (jobs.length > 0) return jobs;
+
       // 策略 A：51job 新版 SPA 职位卡片（Vue.js / Element UI 站点）
       var selectors = [
+        // 新版 SPA: joblist-item（we.51job.com SPA 列表项）
+        '.joblist-item', '[class*="joblist-item"]',
+        // 旧版 search.51job.com 格式（div.el 容器）
+        'div.el', 'div.e', '.j_joblist > div',
+        // 其他 SPA 格式
         '[class*="jobItem"]', '[class*="job-item"]', '[class*="job_item"]',
         '[class*="jobList"] [class*="item"]', '[class*="job_list"] [class*="item"]',
         '#app [class*="result"] [class*="item"]', '#app [class*="list"] [class*="item"]',
@@ -665,10 +947,10 @@ export class Job51Crawler {
           var isLink = sel.indexOf('a[') === 0;
           var container = isLink ? el : el;
 
-          var titleEl = container.querySelector('[class*="title"], [class*="name"], [class*="job"], a[href*="/job/"], a[href*="/pc/detail"], h3, h2, .jname a');
-          var companyEl = container.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"], a[class*="com"]');
-          var salaryEl = container.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]');
-          var cityEl = container.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"], .ltype');
+          var titleEl = container.querySelector('.jname, .joblist-item-jobname, [class*="jobname"], [class*="title"], [class*="name"], [class*="job"], a[href*="/job/"], a[href*="/pc/detail"], h3, h2, .jname a');
+          var companyEl = container.querySelector('.cname, [class*="cname"], [class*="company"], [class*="corp"], [class*="enterprise"], a[class*="com"]');
+          var salaryEl = container.querySelector('.sal, [class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]');
+          var cityEl = container.querySelector('.dc, .joblist-item-jobinfo, .job-info, [class*="city"], [class*="area"], [class*="location"], [class*="region"], .ltype');
           var linkEl = isLink ? el : container.querySelector('a[href*="/job/"], a[href*="jobs.51job.com"], a[href*="/pc/detail"]');
 
           var title = (titleEl && titleEl.textContent && titleEl.textContent.trim()) || (isLink ? (el.textContent && el.textContent.trim()) : '');
@@ -750,28 +1032,28 @@ export class Job51Crawler {
           }
         }
 
-        // 互斥锁：防止并发 browser.newPage() 导致 Chrome CDP 协议竞争崩溃
+        // 互斥锁：覆盖 newPage()+goto() 防止并发浏览器操作导致 CDP 崩溃
         const currentMutex = this.pageCreateMutex;
         let releaseMutex: () => void;
         this.pageCreateMutex = new Promise<void>(resolve => { releaseMutex = resolve; });
         await currentMutex;
         try {
           page = await browser.newPage();
+          await this.setupPageFingerprint(page);
+
+          await page.setRequestInterception(true);
+          page.on('request', (request: any) => {
+            if (['image', 'font', 'media'].includes(request.resourceType())) {
+              request.abort();
+            } else {
+              request.continue();
+            }
+          });
+
+          await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         } finally {
           releaseMutex!();
         }
-        await this.setupPageFingerprint(page);
-
-        await page.setRequestInterception(true);
-        page.on('request', (request: any) => {
-          if (['image', 'font', 'media'].includes(request.resourceType())) {
-            request.abort();
-          } else {
-            request.continue();
-          }
-        });
-
-        await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
         const html = await page.content();
 
@@ -847,29 +1129,43 @@ export class Job51Crawler {
           // 薪资
           result.salary = get('[class*="salary"], .sal, .cn strong, [class*="pay"], .tHeader strong, [class*="wage"], [class*="remuneration"]');
 
-          // 城市：仅保留城市名，去掉区/县
+          // 城市：从 .ltype 等元素提取，格式通常为 "北京-朝阳区 | N年经验 | 学历"
           var rawCity = get('.ltype, [class*="area"], [class*="location"], [class*="workCity"], [class*="address"], [class*="region"]');
-          // 城市名清理：去掉"市"后面的区/县/街道
-          var cityClean = rawCity.replace(/[市].+$/, '市');
-          // 如果清理后很短（只有"北京"这种），保留原名
-          if (cityClean.length >= 3) {
-            result.city = cityClean;
+          // 如果匹配到复合元素（含 | 分隔），只取第一段作为城市
+          if (rawCity && rawCity.indexOf('|') !== -1) {
+            var citySegments = rawCity.split('|').map(function(s) { return s.trim(); }).filter(function(s) { return s.length > 0; });
+            // 第一段通常是城市/地点
+            result.city = citySegments[0] || rawCity;
+            // 第二段通常是经验（如果主流程未提取到）
+            if (!result.experience && citySegments.length >= 2) {
+              var seg1 = citySegments[1];
+              var conciseExp2 = seg1.match(/(\d+-\d+年|\d+年以上|\d+年及以上|\d+年经验|经验不限|应届生|无需经验|在校生|\d+年)/);
+              if (conciseExp2) result.experience = conciseExp2[0];
+            }
+            // 第三段通常是学历（如果主流程未提取到）
+            if (!result.education && citySegments.length >= 3) {
+              var seg2 = citySegments[2];
+              var eduMatch2 = seg2.match(/(本科|硕士|博士|大专|中专|高中|初中|MBA|EMBA|学历不限)/);
+              if (eduMatch2) result.education = eduMatch2[0];
+            }
           } else {
-            // 尝试匹配已知城市名
-            var cityMatch = rawCity.match(/(北京|上海|广州|深圳|杭州|南京|成都|武汉|西安|重庆|苏州|郑州|长沙|青岛|大连|厦门|宁波|无锡|佛山|东莞|合肥|福州|济南|昆明|哈尔滨|长春|沈阳|南昌|贵阳|南宁|海口|天津)/);
-            result.city = cityMatch ? cityMatch[0] : rawCity;
+            result.city = rawCity;
           }
 
           // === 标签元素遍历（经验/学历/工作类型/招聘人数） ===
+          // 注意：排除 .bmsg（整段职位描述），只用其子 span
           var infoEls = document.querySelectorAll(
-            '.msg.ltype span, .jtag span, .bmsg, [class*="info"] span, [class*="require"] span, .t1 span, [class*="detail"] span, [class*="condition"] span, [class*="tag"] span, [class*="item"] span, .job-header span'
+            '.msg.ltype span, .jtag span, .jtag .t1 span, .bmsg span, [class*="info"] span, [class*="require"] span, .t1 span, [class*="detail"] span, [class*="condition"] span, [class*="tag"] span, [class*="item"] span, .job-header span'
           );
           infoEls.forEach(function(el) {
             var t = (el.textContent || '').trim();
-            if (!t) return;
-            if (/\d+-?\d*年/.test(t) || t.indexOf('经验') !== -1) result.experience = result.experience || t;
-            else if (/(本科|硕士|博士|大专|中专|高中|初中|不限|MBA|EMBA)/.test(t)) result.education = result.education || t;
-            else if (/(全职|兼职|实习|合同)/.test(t)) result.workType = result.workType || t;
+            if (!t || t.length > 80) return;
+            if (!result.experience && (/\d+-?\d*年/.test(t) || t.indexOf('经验') !== -1)) {
+              var conciseExp = t.match(/(\d+-\d+年|\d+年以上|\d+年及以上|\d+年经验|经验不限|应届生|无需经验|在校生|\d+年)/);
+              result.experience = conciseExp ? conciseExp[0] : t.substring(0, 30);
+            }
+            else if (/(本科|硕士|博士|大专|中专|高中|初中|不限|MBA|EMBA)/.test(t) && t.length < 20) result.education = result.education || t;
+            else if (/(全职|兼职|实习|合同制|劳务派遣|临时工)/.test(t) && t.length < 10) result.workType = result.workType || t;
             else if (/招\d+人/.test(t)) result.recruitmentCount = result.recruitmentCount || t;
           });
 
@@ -883,7 +1179,7 @@ export class Job51Crawler {
 
           // 工作经验（文本兜底）
           if (!result.experience) {
-            var expMatch = bodyText.match(/(\d+-\d+年|\d+年以上|\d+年经验|经验不限|应届生|无需经验|在校生)/);
+            var expMatch = bodyText.match(/(\d+-\d+年|\d+年以上|\d+年及以上|\d+年经验|经验不限|应届生|无需经验|在校生|\d+年)/);
             if (expMatch) result.experience = expMatch[0];
           }
 
@@ -892,6 +1188,15 @@ export class Job51Crawler {
             var wtMatch = bodyText.match(/(全职|兼职|实习|合同制|劳务派遣|临时工)/);
             if (wtMatch) result.workType = wtMatch[0];
             else result.workType = '全职';
+          }
+          // 工作类型标准化：过滤掉从描述全文误提取的长文本
+          if (result.workType && !/^(全职|兼职|实习|合同制|劳务派遣|临时工)$/.test(result.workType)) {
+            result.workType = '全职';
+          }
+
+          // 学历校验：过滤过长文本（正常学历为2-4字）
+          if (result.education && result.education.length > 10) {
+            result.education = '';
           }
 
           // 招聘人数（文本兜底）
@@ -925,9 +1230,30 @@ export class Job51Crawler {
           // === 公司信息：CSS 选择器 + 按标签查找 ===
 
           // 企业性质/类型
-          result.companyNature = get('[class*="type"], [class*="nature"], .com_tag span, .tCompany_sidebar .com_tag, [class*="company_type"]');
+          result.companyNature = get('[class*="company_type"], [class*="nature"], .com_tag span, .tCompany_sidebar .com_tag');
+          // CSS选择器校验：过滤明显不相关的结果（如匹配到职位类型）
+          if (result.companyNature && !/[民营国企外资上市合资股份独资创业个体有限]/i.test(result.companyNature)) {
+            result.companyNature = '';
+          }
           if (!result.companyNature) {
-            result.companyNature = findByLabel(['公司性质', '企业性质', '单位性质', '企业类型', '公司类型'], /(民营|国企|国有企业|外资|外商独资|合资|上市公司|事业单位|政府机关|非营利机构|创业公司|股份制|个体工商)/);
+            result.companyNature = findByLabel(['公司性质', '企业性质', '单位性质', '企业类型', '公司类型'],
+              /(民营公司|民营企业|民营|国有企业|国企|外商独资|外资企业|外资|中外合资|合资|上市公司|已上市|事业单位|政府机关|非营利机构|创业公司|初创企业|股份制|个体工商|有限责任公司)/);
+          }
+          // 公司性质标准化
+          if (result.companyNature) {
+            var nature = result.companyNature;
+            if (/已上市|上市公司|创业板上市|A股上市/.test(nature)) result.companyNature = '上市公司';
+            else if (/国有企业|国企/.test(nature)) result.companyNature = '国有企业';
+            else if (/外商独资|外资/.test(nature)) result.companyNature = '外资企业';
+            else if (/中外合资|合资/.test(nature)) result.companyNature = '合资企业';
+            else if (/民营/.test(nature)) result.companyNature = '民营企业';
+            else if (/事业单位/.test(nature)) result.companyNature = '事业单位';
+            else if (/政府机关/.test(nature)) result.companyNature = '政府机关';
+            else if (/股份制/.test(nature)) result.companyNature = '股份制企业';
+            else if (/个体工商/.test(nature)) result.companyNature = '个体工商户';
+            else if (/非营利/.test(nature)) result.companyNature = '非营利机构';
+            else if (/创业|初创/.test(nature)) result.companyNature = '创业公司';
+            else if (/有限责任/.test(nature)) result.companyNature = '民营企业';
           }
 
           // 公司规模
@@ -946,6 +1272,32 @@ export class Job51Crawler {
           result.businessScope = get('[class*="business"], [class*="bizScope"], [class*="scope"], [class*="businessScope"]');
           if (!result.businessScope) {
             result.businessScope = findByLabel(['经营范围', '主营业务', '业务范围'], null);
+          }
+          // 经营范围多行提取：处理"（二）经营范围"等子章节标题后的内容
+          if (!result.businessScope || result.businessScope.length < 10) {
+            for (var li2 = 0; li2 < textLines.length; li2++) {
+              var bline = textLines[li2];
+              if (bline.indexOf('经营范围') !== -1) {
+                var scopeLines = [];
+                for (var si = li2 + 1; si < Math.min(textLines.length, li2 + 8); si++) {
+                  var sl = textLines[si];
+                  if (sl.length < 4 || sl.indexOf('（') === 0 || sl.indexOf('公司信息') !== -1) break;
+                  scopeLines.push(sl);
+                }
+                if (scopeLines.length > 0) {
+                  result.businessScope = scopeLines.join('；');
+                  break;
+                }
+              }
+            }
+          }
+          // 最终兜底：从公司描述段落中提取业务相关描述
+          if (!result.businessScope) {
+            var companyDescMatch = bodyText.match(/公司信息[\s\S]{20,300}?(?=登录|更多详情|$)/);
+            if (companyDescMatch) {
+              var descText = companyDescMatch[0].replace(/公司信息/, '').trim();
+              if (descText.length > 15) result.businessScope = descText.substring(0, 200);
+            }
           }
 
           // 注册地址
