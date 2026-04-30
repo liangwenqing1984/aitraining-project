@@ -1184,6 +1184,16 @@ strategy1Stats.failedExtractions++;
                           wafDetected = true;
                           this.log('warn', `[ZhilianCrawler] 🛡️ WAF拦截已确认，后续延迟加倍`);
                         }
+                        // 🔧 浏览器崩溃类错误 → 重新抛出，让外层 catch 触发浏览器重启恢复
+                        const isBrowserCrash = error.message.includes('Connection closed') ||
+                                               error.message.includes('Session closed') ||
+                                               error.message.includes('Target closed') ||
+                                               error.message.includes('Protocol error') ||
+                                               error.message.includes('浏览器连接已断开') ||
+                                               error.message.includes('浏览器实例已断开连接');
+                        if (isBrowserCrash) {
+                          throw error;  // 不保存降级数据，直接触发浏览器重启后重试本job
+                        }
                         jobData = this.generateBasicJob(job, config);
                       }
                     } else {
@@ -2302,6 +2312,21 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
       return jobData;
       
     } catch (error: any) {
+      // 🔧 浏览器已断开时不再浪费时间去重试，直接抛出
+      const isBrowserGone = error.message.includes('浏览器连接已断开') ||
+                            error.message.includes('浏览器实例已断开连接') ||
+                            error.message.includes('Session closed') ||
+                            error.message.includes('Connection closed') ||
+                            error.message.includes('Target closed') ||
+                            error.message.includes('Protocol error');
+      if (isBrowserGone) {
+        this.log('error', `[ZhilianCrawler] 💥 浏览器会话已断开（已重试${retryCount}次），停止重试并抛出`);
+        if (page) {
+          try { await page.close(); page = null; } catch (e) { /* ignore */ }
+        }
+        throw error;  // 直接抛出，让外层处理浏览器恢复
+      }
+
       retryCount++;
       this.log('warn', `[ZhilianCrawler] ⚠️ 抓取详情页失败 (尝试 ${retryCount}/${maxRetries + 1}): ${error.message}`);
       
