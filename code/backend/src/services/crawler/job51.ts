@@ -73,23 +73,38 @@ export class Job51Crawler {
 
     try {
       // === 浏览器会话预热：先访问主页建立 cookies/session ===
-      this.log('info', `[Job51Crawler] 🔥 正在预热浏览器会话（访问首页建立cookies）...`);
-      let warmupPage: any = null;
-      try {
-        warmupPage = await browser.newPage();
-        await warmupPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-        // 先访问首页获取基础 cookie，再访问搜索页触发 acw_sc__v2 等反爬 cookie
-        await warmupPage.goto('https://we.51job.com/', { waitUntil: 'networkidle2', timeout: 60000 });
-        await new Promise(r => setTimeout(r, 3000));
-        await warmupPage.goto('https://we.51job.com/pc/search?keyword=java&city=010000', { waitUntil: 'networkidle2', timeout: 60000 });
-        const warmupHtml = await warmupPage.content();
-        this.log('info', `[Job51Crawler] ✅ 主页预热完成，获取 ${warmupHtml.length} 字节 (cookies/session已建立)`);
-      } catch (e: any) {
-        this.log('warn', `[Job51Crawler] ⚠️ 主页预热失败: ${e.message}，继续尝试搜索`);
-      } finally {
-        if (warmupPage) {
-          try { await warmupPage.close(); } catch { /* ignore */ }
+      const MIN_WARMUP_HTML = 50000; // 正常51job搜索页HTML应远大于50KB
+      let warmupSuccess = false;
+      for (let warmupAttempt = 0; warmupAttempt < 2 && !warmupSuccess; warmupAttempt++) {
+        this.log('info', `[Job51Crawler] 🔥 正在预热浏览器会话（第${warmupAttempt + 1}次尝试）...`);
+        let warmupPage: any = null;
+        try {
+          warmupPage = await browser.newPage();
+          await warmupPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+          await warmupPage.goto('https://we.51job.com/', { waitUntil: 'networkidle2', timeout: 60000 });
+          await new Promise(r => setTimeout(r, 3000));
+          await warmupPage.goto('https://we.51job.com/pc/search?keyword=java&city=010000', { waitUntil: 'networkidle2', timeout: 60000 });
+          const warmupHtml = await warmupPage.content();
+          if (warmupHtml.length >= MIN_WARMUP_HTML) {
+            this.log('info', `[Job51Crawler] ✅ 主页预热完成，获取 ${warmupHtml.length} 字节 (cookies/session已建立)`);
+            warmupSuccess = true;
+          } else {
+            this.log('warn', `[Job51Crawler] ⚠️ 预热页面过小(${warmupHtml.length}字节 < ${MIN_WARMUP_HTML})，疑似被WAF拦截，将重试...`);
+          }
+        } catch (e: any) {
+          this.log('warn', `[Job51Crawler] ⚠️ 主页预热失败: ${e.message}`);
+        } finally {
+          if (warmupPage) {
+            try { await warmupPage.close(); } catch { /* ignore */ }
+          }
         }
+        if (!warmupSuccess && warmupAttempt < 1) {
+          this.log('info', `[Job51Crawler] ⏳ 等待5秒后重试预热...`);
+          await this.randomDelay(5000, 8000);
+        }
+      }
+      if (!warmupSuccess) {
+        this.log('error', `[Job51Crawler] ❌ 浏览器预热2次均失败，可能IP已被限制，继续尝试但可能无法获取数据`);
       }
 
       for (const keyword of keywords) {
@@ -181,8 +196,8 @@ export class Job51Crawler {
               await this.randomDelay(2000, 3000);
 
               // 获取渲染后的完整 HTML
-              const html = await page.content();
-              const htmlLength = html.length;
+              let html = await page.content();
+              let htmlLength = html.length;
               this.log('info', `[Job51Crawler] 页面 HTML 长度: ${htmlLength} 字符`);
 
               // 保存调试快照
@@ -190,11 +205,44 @@ export class Job51Crawler {
               if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
               fs.writeFileSync(path.join(debugDir, `job51_page_${currentPage}_${Date.now()}.html`), html);
 
-              // === AI 反爬接入点 1：页面分类 + 智能重试 ===
-              const classification = await classifyPage(html, url);
+              // === HTML大小检测：正常51job搜索页 > 500KB，小页面为WAF/拦截 ===
+              const MIN_PAGE_HTML = 50000;
+              if (htmlLength < MIN_PAGE_HTML) {
+                this.log('warn', `[Job51Crawler] 🛡️ 页面HTML过小(${htmlLength}字节 < ${MIN_PAGE_HTML})，疑似WAF拦截`);
+                this.antiCrawlState.consecutiveAntiCrawlPages++;
+
+                await new Promise(r => setTimeout(r, 10000));
+                try {
+                  await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
+                  html = await page.content();
+                  htmlLength = html.length;
+                  this.log('info', `[Job51Crawler] 🔄 重载后HTML: ${htmlLength}字符`);
+
+                  if (htmlLength < MIN_PAGE_HTML) {
+                    this.log('warn', `[Job51Crawler] 🔄 重载后仍过小，尝试不带pageSize的备用URL...`);
+                    const altUrl = url.replace(/&pageSize=\d+/, '');
+                    await page.goto(altUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                    html = await page.content();
+                    htmlLength = html.length;
+                    this.log('info', `[Job51Crawler] 🔄 备用URL HTML: ${htmlLength}字符`);
+                  }
+                } catch (reloadErr: any) {
+                  this.log('error', `[Job51Crawler] ❌ 页面重载失败: ${reloadErr.message}`);
+                }
+              }
+
+              // === AI 反爬接入点 1：页面分类 + 智能重试（仅大页面调用AI） ===
+              const wasHtmlSmall = htmlLength < MIN_PAGE_HTML;
+              const classification = !wasHtmlSmall
+                ? await classifyPage(html, url)
+                : { pageType: 'waf' as const, confidence: 1.0, indicators: ['html_too_small'], reason: 'HTML过小，判定为WAF拦截页面' };
               this.log('info', `[Job51Crawler] 🤖 AI分类: type=${classification.pageType}, confidence=${classification.confidence.toFixed(2)}`);
 
-              if (classification.confidence >= 0.5 && classification.pageType !== 'normal') {
+              // 如果已经在HTML大小检测中处理过WAF，跳过此处的重复重载
+              if (wasHtmlSmall) {
+                this.log('warn', `[Job51Crawler] 🔄 已在HTML大小检测中处理过WAF，跳过AI重载流程`);
+                this.antiCrawlState.consecutiveAntiCrawlPages++;
+              } else if (classification.confidence >= 0.5 && classification.pageType !== 'normal') {
                 const action = await recommendAction(classification);
                 this.log('warn', `[Job51Crawler] 🛡️ AI推荐动作: ${action.action}, 等待 ${action.waitMs}ms (${action.reason})`);
 
@@ -316,6 +364,11 @@ export class Job51Crawler {
                     this.log('info', `[Job51Crawler] AI 返回 ${suggestions.length} 个选择器建议`);
                     for (const s of suggestions) {
                       this.log('info', `[Job51Crawler]   尝试: "${s.selector}" (${s.type}, confidence: ${s.confidence})`);
+                      // 跳过空选择器（AI 可能返回无效结果）
+                      if (!s.selector || s.selector.trim() === '') {
+                        this.log('warn', `[Job51Crawler] ⚠️ AI返回空选择器，跳过`);
+                        continue;
+                      }
                       try {
                         // @ts-ignore
                         const aiJobs = await page.evaluate(function(selector) {
