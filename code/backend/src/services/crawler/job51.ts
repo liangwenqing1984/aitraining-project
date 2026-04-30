@@ -603,16 +603,25 @@ export class Job51Crawler {
     await page.setUserAgent(userAgents[Math.floor(Math.random() * userAgents.length)]);
 
     await page.evaluateOnNewDocument(function() {
-      Object.defineProperty(navigator, 'webdriver', { get: function() { return undefined; } });
+      Object.defineProperty(navigator, 'webdriver', {
+        get: (function() { return function() { return undefined; }; })()
+      });
       Object.defineProperty(navigator, 'plugins', {
-        get: function() { return [
+        get: (function() { return function() { return [
           { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
           { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
           { name: 'Native Client', filename: 'internal-nacl-plugin' },
-        ]; },
+        ]; }; })()
       });
-      Object.defineProperty(navigator, 'languages', { get: function() { return ['zh-CN', 'zh', 'en-US', 'en']; } });
-      window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
+      Object.defineProperty(navigator, 'languages', {
+        get: (function() { return function() { return ['zh-CN', 'zh', 'en-US', 'en']; }; })()
+      });
+      window.chrome = {
+        runtime: {},
+        loadTimes: (function() { return function() {}; })(),
+        csi: (function() { return function() {}; })(),
+        app: {}
+      };
       var navPerms = window.navigator.permissions;
       if (navPerms && navPerms.query) {
         var origQuery = navPerms.query.bind(navPerms);
@@ -770,14 +779,16 @@ export class Job51Crawler {
 
         // @ts-ignore
         const detail = await page.evaluate(() => {
-          function get(sels) {
-            var selectors = sels.split(', ');
-            for (var i = 0; i < selectors.length; i++) {
-              var el = document.querySelector(selectors[i]);
-              if (el && el.textContent && el.textContent.trim()) return el.textContent.trim();
-            }
-            return '';
-          }
+          var get = (function() {
+            return function(sels) {
+              var selectors = sels.split(', ');
+              for (var i = 0; i < selectors.length; i++) {
+                var el = document.querySelector(selectors[i]);
+                if (el && el.textContent && el.textContent.trim()) return el.textContent.trim();
+              }
+              return '';
+            };
+          })();
 
           var result = {};
 
