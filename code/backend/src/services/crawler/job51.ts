@@ -18,6 +18,8 @@ export class Job51Crawler {
     consecutiveAntiCrawlPages: 0,
     lastClassification: null as PageClassification | null,
   };
+  // 页面创建互斥锁：防止并发 browser.newPage() 导致 Chrome CDP 竞争崩溃
+  private pageCreateMutex: Promise<void> = Promise.resolve();
 
   setLogger(logger: any) {
     this.logger = logger;
@@ -488,11 +490,21 @@ export class Job51Crawler {
                       return { success: false, data: this.generateBasicJob(job, config), index: globalIndex };
                     }
 
+                    // 批次内错峰延迟：避免3个详情页同时冲击51job服务器
+                    if (indexInBatch > 0) {
+                      await new Promise(r => setTimeout(r, 800 + Math.random() * 1200));
+                    }
+
                     this.log('info', `[Job51Crawler] [${globalIndex}/${pageJobs.length}] 🚀 并发抓取: ${job.title}`);
 
                     try {
                       let jobData: JobData;
                       if (job.link) {
+                        // 检查浏览器状态，已断开则直接降级
+                        if (!browser.isConnected()) {
+                          this.log('warn', `[Job51Crawler] [${globalIndex}/${pageJobs.length}] ⚠️ 浏览器已断开，使用列表数据`);
+                          return { success: false, data: this.generateBasicJob(job, config), index: globalIndex };
+                        }
                         const fullUrl = job.link.startsWith('http') ? job.link : `https:${job.link}`;
                         jobData = await this.fetchJobDetail(browser, fullUrl, job, config);
                       } else {
@@ -720,10 +732,22 @@ export class Job51Crawler {
       try {
         if (retry > 0) {
           await this.randomDelay(3000, 5000);
-          if (!browser.isConnected()) throw new Error('浏览器连接已断开');
+          if (!browser.isConnected()) {
+            this.log('error', `[Job51Crawler] ❌ 浏览器连接已断开，无法重试`);
+            throw new Error('浏览器连接已断开');
+          }
         }
 
-        page = await browser.newPage();
+        // 互斥锁：防止并发 browser.newPage() 导致 Chrome CDP 协议竞争崩溃
+        const currentMutex = this.pageCreateMutex;
+        let releaseMutex: () => void;
+        this.pageCreateMutex = new Promise<void>(resolve => { releaseMutex = resolve; });
+        await currentMutex;
+        try {
+          page = await browser.newPage();
+        } finally {
+          releaseMutex!();
+        }
         await this.setupPageFingerprint(page);
 
         await page.setRequestInterception(true);
@@ -840,6 +864,8 @@ export class Job51Crawler {
           this.log('warn', `[Job51Crawler] 详情页重试${maxRetries}次后失败: ${error.message}`);
           return this.generateBasicJob(basicInfo, config);
         }
+        // 记录非最终重试的错误，便于诊断首次失败原因
+        this.log('warn', `[Job51Crawler] 详情页第${retry + 1}次尝试失败(将重试): ${error.message}`);
       } finally {
         if (page) {
           try { await page.close(); } catch { /* ignore */ }
