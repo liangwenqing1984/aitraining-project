@@ -1271,7 +1271,7 @@ strategy1Stats.failedExtractions++;
                       try {
                         if (!browser.isConnected()) {
                           this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器连接已断开`);
-                          return { success: false, data: null, index: globalIndex, error: 'BROWSER_DISCONNECTED' };
+                          return { success: false, data: this.generateBasicJob(job, config), index: globalIndex, error: 'BROWSER_DISCONNECTED' };
                         }
                         
                         // 🔧 额外检查：如果标签页太多，等待一下
@@ -1282,7 +1282,7 @@ strategy1Stats.failedExtractions++;
                         }
                       } catch (e: any) {
                         this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] ❌ 浏览器状态检查失败: ${e.message}`);
-                        return { success: false, data: null, index: globalIndex, error: 'BROWSER_DISCONNECTED' };
+                        return { success: false, data: this.generateBasicJob(job, config), index: globalIndex, error: 'BROWSER_DISCONNECTED' };
                       }
                       
                       this.log('info', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 🚀 并发抓取: ${job.title}`);
@@ -1389,7 +1389,7 @@ strategy1Stats.failedExtractions++;
                               error.message.includes('浏览器连接已断开') ||
                               error.message === 'BROWSER_CRASHED') {
                             this.log('error', `[ZhilianCrawler] [${globalIndex}/${filteredJobs.length}] 💥 浏览器会话已关闭，停止当前批次`);
-                            return { success: false, data: null, index: globalIndex, error: 'BROWSER_CRASHED' };
+                            return { success: false, data: this.generateBasicJob(job, config), index: globalIndex, error: 'BROWSER_CRASHED' };
                           }
 
                           // 🔧 详情页失败时使用降级数据，但不影响其他并发任务
@@ -2064,109 +2064,178 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
           timeout: 15000 
         });
         
-        // 等待动态内容加载
+        // 等待关键元素加载（对齐新版 fetchJobDetailWithPage 的等待策略）
+        this.log('info', `[ZhilianCrawler] ⏳ 等待关键元素加载...`);
+        try {
+          await page.waitForSelector('.summary-planes__title, .company-name, [class*="job-title"]', {
+            timeout: 6000
+          });
+          this.log('info', `[ZhilianCrawler] ✅ 关键元素已加载`);
+        } catch (waitError: any) {
+          this.log('warn', `[ZhilianCrawler] ⚠️ 关键元素等待超时，尝试延长等待时间...`);
+          await this.abortableSleep(2000);
+        }
+
         this.log('info', `[ZhilianCrawler] ⏳ 等待动态内容渲染...`);
         await this.abortableSleep(2000);
 
-        // 🔧 WAF专项检测：Security Verification页面直接放弃
-        const isWaf = await page.evaluate(() => {
-          return (document.title || '').includes('Security Verification');
+        // 页面健康检查
+        const pageHealth = await page.evaluate(() => {
+          return {
+            bodyLength: document.body ? document.body.textContent?.length || 0 : 0,
+            isSecurityVerification: (document.title || '').includes('Security Verification'),
+            pageTitle: document.title || '',
+            htmlContent: document.documentElement.outerHTML.substring(0, 500)
+          };
         });
-        if (isWaf) {
-          throw new Error('WAF_DETECTED: 智联招聘安全验证拦截');
+
+        this.log('info', `[ZhilianCrawler] 📊 页面健康检查: body长度=${pageHealth.bodyLength}`);
+
+        // WAF专项检测
+        if (pageHealth.isSecurityVerification) {
+          this.log('error', `[ZhilianCrawler] 🚨 检测到WAF安全验证！页面标题="${pageHealth.pageTitle}"`);
+          throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');
         }
 
-        // 提取职位详情
+        // 内容过少检测
+        if (pageHealth.bodyLength < 1000) {
+          this.log('warn', `[ZhilianCrawler] ⚠️ 页面内容过少(${pageHealth.bodyLength}字节)，尝试刷新...`);
+          await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
+          await this.abortableSleep(3000);
+
+          const retryHealth = await page.evaluate(() => ({
+            bodyLength: document.body ? document.body.textContent?.length || 0 : 0,
+            isSecurityVerification: (document.title || '').includes('Security Verification'),
+            pageTitle: document.title || ''
+          }));
+
+          this.log('info', `[ZhilianCrawler] 📊 刷新后检查: body=${retryHealth.bodyLength}B, title="${retryHealth.pageTitle}"`);
+
+          if (retryHealth.isSecurityVerification) {
+            this.log('error', `[ZhilianCrawler] 🚨 刷新后触发WAF安全验证，放弃`);
+            throw new Error('WAF_DETECTED: 刷新后触发智联招聘安全验证');
+          }
+
+          if (retryHealth.bodyLength < 1000) {
+            this.log('error', `[ZhilianCrawler] ❌ 刷新后仍然无法加载，放弃此详情页`);
+            throw new Error('PAGE_LOAD_FAILED: 页面内容过少，刷新后仍无效');
+          }
+
+          this.log('info', `[ZhilianCrawler] ✅ 刷新后页面加载成功`);
+        }
+
+        // 提取职位详情（多选择器策略，对齐新版 fetchJobDetailWithPage）
         this.log('info', `[ZhilianCrawler] 🔍 正在提取页面数据...`);
         const detail = await page.evaluate(() => {
         const result: any = {};
-        // ✅ 职位名称 - 从 summary-planes__title 中提取
-        const titleEl = document.querySelector('.summary-planes__title');
-        result.title = titleEl ? titleEl.textContent.trim() : '';
-        
-        // ✅ 薪资 - 从 summary-planes__salary 中提取
-        const salaryEl = document.querySelector('.summary-planes__salary');
+
+        // ✅ 职位名称 - 多策略提取
+        const titleSelectors = [
+          '.summary-planes__title',
+          '.job-title',
+          '[class*="job-title"]',
+          '[class*="position-title"]',
+          'h1[class*="title"]'
+        ];
+        for (const selector of titleSelectors) {
+          const titleEl = document.querySelector(selector);
+          if (titleEl && titleEl.textContent?.trim()) {
+            result.title = titleEl.textContent.trim();
+            break;
+          }
+        }
+
+        // ✅ 公司名称 - 多策略提取
+        const companySelectors = [
+          '.company-name',
+          '.company-info__name',
+          '.cname',
+          '[class*="company-name"]',
+          '[class*="cname"]'
+        ];
+        for (const selector of companySelectors) {
+          const companyEl = document.querySelector(selector);
+          if (companyEl && companyEl.textContent?.trim()) {
+            result.company = companyEl.textContent.trim();
+            break;
+          }
+        }
+
+        // ✅ 薪资
+        const salaryEl = document.querySelector('.summary-planes__salary, [class*="salary"]');
         result.salary = salaryEl ? salaryEl.textContent.trim() : '';
-        
-        // ✅ 城市 - 从 workCity-link 中提取
-        const cityEl = document.querySelector('.workCity-link');
+
+        // ✅ 城市
+        const cityEl = document.querySelector('.workCity-link, [class*="city"] a');
         if (cityEl) {
           result.city = cityEl.textContent.trim();
         }
-        
-        // ✅ 区域 - 从 summary-planes__info 第一个li的span中提取
-        const areaEl = document.querySelector('.summary-planes__info li span');
+
+        // ✅ 区域
+        const areaEl = document.querySelector('.summary-planes__info li span, [class*="area"]');
         result.area = areaEl ? areaEl.textContent.trim() : '';
-        
-        // ✅ 工作经验、学历、工作性质、招聘人数 - 从 summary-planes__info 中提取
-        const infoItems = Array.from(document.querySelectorAll('.summary-planes__info li'));
+
+        // ✅ 工作经验、学历、工作性质、招聘人数
+        const infoItems = Array.from(document.querySelectorAll('.summary-planes__info li, [class*="job-info"] li'));
         infoItems.forEach((item: any) => {
           const text = (item.textContent || '').trim();
-          
-          // 跳过已提取的城市链接
           if (item.querySelector('a')) return;
-          
-          // 判断是否为工作经验（包含"年"字）
           if (text.match(/\d+-?\d*年/)) {
             result.experience = text;
-          }
-          // 判断是否为学历
-          else if (text.match(/(本科|硕士|博士|大专|中专|高中|初中)/)) {
+          } else if (text.match(/(本科|硕士|博士|大专|中专|高中|初中)/)) {
             result.education = text;
-          }
-          // 判断是否为工作性质
-          else if (text.match(/(全职|兼职|实习)/)) {
+          } else if (text.match(/(全职|兼职|实习)/)) {
             result.workType = text;
-          }
-          // 判断是否为招聘人数
-          else if (text.match(/招\d+人/)) {
+          } else if (text.match(/招\d+人/)) {
             result.recruitmentCount = text;
           }
         });
-        
-        // ✅ 工作地址 - 从 address-info__bubble 中提取
-        const addressEl = document.querySelector('.address-info__bubble');
+
+        // ✅ 工作地址
+        const addressEl = document.querySelector('.address-info__bubble, [class*="address"]');
         if (addressEl) {
           result.address = (addressEl.textContent || '').trim();
         }
-        
-        // ✅ 公司信息 - 从 company-info__desc 中提取
-        const companyDescEl = document.querySelector('.company-info__desc');
+
+        // ✅ 公司信息
+        const companyDescEl = document.querySelector('.company-info__desc, [class*="company-desc"]');
         if (companyDescEl) {
           const companyText = (companyDescEl.textContent || '').trim();
-          // 解析公司性质和规模：未融资 · 500-999人 · 计算机软件
           const parts = companyText.split('·').map(p => p.trim());
           if (parts.length >= 2) {
-            result.companyNature = parts[0]; // 融资状态/公司性质
-            result.companyScale = parts[1];  // 公司规模
+            result.companyNature = parts[0];
+            result.companyScale = parts[1];
             if (parts.length >= 3) {
-              result.businessScope = parts.slice(2).join(', '); // 经营范围
+              result.businessScope = parts.slice(2).join(', ');
             }
           }
         }
-        
-        // ✅ 岗位更新日期 - 从 summary-planes__time 中提取
-        const updateEl = document.querySelector('.summary-planes__time');
+
+        // ✅ 岗位更新日期
+        const updateEl = document.querySelector('.summary-planes__time, [class*="update-time"]');
         if (updateEl) {
           const updateTimeText = updateEl.textContent.trim();
-          // 提取"更新于 今天"、"更新于 3天前"等
           const timeMatch = updateTimeText.match(/更新于\s*(.+)/);
           if (timeMatch) {
             result.updateDateText = timeMatch[1].trim();
           }
         }
-        
-        // ✅ 职位标签/技能要求 - 从 describtion-card__skills-item 中提取
-        const skillItems = Array.from(document.querySelectorAll('.describtion-card__skills-item'));
+
+        // ✅ 职位标签/技能要求
+        const skillItems = Array.from(document.querySelectorAll('.describtion-card__skills-item, [class*="skill"]'));
         if (skillItems.length > 0) {
           result.jobTags = skillItems.map((item: any) => item.textContent.trim()).join(',');
         }
-        
+
         return result;
       });
-      
-      // 检查是否提取到了关键数据，如果没有可能页面加载有问题
+
+      // 诊断输出
+      this.log('info', `[ZhilianCrawler] 📊 提取结果: 标题="${detail.title?.substring(0, 20) || '空'}", 公司="${detail.company?.substring(0, 20) || '空'}"`);
+
+      // 检查是否提取到了关键数据
       if (!detail.title && !detail.company) {
+        this.log('error', `[ZhilianCrawler] ❌ 详情页提取失败: 标题和公司名均为空`);
         throw new Error('未能提取到职位标题或公司名称，页面可能加载不完整');
       }
 
