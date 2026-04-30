@@ -517,15 +517,27 @@ class TaskService {
           current: stoppedCurrent
         });
 
-        // 有数据则创建文件记录
+        // 有数据则创建/更新文件记录（避免多次停止产生重复记录）
         if (totalRecords > 0 && fs.existsSync(filepath)) {
           const fileSize = fs.statSync(filepath).size;
-          const csvId = uuidv4();
-          await db.prepare(`
-            INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
-          `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
-          taskLogger.info(`[TaskService] 📊 已停止，共采集 ${totalRecords} 条数据，文件记录已创建`);
+          const existingFile = await db.prepare(
+            'SELECT id FROM csv_files WHERE task_id = $1'
+          ).get(taskId) as any;
+
+          if (existingFile?.id) {
+            await db.prepare(`
+              UPDATE csv_files SET file_size = $1, record_count = $2, created_at = CURRENT_TIMESTAMP
+              WHERE task_id = $3
+            `).run(fileSize, totalRecords, taskId);
+            taskLogger.info(`[TaskService] 📊 已停止，共采集 ${totalRecords} 条数据，文件记录已更新`);
+          } else {
+            const csvId = uuidv4();
+            await db.prepare(`
+              INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+              VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+            `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
+            taskLogger.info(`[TaskService] 📊 已停止，共采集 ${totalRecords} 条数据，文件记录已创建`);
+          }
         }
 
         break;  // 🔧 退出循环，进入清理
@@ -584,13 +596,25 @@ class TaskService {
         });
       }
 
-      // 创建CSV文件记录（无论成功失败都记录）
-      const csvId = uuidv4();
-      const fileSize = fs.statSync(filepath).size;
-      await db.prepare(`
-        INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
-      `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
+      // 创建/更新CSV文件记录（避免重复记录）
+      const existingFile = await db.prepare(
+        'SELECT id FROM csv_files WHERE task_id = $1'
+      ).get(taskId) as any;
+
+      if (existingFile?.id) {
+        const fileSize = fs.statSync(filepath).size;
+        await db.prepare(`
+          UPDATE csv_files SET file_size = $1, record_count = $2, created_at = CURRENT_TIMESTAMP
+          WHERE task_id = $3
+        `).run(fileSize, totalRecords, taskId);
+      } else {
+        const csvId = uuidv4();
+        const fileSize = fs.statSync(filepath).size;
+        await db.prepare(`
+          INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+        `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
+      }
 
       taskLogger.info(`[TaskService] 任务处理完成`);
       break;  // 🔧 成功完成，退出循环
@@ -726,12 +750,23 @@ class TaskService {
       }
 
       if (hasFailedData && failFileSize > 0) {
-        const failCsvId = uuidv4();
         const failFilename = path.basename(failFilepath);
-        await db.prepare(`
-          INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
-        `).run(failCsvId, taskId, failFilename, failFilepath, failFileSize, failRecordCount, config.sites[0]);
+        const existingFailFile = await db.prepare(
+          'SELECT id FROM csv_files WHERE task_id = $1'
+        ).get(taskId) as any;
+
+        if (existingFailFile?.id) {
+          await db.prepare(`
+            UPDATE csv_files SET file_size = $1, record_count = $2, filepath = $3, filename = $4, created_at = CURRENT_TIMESTAMP
+            WHERE task_id = $5
+          `).run(failFileSize, failRecordCount, failFilepath, failFilename, taskId);
+        } else {
+          const failCsvId = uuidv4();
+          await db.prepare(`
+            INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+          `).run(failCsvId, taskId, failFilename, failFilepath, failFileSize, failRecordCount, config.sites[0]);
+        }
 
         // 同步更新任务的record_count
         await db.prepare(`
