@@ -693,14 +693,14 @@ export class Job51Crawler {
 
         // @ts-ignore
         const detail = await page.evaluate(() => {
-          var get = function(sels) {
+          function get(sels) {
             var selectors = sels.split(', ');
             for (var i = 0; i < selectors.length; i++) {
               var el = document.querySelector(selectors[i]);
               if (el && el.textContent && el.textContent.trim()) return el.textContent.trim();
             }
             return '';
-          };
+          }
 
           var result = {};
 
