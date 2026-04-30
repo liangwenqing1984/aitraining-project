@@ -151,7 +151,7 @@ class TaskService {
     if (hasResumeState && existingTask?.csvPath && fs.existsSync(existingTask.csvPath)) {
       // 断点续传模式：复用已有Excel文件
       filepath = existingTask.csvPath;
-      initialRecordCount = existingTask.record_count || 0;
+      initialRecordCount = existingTask.recordCount || 0;
       initialProgress = existingTask.progress || 0;
       initialCurrent = existingTask.current || 0;
       logger.info(`[TaskService] 🔄 断点续传模式 - 复用已有Excel: ${filepath}`);

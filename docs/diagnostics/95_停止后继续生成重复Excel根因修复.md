@@ -145,3 +145,27 @@ while (hasNextPage && !checkAborted()) {
 - `_resumeState` 正确持久化到 DB config
 - 恢复时正确复用已有 Excel，计数从停止位置继续
 - 不再产生重复 Excel 文件
+
+## 补充修复（第五次迭代）
+
+### 第四层：camelCase 属性名导致 `initialRecordCount` 恒为 0
+
+DB 封装层 `database.ts` 的 `convertToCamelCase` 将列名转换：
+- `record_count` → `recordCount`
+
+但 `taskService.ts` line 154 使用了 snake_case：
+```typescript
+initialRecordCount = existingTask.record_count || 0;  // ❌ 永远是 undefined → 0
+```
+
+导致：
+- Excel 文件正确复用 ✅（`csvPath` 无下划线不受影响）
+- 但 `起始记录数` 显示为 0 ❌
+- `totalRecords` 从 0 开始计数 ❌
+- 用户看到计数从 1 重新开始，体验等同于"生成了新 Excel" ❌
+
+**修复**：`existingTask.record_count` → `existingTask.recordCount`
+
+| 修改 | 文件 | 内容 |
+|------|------|------|
+| record_count → recordCount | taskService.ts | line 154 属性名修正 |
