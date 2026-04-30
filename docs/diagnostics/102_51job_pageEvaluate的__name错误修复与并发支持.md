@@ -6,6 +6,7 @@
 |------|---------|
 | `ff1c1ef` | 第一轮：移除所有 page.evaluate 中的 TS 类型注解 + ES6 语法，新增并发支持 |
 | `92663ae` | 第二轮：将 `var fn = function()` 改为 `function fn()` 声明，彻底消除 `__name` 注入 |
+| `3700689` | 第三轮：HTML 大小 WAF 检测 + 预热验证 + AI 空选择器跳过 |
 
 ---
 
@@ -127,13 +128,35 @@ concurrency > 1  → Promise.allSettled 批次并行，上限 3，批次间 2-4s
 | config.concurrency | 被忽略 | 生效（上限 3） |
 | 错误隔离 | 无（一个失败影响后续）| Promise.allSettled 隔离 |
 
+### 3. WAF 拦截 HTML 大小检测（`3700689`）
+
+**问题**：修复 `__name` 后重跑任务，发现 51job 对自动化的 WAF 拦截返回 7,884 字节的小页面，AI 误判为 `normal (confidence=0.95)`，导致后续选择器全部失效、0 条数据。
+
+**根因链**：
+
+```
+浏览器预热拿到 WAF 小页面(7,884B) → 未验证 → 搜索时用坏 session
+→ 搜索页也是 7,884B → AI假阳性判定为 normal → 选择器失效
+→ AI 返回空选择器 "" → querySelectorAll('') 报错 → 0 jobs
+```
+
+**三项防御**：
+
+| 防御点 | 位置 | 逻辑 |
+|--------|------|------|
+| 预热验证 | `crawl()` L75-112 | 预热后检查 HTML ≥ 50KB，不达标则等 5-8s 重试 1 次 |
+| HTML 大小 WAF 检测 | `crawl()` L207-233 | 搜索页 < 50KB → 直接判定 WAF（跳过 AI），自动 reload + 备用 URL |
+| AI 空选择器跳过 | `crawl()` L361-365 | `s.selector.trim() === ''` → 跳过而非抛异常 |
+
+WAF 检测阈值：`MIN_PAGE_HTML = 50000`（正常 51job 搜索页约 500k-650k 字节）。
+
 ---
 
 ## 修改文件
 
 | 文件 | 变更 |
 |------|------|
-| `code/backend/src/services/crawler/job51.ts` | 205 行新增，117 行删除 |
+| `code/backend/src/services/crawler/job51.ts` | ~280 行新增，~140 行删除（三轮累计） |
 | `docs/diagnostics/102_51job_pageEvaluate的__name错误修复与并发支持.md` | 新增诊断文档 |
 
 ---
