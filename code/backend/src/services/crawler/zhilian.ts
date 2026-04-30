@@ -435,7 +435,42 @@ export class ZhilianCrawler {
                 this.log('info', `[ZhilianCrawler] ✅ 职位容器已加载`);
               } catch (e) {
                 this.log('warn', `[ZhilianCrawler] ⚠️ 职位容器未在10秒内出现，继续尝试解析`);
-                
+
+                // 🔧 关键修复：检测反爬拦截（body为空 = GeeTest/反爬系统拦截）
+                // 与普通"加载慢"区分：bodyLength=0 意味着页面完全被替换为反爬壳
+                if (pageContentAfterWait.bodyLength === 0) {
+                  this.log('error', `[ZhilianCrawler] 🚨 检测到反爬拦截！页面body为空（bodyLength=0），触发浏览器重启重试...`);
+
+                  if (io && taskId) {
+                    io.to(`task:${taskId}`).emit('task:log', {
+                      taskId,
+                      level: 'error',
+                      message: `🚨 检测到反爬拦截，正在保存断点并重启浏览器重试...`
+                    });
+                  }
+
+                  // 保存断点（当前组合+页码），确保重启后从此处继续
+                  try {
+                    const resumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                    if (resumeTask) {
+                      const resumeConfig = typeof resumeTask.config === 'string' ? JSON.parse(resumeTask.config) : resumeTask.config;
+                      resumeConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                      await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(resumeConfig), taskId!);
+                      this.log('info', `[ZhilianCrawler] 💾 反爬拦截断点已保存: 组合${currentCombination}, 第${currentPage}页`);
+                    }
+                  } catch (saveErr: any) {
+                    this.log('error', `[ZhilianCrawler] ❌ 保存反爬断点失败:`, saveErr.message);
+                  }
+
+                  // 抛出可恢复错误，触发 taskService 的浏览器重启+重试机制
+                  const antiCrawlError = new Error('BROWSER_CRASH_RECOVERABLE: 检测到反爬拦截(body为空)');
+                  (antiCrawlError as any).canRecover = true;
+                  (antiCrawlError as any).combinationIndex = currentCombination;
+                  (antiCrawlError as any).currentPage = currentPage;
+                  (antiCrawlError as any).jobIndex = 0;
+                  throw antiCrawlError;
+                }
+
                 if (io && taskId) {
                   io.to(`task:${taskId}`).emit('task:log', {
                     taskId,
@@ -1564,7 +1599,8 @@ strategy1Stats.failedExtractions++;
                                      error.message.includes('Target closed') ||
                                      error.message.includes('Protocol error') ||
                                      error.message.includes('浏览器连接已断开') ||
-                                     error.message.includes('BROWSER_RESTART_SCHEDULED');
+                                     error.message.includes('BROWSER_RESTART_SCHEDULED') ||
+                                     error.message.includes('BROWSER_CRASH_RECOVERABLE');
 
               // 🔧 detached Frame 单独处理：先尝试恢复页面而非直接重启浏览器
               const isDetachedFrame = error.message.includes('detached');
