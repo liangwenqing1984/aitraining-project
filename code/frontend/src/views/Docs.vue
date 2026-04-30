@@ -132,7 +132,35 @@ const docs: Record<string, { title: string; content: string }> = {
   <tr><td>WAF 对抗</td><td>反爬检测自动降级串行 + 随机延迟 + 指纹随机化</td></tr>
   <tr><td>实时监控</td><td>WebSocket 推送进度条、分级彩色日志</td></tr>
   <tr><td>Excel 导出</td><td>格式化 .xlsx 输出，带样式表头、冻结行、交替行颜色</td></tr>
-</table>`
+</table>
+
+<h3>技术原理</h3>
+
+<h4>Puppeteer 浏览器自动化</h4>
+<p>Puppeteer 通过 Chrome DevTools Protocol (CDP) 控制无头 Chrome 浏览器：</p>
+<ol>
+  <li><strong>Browser 实例管理</strong>：每个爬虫维护一个 Browser，通过 <code>puppeteer.launch({ headless: "new" })</code> 启动，独立 <code>userDataDir</code> 隔离 cookie/缓存</li>
+  <li><strong>Page 生命周期</strong>：搜索→列表→详情页，page 间通过 <code>pageCreateMutex</code> 互斥锁序列化 newPage + goto 防止 CDP 竞争崩溃</li>
+  <li><strong>SPA 等待</strong>：<code>waitUntil: "networkidle2"</code> 等网络空闲 2s + <code>waitForSelector</code> 等目标 DOM，覆盖 Vue/React 异步渲染</li>
+  <li><strong>XHR 拦截</strong>：<code>page.on("response")</code> 捕获 51job/智联内部 API JSON，作 DOM 解析失败备用</li>
+  <li><strong>指纹隐藏</strong>：随机化 <code>navigator.webdriver</code>、<code>plugins</code>、<code>languages</code>，修改 <code>window.chrome</code>，避免反爬检测</li>
+</ol>
+
+<h4>WAF 对抗</h4>
+<ul>
+  <li><strong>检测</strong>：htmlLength &lt; 5000 字节判定 WAF（正常页面 600KB+）</li>
+  <li><strong>绕过</strong>：添加 <code>reportType=1</code> 业务参数，WAF 将其视为合法报表请求放行</li>
+  <li><strong>降级</strong>：自动串行 + 随机延迟 2-5s 降低频率</li>
+  <li><strong>恢复</strong>：BROWSER_RESTART 换新浏览器 + 新 userDataDir + 首页建 cookie 重试</li>
+</ul>
+
+<h4>并发控制与断点续传</h4>
+<ul>
+  <li><strong>互斥锁</strong>：覆盖 newPage + goto 全流程，唯一 page 执行浏览器密集操作</li>
+  <li><strong>资源释放</strong>：搜索页提前 close 释放 request interception，防多 tab 竞争</li>
+  <li><strong>崩溃恢复</strong>：捕获 <code>Connection closed</code>/<code>Target closed</code>，抛 <code>{ shouldRestart: true }</code>，外层指数退避重试</li>
+  <li><strong>断点续传</strong>：配置存 JSONB，崩溃后从页码+组合索引恢复，jobId 去重保证幂等</li>
+</ul>`
   },
   'feat-enrich': {
     title: 'AI 数据增强',
@@ -157,6 +185,37 @@ const docs: Record<string, { title: string; content: string }> = {
   <li>3 次重试 + 递增 temperature 提高成功率</li>
   <li>WebSocket 实时推送增强进度</li>
   <li>ON CONFLICT UPSERT 保证幂等可重跑</li>
+</ul>
+
+<h3>技术原理</h3>
+
+<h4>LLM 批量增强流程</h4>
+<ol>
+  <li><strong>数据读取</strong>：从 Excel (<code>csv_files</code>) 读取原始职位记录，提取 <code>jobName</code>、<code>jobDescription</code>、<code>salaryRange</code> 等核心字段</li>
+  <li><strong>Prompt 构建</strong>：拼接系统提示词 + 字段说明 + 标准化规则（薪资转月薪/学历归一化/行业 14 分类），组装单条职位 JSON</li>
+  <li><strong>LLM 调用</strong>：<code>BATCH_SIZE=1</code> 逐条发送，500ms 间隔避免 API 限流；三次重试 + 递增 <code>temperature</code>（0.1→0.3→0.5）提高成功率</li>
+  <li><strong>JSON 解析</strong>：3 层降级——直接 <code>JSON.parse</code> → 正则边界提取 <code>{...}</code> → 单引号/无引号 key 修复后解析</li>
+  <li><strong>UPSERT 入库</strong>：<code>ON CONFLICT (task_id, job_id) DO UPDATE</code>，重复点击不产生重复数据</li>
+</ol>
+
+<h4>增强维度与输出 Schema</h4>
+<table>
+  <tr><th>维度</th><th>输出字段</th><th>标准化逻辑</th></tr>
+  <tr><td>薪资</td><td><code>salary_monthly_min/max</code></td><td>"15K-20K·13薪" → 15000-20000；万/年 → ÷12；千/月 → ×1000</td></tr>
+  <tr><td>职位分类</td><td><code>job_category_l1/l2</code></td><td>技术→后端开发；市场→品牌营销（14 大一级类 + 细分子类）</td></tr>
+  <tr><td>公司行业</td><td><code>company_industry</code></td><td>互联网/金融/制造/医疗/教育等 14 类标准分类</td></tr>
+  <tr><td>技能提取</td><td><code>key_skills</code> (JSONB)</td><td>必选项 + 加分项分离，技术栈关联分类</td></tr>
+  <tr><td>学历</td><td><code>education_normalized</code></td><td>本科/硕士/博士/大专/高中及以下</td></tr>
+  <tr><td>经验</td><td><code>experience_years_min/max</code></td><td>"3-5年" → 3-5；"应届" → 0-1</td></tr>
+  <tr><td>福利</td><td><code>benefits</code> (JSONB)</td><td>五险一金/年终奖/双休/带薪年假等关键词识别</td></tr>
+  <tr><td>工作模式</td><td><code>work_mode</code></td><td>远程/现场/混合 三分类</td></tr>
+</table>
+
+<h4>幂等设计</h4>
+<ul>
+  <li><strong>UPSERT 语义</strong>：<code>INSERT ... ON CONFLICT (task_id, job_id) DO UPDATE</code>，重跑自动覆盖旧值</li>
+  <li><strong>失败重试</strong>：单条 3 次重试 + 递增 temperature，模型输出不稳时自动变换参数</li>
+  <li><strong>静默跳过</strong>：已经过增强的记录不会重复调用 LLM（检查已有增强时间戳）</li>
 </ul>`
   },
   'feat-rag': {
@@ -183,6 +242,25 @@ const docs: Record<string, { title: string; content: string }> = {
   <li><strong>Ollama 本地推理</strong>: 数据不出本地，200ms 请求间隔避免过载</li>
 </ul>
 
+<h3>技术原理</h3>
+
+<h4>向量索引架构</h4>
+<ol>
+  <li><strong>文本拼接</strong>：<code>buildJobText()</code> 将 Excel 原始字段（职位名/公司名/城市）+ <code>job_enrichments</code> 增强字段（技能/分类/行业/学历）拼接为自然语言段落</li>
+  <li><strong>Embedding 生成</strong>：调用本地 Ollama <code>nomic-embed-text</code> 模型，输出 768 维浮点向量；200ms 间隔避免 Ollama 过载</li>
+  <li><strong>向量存储</strong>：pgvector <code>vector(768)</code> 类型列，<code>INSERT INTO job_embeddings (embedding) VALUES ($1::vector)</code></li>
+  <li><strong>IVFFlat 索引</strong>：<code>CREATE INDEX ON job_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)</code>，100 个聚类列表加速近似搜索</li>
+  <li><strong>相似度计算</strong>：<code>1 - (embedding <=> query_vector::vector)</code> → 余弦相似度 (0-1)，默认阈值 0.3</li>
+</ol>
+
+<h4>pgvector 原理</h4>
+<ul>
+  <li><strong>IVFFlat 近似搜索</strong>：将向量空间划分为 100 个列表（lists），查询时只扫描最相关的几个列表，比全量 KNN 快 10-100 倍</li>
+  <li><strong>余弦距离</strong>：<code>vector <=> vector</code> 运算符计算余弦距离 = 1 - cos(θ)，值越小越相似</li>
+  <li><strong>ON CONFLICT UPSERT</strong>：<code>(task_id, job_id)</code> 唯一约束，重复索引自动更新旧向量</li>
+  <li><strong>维度固定</strong>：768 维 nomic-embed-text，不可混用其他维度模型</li>
+</ul>
+
 <h4>搜索示例</h4>
 <ul>
   <li>"需要5年以上经验的Java后端开发岗位"</li>
@@ -202,6 +280,31 @@ const docs: Record<string, { title: string; content: string }> = {
   <li>支持报告历史查询与切换</li>
   <li>WebSocket 分阶段推送进度（构建统计 → 调用 AI → 解析 → 入库）</li>
   <li>前端 2 秒轮询 + WebSocket 双重保障报告加载</li>
+</ul>
+
+<h3>技术原理</h3>
+
+<h4>多维度数据聚合</h4>
+<ol>
+  <li><strong>数据源</strong>：从 <code>job_enrichments</code> 表读取对应 <code>file_id</code> 下所有增强记录，JOIN <code>csv_files</code> 获取原始字段</li>
+  <li><strong>统计维度</strong>：薪资分布（Min/Max/Avg/Median/P25/P75）、职位分类分布（L1+L2 交叉）、技能热度排序（TF 词频）、行业分布、学历要求占比、经验年限分布、工作模式比例</li>
+  <li><strong>聚合 SQL</strong>：<code>SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY salary_monthly_min) ...</code> 计算百分位数分布</li>
+</ol>
+
+<h4>LLM 报告生成</h4>
+<ol>
+  <li><strong>Prompt 构建</strong>：将聚合统计数据注入 Prompt 模板，包含薪资分布表、技能 Top 20、行业占比等结构化数据</li>
+  <li><strong>结构化输出</strong>：LLM 返回 JSON——<code>{ title, summary, sections: [{heading, body, key_findings}], charts_config: [{type, title, option}] }</code></li>
+  <li><strong>分段解析</strong>：每个 section 独立 Markdown 正文 + 关键发现列表，charts_config 为 ECharts 完整 option 对象，前端直接渲染</li>
+  <li><strong>失败降级</strong>：JSON 解析失败时，使用正则提取 Markdown 标题分段，回退为基础文本报告</li>
+</ol>
+
+<h4>前端可视化集成</h4>
+<ul>
+  <li>ECharts 6 渲染 AI 生成的 <code>charts_config</code>，支持柱状图/饼图/折线图/散点图/雷达图</li>
+  <li>WebSocket 分阶段推送（构建统计→调用 AI→解析→入库），前端进度条实时反馈</li>
+  <li>2 秒轮询 + WebSocket 双通道确保报告加载可靠性（WebSocket 可能断线）</li>
+  <li>历史报告切换：<code>market_reports</code> 表按 <code>file_id</code> 存储多版本报告</li>
 </ul>`
   },
   'feat-query': {
@@ -223,6 +326,33 @@ const docs: Record<string, { title: string; content: string }> = {
   <li>"各城市 Java 岗位平均薪资对比"</li>
   <li>"本科学历要求的岗位有多少个？"</li>
   <li>"互联网行业的平均薪资范围"</li>
+</ul>
+
+<h3>技术原理</h3>
+
+<h4>Text-to-SQL 全流程</h4>
+<ol>
+  <li><strong>意图解析</strong>：LLM 分析自然语言问题，提取实体（"Java"、"北京"）、条件（"5年以上"、"本科"）、聚合目标（"平均薪资"、"数量"、"Top 10"）</li>
+  <li><strong>Schema 注入</strong>：System Prompt 注入 <code>job_enrichments</code> 完整表结构——字段名、类型、枚举值（如 <code>company_industry</code> 14 个合法值、<code>education_normalized</code> 5 个值），确保 SQL 字段名正确</li>
+  <li><strong>SQL 生成</strong>：LLM 输出纯 SQL 字符串，支持 SELECT/JOIN/GROUP BY/ORDER BY/LIMIT/子查询</li>
+  <li><strong>安全校验</strong>：白名单正则——仅允许 <code>SELECT</code> 语句，拦截 <code>INSERT/DROP/TRUNCATE/DELETE/ALTER/UPDATE</code>；<code>LIMIT 500</code> 自动追加；多语句分号截断</li>
+  <li><strong>参数化执行</strong>：<code>pool.query(sql)</code>，错误捕获后返回友好提示</li>
+  <li><strong>结果总结</strong>：LLM 用 2-3 句话中文总结查询结果，包含关键数值和趋势</li>
+</ol>
+
+<h4>安全白名单机制</h4>
+<ul>
+  <li><strong>语句级</strong>：正则 <code>/^(SELECT|WITH)\s/i</code> 验证，仅允许查询语句</li>
+  <li><strong>关键字黑名单</strong>：<code>INSERT|DROP|TRUNCATE|DELETE|ALTER|UPDATE|CREATE|EXEC|GRANT|REVOKE</code> 任一匹配即拦截</li>
+  <li><strong>LIMIT 强制</strong>：无 LIMIT 的查询自动追加 <code>LIMIT 500</code></li>
+  <li><strong>多语句防护</strong>：分号分割后只取第一条，防止 <code>SELECT ...; DROP TABLE ...</code></li>
+</ul>
+
+<h4>结果缓存与历史</h4>
+<ul>
+  <li><strong>saved_queries 表</strong>：持久化原始问题 + 生成 SQL + 查询结果 + LLM 总结</li>
+  <li><strong>历史回顾</strong>：按时间倒序展示查询历史，点击可查看完整结果</li>
+  <li><strong>重新执行</strong>：历史查询可一键重新执行（SQL 可能因数据变化返回不同结果）</li>
 </ul>`
   },
   'feat-anticrawl': {
@@ -242,7 +372,41 @@ const docs: Record<string, { title: string; content: string }> = {
   <li><code>POST /api/llm/anti-crawl/classify</code> — 页面分类</li>
   <li><code>POST /api/llm/anti-crawl/selectors</code> — 选择器推荐</li>
   <li><code>POST /api/llm/anti-crawl/action</code> — 应对策略</li>
-</ul>`
+</ul>
+
+<h3>技术原理</h3>
+
+<h4>AI 页面分类</h4>
+<ol>
+  <li><strong>HTML 截断</strong>：取页面 HTML 前 3000 字符（含 title/meta/body 片断），减小 LLM token 消耗</li>
+  <li><strong>Prompt 设计</strong>：System Prompt 定义 6 种反爬页面类型特征——captcha（验证码关键词）、waf（防火墙拦截标志）、login（登录表单）、error（HTTP 错误）、empty（无内容）、normal（正常）</li>
+  <li><strong>LLM 分类</strong>：返回 <code>{ type: string, confidence: number }</code>，confidence &lt; 0.6 时标记为不确定</li>
+  <li><strong>5 秒冷却</strong>：<code>lastClassifyTime</code> 时间戳缓存，避免高频重复调用 LLM（单任务可触发数十次检测）</li>
+</ol>
+
+<h4>选择器推荐</h4>
+<ol>
+  <li><strong>触发条件</strong>：DOM 解析返回 0 条结果时调用 <code>suggestSelectors</code></li>
+  <li><strong>输入</strong>：页面 HTML 片断 + 目标描述（"职位列表容器"）</li>
+  <li><strong>LLM 输出</strong>：<code>{ selectors: [{ cssSelector, description, confidence }] }</code>，推荐的 CSS 选择器按置信度排序</li>
+  <li><strong>应用</strong>：按置信度降序尝试，首个命中即返回数据，替代硬编码选择器遍历</li>
+</ol>
+
+<h4>应对策略决策</h4>
+<ol>
+  <li><strong>输入</strong>：页面分类结果 + 当前重试次数 + 浏览器状态</li>
+  <li><strong>策略映射</strong>：LLM 推荐——continue（继续）、wait（等待 N 秒）、retry（重试）、switch_ip（换 IP，预留）、abort（放弃）</li>
+  <li><strong>执行</strong>：<code>wait</code> 按建议时长 setTimeout；<code>retry</code> 重回搜索页重新加载；<code>abort</code> 跳过当前组合</li>
+</ol>
+
+<h4>与传统规则对比</h4>
+<table>
+  <tr><th>维度</th><th>传统规则</th><th>AI 增强</th></tr>
+  <tr><td>页面分类</td><td>htmlLength &lt; 5000 / 关键词匹配</td><td>LLM 理解页面语义（区分 captcha vs waf vs login）</td></tr>
+  <tr><td>选择器</td><td>硬编码 17 个选择器逐个试</td><td>LLM 分析 HTML 推荐精确选择器</td></tr>
+  <tr><td>应对</td><td>固定降级串行</td><td>LLM 根据分类+重试次数动态决策</td></tr>
+  <tr><td>扩展性</td><td>新平台需手写规则</td><td>AI 自动适应反爬变化</td></tr>
+</table>`
   },
 
   // ========== 技术栈 ==========
