@@ -73,14 +73,17 @@ export class Job51Crawler {
 
     try {
       // === 浏览器会话预热：先访问主页建立 cookies/session ===
-      this.log('info', `[Job51Crawler] 🔥 正在预热浏览器会话（访问主页）...`);
+      this.log('info', `[Job51Crawler] 🔥 正在预热浏览器会话（访问首页建立cookies）...`);
       let warmupPage: any = null;
       try {
         warmupPage = await browser.newPage();
         await warmupPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-        await warmupPage.goto('https://www.51job.com/', { waitUntil: 'networkidle2', timeout: 60000 });
+        // 先访问首页获取基础 cookie，再访问搜索页触发 acw_sc__v2 等反爬 cookie
+        await warmupPage.goto('https://we.51job.com/', { waitUntil: 'networkidle2', timeout: 60000 });
+        await new Promise(r => setTimeout(r, 3000));
+        await warmupPage.goto('https://we.51job.com/pc/search?keyword=java&city=010000', { waitUntil: 'networkidle2', timeout: 60000 });
         const warmupHtml = await warmupPage.content();
-        this.log('info', `[Job51Crawler] ✅ 主页预热完成，获取 ${warmupHtml.length} 字节 (cookies已建立)`);
+        this.log('info', `[Job51Crawler] ✅ 主页预热完成，获取 ${warmupHtml.length} 字节 (cookies/session已建立)`);
       } catch (e: any) {
         this.log('warn', `[Job51Crawler] ⚠️ 主页预热失败: ${e.message}，继续尝试搜索`);
       } finally {
@@ -100,14 +103,14 @@ export class Job51Crawler {
             return;
           }
 
-          const cityCode = city ? (JOB51_CITY_CODES[city] || '000000') : '000000';
-          const baseUrl = `https://search.51job.com/list/${cityCode},000000,0000,00,9,99,${encodeURIComponent(keyword)},2`;
+          const cityCode = city ? (JOB51_CITY_CODES[city] || '010000') : '000000';
 
           let currentPage = 1;
           let hasNextPage = true;
 
           while (hasNextPage && !this.checkAborted()) {
-            const url = `${baseUrl},${currentPage}.html`;
+            // 新 51job URL 格式：we.51job.com/pc/search?keyword=...&city=...&page=...
+            const url = `https://we.51job.com/pc/search?keyword=${encodeURIComponent(keyword)}&city=${cityCode}&page=${currentPage}&pageSize=20`;
             const pageStartTime = Date.now();
 
             this.log('info', `[Job51Crawler] 📄 第 ${currentPage} 页: ${url}`);
@@ -133,15 +136,20 @@ export class Job51Crawler {
                 }
               });
 
-              // === XHR 拦截：捕获 API 响应 ===
+              // === XHR 拦截：捕获 API 响应（支持新旧多种 API 端点）===
               const xhrResponses: any[] = [];
               page.on('response', async (response) => {
                 const respUrl = response.url();
                 const contentType = response.headers()['content-type'] || '';
-                if (respUrl.includes('51job.com') && contentType.includes('json')) {
+                const isApiUrl = respUrl.includes('51job.com') && (
+                  respUrl.includes('/api/') || respUrl.includes('/open/') || respUrl.includes('search-pc')
+                );
+                if (isApiUrl) {
                   try {
                     const json = await response.json();
-                    xhrResponses.push({ url: respUrl, data: json });
+                    if (json && typeof json === 'object') {
+                      xhrResponses.push({ url: respUrl, data: json });
+                    }
                   } catch { /* 非 JSON 或已消费 */ }
                 }
               });
@@ -152,15 +160,15 @@ export class Job51Crawler {
                 timeout: 90000,
               });
 
-              // 等待 SPA 渲染职位列表
+              // 等待 SPA 渲染职位列表（新版 Vue.js 站点）
               try {
                 await page.waitForSelector(
-                  '.joblist-item, .j_joblist, .joblist, [class*="joblist"], .resultlist, .e, .el, .dw_table',
+                  '[class*="jobItem"], [class*="job-item"], [class*="jobList"] [class*="item"], #app [class*="result"] [class*="item"], .el-card, [class*="card"][class*="job"], .van-list__item, #app .list-item',
                   { timeout: 15000, visible: true }
                 );
                 this.log('info', `[Job51Crawler] ✅ SPA 内容渲染成功`);
               } catch {
-                this.log('warn', `[Job51Crawler] ⚠️ SPA 职位列表未在预期时间内出现，尝试从已加载的 DOM 提取`);
+                this.log('warn', `[Job51Crawler] ⚠️ SPA 职位列表未在预期时间内出现，尝试从已加载的 DOM/XHR 提取`);
               }
 
               // 额外滚动触发懒加载
@@ -214,10 +222,9 @@ export class Job51Crawler {
                     this.log('info', `[Job51Crawler] 🤖 重载后AI分类: type=${reClassification.pageType}, confidence=${reClassification.confidence.toFixed(2)}`);
 
                     if (reClassification.pageType !== 'normal' && reClassification.confidence >= 0.5) {
-                      // 重载后仍然异常：尝试用备用 URL 格式
-                      this.log('warn', `[Job51Crawler] 🔄 重载后仍为 ${reClassification.pageType}，尝试备用 URL 格式...`);
-                      const altUrl = url.replace('search.51job.com/list/', 'search.51job.com/list/')
-                        .replace(',2,', ',1,');  // 尝试切换视图模式
+                      // 重载后仍异常：尝试移除 pageSize 参数或调整 page 参数重试
+                      this.log('warn', `[Job51Crawler] 🔄 重载后仍为 ${reClassification.pageType}，尝试备用参数格式...`);
+                      const altUrl = url.replace(/&pageSize=\d+/, '&pageSize=10');
                       try {
                         await page.goto(altUrl, { waitUntil: 'networkidle2', timeout: 60000 });
                         const altHtml = await page.content();
@@ -246,25 +253,41 @@ export class Job51Crawler {
               }
 
               // === 数据提取 ===
-              // 策略1：优先使用 XHR 拦截的 JSON 数据
+              // 策略1：优先使用 XHR 拦截的 JSON 数据（支持多种 API 响应格式）
               let jobs: any[] = [];
               if (xhrResponses.length > 0) {
-                const searchApi = xhrResponses.find(r =>
-                  r.data?.resultbody?.job?.items || r.data?.data?.results || r.data?.body?.jobList
-                );
+                // 查找搜索结果 API 响应（支持新旧多种响应结构）
+                const searchApi = xhrResponses.find(r => {
+                  const d = r.data;
+                  return d?.resultbody?.job?.items
+                    || d?.resultbody?.joblist?.items
+                    || d?.resultbody?.data
+                    || d?.data?.results
+                    || d?.body?.jobList
+                    || d?.result
+                    || d?.items;
+                });
                 if (searchApi) {
-                  const items = searchApi.data?.resultbody?.job?.items
-                    || searchApi.data?.data?.results
-                    || searchApi.data?.body?.jobList
+                  const d = searchApi.data;
+                  const items = d?.resultbody?.job?.items
+                    || d?.resultbody?.joblist?.items
+                    || d?.resultbody?.data
+                    || d?.data?.results
+                    || d?.body?.jobList
+                    || d?.result
+                    || d?.items
                     || [];
-                  this.log('info', `[Job51Crawler] 📡 XHR拦截获取到 ${items.length} 条结构化数据`);
-                  // 从 API JSON 映射到内部格式
+                  this.log('info', `[Job51Crawler] 📡 XHR拦截获取到 ${items.length} 条结构化数据 (来源: ${searchApi.url.substring(0, 80)})`);
+                  // 从 API JSON 映射到内部格式（适配多种字段命名）
                   jobs = items.map((item: any) => ({
-                    title: item.jobName || item.job_name || item.title || '',
-                    company: item.companyName || item.company_name || item.coName || '',
-                    salary: item.salary || item.provideSalary || item.salaryDesc || '',
-                    city: item.workCity || item.workArea || item.cityName || '',
-                    link: item.jobHref || item.detailUrl || `https://jobs.51job.com/${city || 'all'}/${item.jobId || ''}.html`,
+                    title: item.jobName || item.job_name || item.title || item.name || item.positionName || '',
+                    company: item.companyName || item.company_name || item.coName || item.company || item.corpName || '',
+                    salary: item.salary || item.provideSalary || item.salaryDesc || item.salaryRange || item.pay || '',
+                    city: item.workCity || item.workArea || item.cityName || item.city || item.region || '',
+                    link: item.jobHref || item.detailUrl || item.url
+                      || (item.jobId ? `https://jobs.51job.com/${city || 'all'}/${item.jobId}.html` : '')
+                      || (item.encryptJobId ? `https://we.51job.com/pc/detail?jobId=${item.encryptJobId}` : ''),
+                    jobId: item.jobId || item.encryptJobId || item.id || '',
                   }));
                 }
               }
@@ -289,14 +312,14 @@ export class Job51Crawler {
                           const els = document.querySelectorAll(selector);
                           return Array.from(els).slice(0, 50).map((el: Element) => {
                             const a = el.querySelector('a') || el.closest('a');
-                            const title = el.querySelector('[class*="title"], [class*="name"], [class*="job"]')?.textContent?.trim()
+                            const title = el.querySelector('[class*="title"], [class*="name"], [class*="job"], h3, h2')?.textContent?.trim()
                               || a?.textContent?.trim() || el.textContent?.trim().substring(0, 60) || '';
                             return {
                               title,
-                              company: el.querySelector('[class*="company"], [class*="cname"]')?.textContent?.trim() || '',
-                              salary: el.querySelector('[class*="salary"], [class*="pay"], [class*="sal"]')?.textContent?.trim() || '',
-                              city: el.querySelector('[class*="city"], [class*="area"], [class*="location"]')?.textContent?.trim() || '',
-                              link: a?.href || '',
+                              company: el.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"]')?.textContent?.trim() || '',
+                              salary: el.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]')?.textContent?.trim() || '',
+                              city: el.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"]')?.textContent?.trim() || '',
+                              link: a?.href || el.getAttribute('href') || '',
                             };
                           });
                         }, s.selector);
@@ -371,13 +394,18 @@ export class Job51Crawler {
                 await this.randomDelay(1500, 3500);
               }
 
-              // 检查下一页
+              // 检查下一页（多种方式）
               hasNextPage = await page.evaluate(() => {
+                // 新版 Element UI / Ant Design 分页器
                 const nextBtn = document.querySelector(
-                  '.p_in .next:not(.disabled), .next:not(.disabled), [class*="pager"] .next:not(.disabled), a[class*="next"]:not([class*="disabled"])'
+                  '.el-pager .btn-next:not(.disabled), .el-pagination .btn-next:not([disabled]), .ant-pagination .ant-pagination-next:not([disabled]), [class*="pagination"] [class*="next"]:not([class*="disabled"]), .page-next:not(.disabled), [class*="pager"] .next:not(.disabled), a[class*="next"]:not([class*="disabled"]), button[class*="next"]:not([disabled])'
                 );
                 return !!nextBtn;
               });
+              // 兜底：如果本页提取到 0 条职位，视为无下一页
+              if (hasNextPage && jobs.length === 0) {
+                hasNextPage = false;
+              }
 
               const pageDuration = ((Date.now() - pageStartTime) / 1000).toFixed(1);
               this.log('info', `[Job51Crawler] 第 ${currentPage} 页完成 (${pageDuration}s) | next=${hasNextPage}`);
@@ -450,12 +478,14 @@ export class Job51Crawler {
       const jobs: any[] = [];
       const seen = new Set<string>();
 
-      // 策略 A：51job 新版 SPA 职位卡片
+      // 策略 A：51job 新版 SPA 职位卡片（Vue.js / Element UI 站点）
       const selectors = [
-        '.joblist-item', '.j_joblist .e', '.e_result .e',
-        '[class*="joblist"] [class*="item"]', '.dw_table .el',
-        'div[data-jid]', 'li[data-jid]',
-        'a[href*="/job/"]', 'a[href*="jobs.51job.com"]',
+        '[class*="jobItem"]', '[class*="job-item"]', '[class*="job_item"]',
+        '[class*="jobList"] [class*="item"]', '[class*="job_list"] [class*="item"]',
+        '#app [class*="result"] [class*="item"]', '#app [class*="list"] [class*="item"]',
+        '.el-card', '[class*="card"]', '.van-list__item',
+        'div[data-jid]', 'li[data-jid]', 'div[data-jobid]',
+        'a[href*="/job/"]', 'a[href*="jobs.51job.com"]', 'a[href*="/pc/detail"]',
       ];
 
       for (const sel of selectors) {
@@ -465,11 +495,11 @@ export class Job51Crawler {
           const isLink = sel.startsWith('a[');
           const container = isLink ? el : el;
 
-          const titleEl = container.querySelector('.jname a, [class*="title"], [class*="name"], [class*="job"], a[href*="/job/"]');
-          const companyEl = container.querySelector('.cname a, [class*="company"], [class*="cname"]');
-          const salaryEl = container.querySelector('.sal, [class*="salary"], [class*="pay"]');
-          const cityEl = container.querySelector('.ltype, [class*="city"], [class*="area"], [class*="location"]');
-          const linkEl = isLink ? el : container.querySelector('a[href*="/job/"], a[href*="jobs.51job.com"]');
+          const titleEl = container.querySelector('[class*="title"], [class*="name"], [class*="job"], a[href*="/job/"], a[href*="/pc/detail"], h3, h2, .jname a');
+          const companyEl = container.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"], a[class*="com"]');
+          const salaryEl = container.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]');
+          const cityEl = container.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"], .ltype');
+          const linkEl = isLink ? el : container.querySelector('a[href*="/job/"], a[href*="jobs.51job.com"], a[href*="/pc/detail"]');
 
           const title = titleEl?.textContent?.trim() || (isLink ? el.textContent?.trim() : '');
           const link = (linkEl as HTMLAnchorElement)?.href || (isLink ? (el as HTMLAnchorElement).href : '');
@@ -567,13 +597,22 @@ export class Job51Crawler {
 
           const result: any = {};
 
-          result.title = get('h1[class*="title"], .job-name h1, .cn h1, [class*="jobName"], .tHeader h1');
-          result.company = get('.cname a, .company-name, [class*="company"] a, .com_name, .tCompany_sidebar a');
-          result.salary = get('[class*="salary"], .sal, .cn strong, [class*="pay"], .tHeader strong');
-          result.city = get('.ltype, [class*="area"], [class*="location"], [class*="workCity"]');
+          // 标题：新旧站点多种选择器
+          result.title = get('h1[class*="title"], h1, .job-name h1, .cn h1, [class*="jobName"], [class*="job-name"], [class*="position"] h2, .tHeader h1, .detail-title');
 
-          // 经验/学历/工作类型
-          const infoEls = document.querySelectorAll('.msg.ltype span, .jtag span, .bmsg, [class*="info"] span, [class*="require"] span, .t1 span');
+          // 公司名：新旧站点多种选择器
+          result.company = get('.cname a, .company-name, [class*="company"] a, [class*="company"] h2, .com_name, .tCompany_sidebar a, [class*="corp"] a, [class*="enterprise"] a');
+
+          // 薪资
+          result.salary = get('[class*="salary"], .sal, .cn strong, [class*="pay"], .tHeader strong, [class*="wage"], [class*="remuneration"]');
+
+          // 城市
+          result.city = get('.ltype, [class*="area"], [class*="location"], [class*="workCity"], [class*="address"], [class*="region"]');
+
+          // 经验/学历/工作类型（新旧站点各种选择器）
+          const infoEls = document.querySelectorAll(
+            '.msg.ltype span, .jtag span, .bmsg, [class*="info"] span, [class*="require"] span, .t1 span, [class*="detail"] span, [class*="condition"] span, [class*="tag"] span'
+          );
           infoEls.forEach((el: Element) => {
             const t = (el.textContent || '').trim();
             if (/\d+-?\d*年/.test(t) || t.includes('经验')) result.experience = t;
@@ -582,15 +621,23 @@ export class Job51Crawler {
             else if (/招\d+人/.test(t)) result.recruitmentCount = t;
           });
 
-          result.jobDescription = get('.job_msg, .bmsg, .tBorderL_msg, [class*="job-detail"], [class*="jobDesc"], [class*="description"], .tCompany_main');
-          result.jobTags = Array.from(document.querySelectorAll('.jtag .t1 span, [class*="tag"], [class*="skill"], .bmsg .t2 span'))
-            .map(t => t.textContent?.trim()).filter(Boolean).join(',');
+          // 职位描述
+          result.jobDescription = get(
+            '.job_msg, .bmsg, .tBorderL_msg, [class*="job-detail"], [class*="jobDesc"], [class*="description"], .tCompany_main, [class*="job_content"], [class*="detail_content"], [class*="responsibility"]'
+          );
 
-          result.companyNature = get('[class*="type"], [class*="nature"], .com_tag span, .tCompany_sidebar .com_tag');
-          result.companyScale = get('[class*="scale"], [class*="size"], .tCompany_sidebar .com_scale');
-          result.address = get('[class*="address"], .bmsg address, [class*="location"], .tBorderL_msg .fp');
+          // 职位标签
+          result.jobTags = Array.from(document.querySelectorAll(
+            '.jtag .t1 span, [class*="tag"], [class*="skill"], .bmsg .t2 span, [class*="label"], [class*="welfare"] span'
+          )).map(t => t.textContent?.trim()).filter(Boolean).join(',');
 
-          const updateEl = document.querySelector('[class*="update"], [class*="refresh"], [class*="time"]');
+          // 公司性质/规模
+          result.companyNature = get('[class*="type"], [class*="nature"], .com_tag span, .tCompany_sidebar .com_tag, [class*="company_type"]');
+          result.companyScale = get('[class*="scale"], [class*="size"], .tCompany_sidebar .com_scale, [class*="company_size"]');
+          result.address = get('[class*="address"], .bmsg address, [class*="location"], .tBorderL_msg .fp, [class*="workplace"]');
+
+          // 更新时间
+          const updateEl = document.querySelector('[class*="update"], [class*="refresh"], [class*="time"], [class*="publish"], [class*="date"]');
           result.updateDateText = updateEl?.textContent?.trim() || '';
 
           return result;
@@ -634,7 +681,7 @@ export class Job51Crawler {
     }
 
     return {
-      jobId: `51${Date.now()}${Math.random().toString(36).substring(2, 9)}`,
+      jobId: basicInfo.jobId || `51${Date.now()}${Math.random().toString(36).substring(2, 9)}`,
       jobName: detail.title || basicInfo.title || '',
       companyName: detail.company || basicInfo.company || '未知企业',
       salaryRange: detail.salary || basicInfo.salary || '面议',
@@ -658,7 +705,7 @@ export class Job51Crawler {
 
   private generateBasicJob(basicInfo: any, config?: TaskConfig): JobData {
     return {
-      jobId: `51fb${Date.now()}${Math.random().toString(36).substring(2, 7)}`,
+      jobId: basicInfo.jobId || `51fb${Date.now()}${Math.random().toString(36).substring(2, 7)}`,
       jobName: basicInfo.title || '',
       companyName: basicInfo.company || '未知企业',
       salaryRange: basicInfo.salary || '面议',
