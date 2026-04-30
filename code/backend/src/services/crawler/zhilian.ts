@@ -1624,9 +1624,9 @@ strategy1Stats.failedExtractions++;
                   const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
                   if (abortResumeTask) {
                     const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
-                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: currentJobIndex };
                     await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
-                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（异常路径）: 组合${currentCombination}, 第${currentPage}页`);
+                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（异常路径）: 组合${currentCombination}, 第${currentPage}页, 职位${currentJobIndex + 1}`);
                   }
                 } catch (e: any) {
                   this.log('error', `[ZhilianCrawler] ❌ 保存中止断点失败:`, e.message);
@@ -1762,9 +1762,9 @@ strategy1Stats.failedExtractions++;
                   const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
                   if (abortResumeTask) {
                     const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
-                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                    abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: currentJobIndex };
                     await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
-                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存: 组合${currentCombination}, 第${currentPage}页`);
+                    this.log('info', `[ZhilianCrawler] 💾 中止断点已保存: 组合${currentCombination}, 第${currentPage}页, 职位${currentJobIndex + 1}`);
                   }
                 } catch (e: any) {
                   // 保存失败不影响继续
@@ -1795,9 +1795,9 @@ strategy1Stats.failedExtractions++;
               if (abortResumeTask) {
                 const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
                 if (!abortConfig._resumeState) {
-                  abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                  abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: currentJobIndex };
                   await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
-                  this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（组合退出路径）: 组合${currentCombination}, 第${currentPage}页`);
+                  this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（组合退出路径）: 组合${currentCombination}, 第${currentPage}页, 职位${currentJobIndex + 1}`);
                 }
               }
             } catch (e: any) {
