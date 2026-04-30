@@ -372,6 +372,10 @@ export class Job51Crawler {
                     || d?.items
                     || [];
                   this.log('info', `[Job51Crawler] 📡 XHR拦截获取到 ${items.length} 条结构化数据 (来源: ${searchApi.url.substring(0, 80)})`);
+                  // 诊断：输出第一条数据的字段名，确认API响应结构
+                  if (items.length > 0) {
+                    this.log('info', `[Job51Crawler] 🔍 API响应字段: ${Object.keys(items[0]).join(', ')}`);
+                  }
                   // 从 API JSON 映射到内部格式（适配多种字段命名）
                   jobs = items.map((item: any) => ({
                     title: item.jobName || item.job_name || item.title || item.name || item.positionName || '',
@@ -382,16 +386,25 @@ export class Job51Crawler {
                       || (item.jobId ? `https://jobs.51job.com/${city || 'all'}/${item.jobId}.html` : '')
                       || (item.encryptJobId ? `https://we.51job.com/pc/detail?jobId=${item.encryptJobId}` : ''),
                     jobId: item.jobId || item.encryptJobId || item.id || '',
+                    // 详情字段（API 可能直接返回）
+                    education: item.education || item.degree || item.degreeName || item.eduLevel || item.educationLevel || item.degreeRequirement || '',
+                    experience: item.workYear || item.workExperience || item.experience || item.workingYears || item.requiredExperience || '',
+                    workType: item.workType || item.employType || item.employmentType || item.jobNature || '',
+                    address: item.workAddress || item.companyAddress || item.address || item.workPlace || item.workplace || '',
+                    recruitmentCount: item.recruitmentCount || item.recruitCount || item.hireCount || item.headCount || '',
+                    jobDescription: item.jobDescription || item.description || item.jobDesc || item.duty || '',
+                    jobTags: item.jobTags || item.tags || item.welfare || item.benefits || '',
+                    jobCategory: item.jobCategory || item.funcCategory || item.functionName || item.jobFunction || '',
                     // 51job 新增字段
-                    titleCategory: item.jobType || item.jobCategory || item.typeName || item.categoryName || '',
+                    titleCategory: item.jobType || item.jobCategory || item.typeName || item.categoryName || item.positionCategory || '',
                     isUrgent: item.isUrgent || item.urgentJob || item.urgent || item.isEmergent || '',
                     companyDetailUrl: item.companyHref || item.coUrl || item.companyUrl
                       || (item.coId ? `https://jobs.51job.com/company/${item.coId}.html` : '')
                       || (item.companyId ? `https://we.51job.com/pc/company?companyId=${item.companyId}` : ''),
                     registeredAddress: item.companyAddress || item.regAddress || item.registeredAddress || '',
-                    businessScope: item.businessScope || item.bizScope || item.companyBusiness || '',
-                    companyScale: item.companyScale || item.coSize || item.scale || '',
-                    companyNature: item.companyNature || item.coType || item.companyType || item.nature || '',
+                    businessScope: item.businessScope || item.bizScope || item.companyBusiness || item.scope || '',
+                    companyScale: item.companyScale || item.coSize || item.scale || item.size || item.employeeCount || '',
+                    companyNature: item.companyNature || item.coType || item.companyType || item.nature || item.corpType || '',
                   }));
                 }
               }
@@ -815,6 +828,15 @@ export class Job51Crawler {
         await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
         const html = await page.content();
+
+        // 保存详情页HTML快照（用于诊断提取问题）
+        try {
+          const debugDir = path.join(__dirname, '../../../debug');
+          if (!fs.existsSync(debugDir)) fs.mkdirSync(debugDir, { recursive: true });
+          const safeName = jobUrl.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 60);
+          fs.writeFileSync(path.join(debugDir, `job51_detail_${safeName}_${Date.now()}.html`), html);
+        } catch { /* ignore */ }
+
         const classification = await classifyPage(html, jobUrl);
 
         if (classification.confidence >= 0.5 && (classification.pageType === 'waf' || classification.pageType === 'captcha')) {
@@ -834,6 +856,40 @@ export class Job51Crawler {
             };
           })();
 
+          // 获取页面全文本（用于兜底提取）
+          var bodyText = (document.body && document.body.innerText) ? document.body.innerText : '';
+          // 按标签分割文本行，更精确匹配
+          var textLines = bodyText.split('\n').map(function(l) { return l.trim(); }).filter(function(l) { return l.length > 0; });
+
+          // 从文本行中查找标签对应的值（如 "公司规模：500-1000人" → "500-1000人"）
+          var findByLabel = (function() {
+            return function(labels, fallbackPattern) {
+              for (var li = 0; li < textLines.length; li++) {
+                var line = textLines[li];
+                for (var lj = 0; lj < labels.length; lj++) {
+                  var idx = line.indexOf(labels[lj]);
+                  if (idx !== -1) {
+                    var val = line.substring(idx + labels[lj].length).replace(/^[：:\s]+/, '').trim();
+                    if (val && val.length < 80) return val;
+                    // 值可能跨行（标签在上一行末尾）
+                    if (!val && li + 1 < textLines.length) {
+                      var nextLine = textLines[li + 1];
+                      if (nextLine && nextLine.length < 80 && nextLine.indexOf('：') === -1 && nextLine.indexOf(':') === -1) {
+                        return nextLine;
+                      }
+                    }
+                  }
+                }
+              }
+              // 兜底：正则匹配
+              if (fallbackPattern) {
+                var m = bodyText.match(fallbackPattern);
+                if (m) return m[1] || m[0] || '';
+              }
+              return '';
+            };
+          })();
+
           var result = {};
 
           // 标题
@@ -845,60 +901,142 @@ export class Job51Crawler {
           // 薪资
           result.salary = get('[class*="salary"], .sal, .cn strong, [class*="pay"], .tHeader strong, [class*="wage"], [class*="remuneration"]');
 
-          // 城市
-          result.city = get('.ltype, [class*="area"], [class*="location"], [class*="workCity"], [class*="address"], [class*="region"]');
+          // 城市：仅保留城市名，去掉区/县
+          var rawCity = get('.ltype, [class*="area"], [class*="location"], [class*="workCity"], [class*="address"], [class*="region"]');
+          // 城市名清理：去掉"市"后面的区/县/街道
+          var cityClean = rawCity.replace(/[市].+$/, '市');
+          // 如果清理后很短（只有"北京"这种），保留原名
+          if (cityClean.length >= 3) {
+            result.city = cityClean;
+          } else {
+            // 尝试匹配已知城市名
+            var cityMatch = rawCity.match(/(北京|上海|广州|深圳|杭州|南京|成都|武汉|西安|重庆|苏州|郑州|长沙|青岛|大连|厦门|宁波|无锡|佛山|东莞|合肥|福州|济南|昆明|哈尔滨|长春|沈阳|南昌|贵阳|南宁|海口|天津)/);
+            result.city = cityMatch ? cityMatch[0] : rawCity;
+          }
 
-          // 经验/学历/工作类型
+          // === 标签元素遍历（经验/学历/工作类型/招聘人数） ===
           var infoEls = document.querySelectorAll(
-            '.msg.ltype span, .jtag span, .bmsg, [class*="info"] span, [class*="require"] span, .t1 span, [class*="detail"] span, [class*="condition"] span, [class*="tag"] span'
+            '.msg.ltype span, .jtag span, .bmsg, [class*="info"] span, [class*="require"] span, .t1 span, [class*="detail"] span, [class*="condition"] span, [class*="tag"] span, [class*="item"] span, .job-header span'
           );
           infoEls.forEach(function(el) {
             var t = (el.textContent || '').trim();
-            if (/\d+-?\d*年/.test(t) || t.indexOf('经验') !== -1) result.experience = t;
-            else if (/(本科|硕士|博士|大专|中专|高中|初中|不限)/.test(t)) result.education = t;
-            else if (/(全职|兼职|实习|合同)/.test(t)) result.workType = t;
-            else if (/招\d+人/.test(t)) result.recruitmentCount = t;
+            if (!t) return;
+            if (/\d+-?\d*年/.test(t) || t.indexOf('经验') !== -1) result.experience = result.experience || t;
+            else if (/(本科|硕士|博士|大专|中专|高中|初中|不限|MBA|EMBA)/.test(t)) result.education = result.education || t;
+            else if (/(全职|兼职|实习|合同)/.test(t)) result.workType = result.workType || t;
+            else if (/招\d+人/.test(t)) result.recruitmentCount = result.recruitmentCount || t;
           });
+
+          // === 文本兜底：从全文本提取 CSS 未匹配到的字段 ===
+
+          // 学历（文本兜底）
+          if (!result.education) {
+            var eduMatch = bodyText.match(/(本科|硕士|博士|大专|中专|高中|初中|MBA|EMBA|学历不限)/);
+            if (eduMatch) result.education = eduMatch[0];
+          }
+
+          // 工作经验（文本兜底）
+          if (!result.experience) {
+            var expMatch = bodyText.match(/(\d+-\d+年|\d+年以上|\d+年经验|经验不限|应届生|无需经验|在校生)/);
+            if (expMatch) result.experience = expMatch[0];
+          }
+
+          // 工作类型（文本兜底）
+          if (!result.workType) {
+            var wtMatch = bodyText.match(/(全职|兼职|实习|合同制|劳务派遣|临时工)/);
+            if (wtMatch) result.workType = wtMatch[0];
+            else result.workType = '全职';
+          }
+
+          // 招聘人数（文本兜底）
+          if (!result.recruitmentCount) {
+            var rcMatch = bodyText.match(/招(\d+)人/);
+            if (rcMatch) result.recruitmentCount = rcMatch[0];
+          }
 
           // 职位描述
           result.jobDescription = get(
             '.job_msg, .bmsg, .tBorderL_msg, [class*="job-detail"], [class*="jobDesc"], [class*="description"], .tCompany_main, [class*="job_content"], [class*="detail_content"], [class*="responsibility"]'
           );
+          // 职位描述文本兜底：通常是最长的几段文本
+          if (!result.jobDescription || result.jobDescription.length < 20) {
+            var longTexts = textLines.filter(function(l) { return l.length > 50; });
+            if (longTexts.length > 0) {
+              result.jobDescription = longTexts.slice(0, 5).join('\n');
+            }
+          }
 
           // 职位标签
           result.jobTags = Array.from(document.querySelectorAll(
             '.jtag .t1 span, [class*="tag"], [class*="skill"], .bmsg .t2 span, [class*="label"], [class*="welfare"] span'
           )).map(function(t) { return t.textContent ? t.textContent.trim() : ''; }).filter(function(v) { return !!v; }).join(',');
+          // 标签文本兜底：匹配福利关键词
+          if (!result.jobTags) {
+            var welfareMatch = bodyText.match(/(五险一金|周末双休|带薪年假|绩效奖金|节日福利|定期体检|员工旅游|餐补|交通补助|通讯补贴|住房补贴|年终奖|股票期权|弹性工作|专业培训|出国机会|包吃|包住|全勤奖|加班补助|高温补贴|补充医保|补充公积金)/g);
+            if (welfareMatch) result.jobTags = welfareMatch.join(',');
+          }
 
-          // 公司性质/规模
+          // === 公司信息：CSS 选择器 + 按标签查找 ===
+
+          // 企业性质/类型
           result.companyNature = get('[class*="type"], [class*="nature"], .com_tag span, .tCompany_sidebar .com_tag, [class*="company_type"]');
+          if (!result.companyNature) {
+            result.companyNature = findByLabel(['公司性质', '企业性质', '单位性质', '企业类型', '公司类型'], /(民营|国企|国有企业|外资|外商独资|合资|上市公司|事业单位|政府机关|非营利机构|创业公司|股份制|个体工商)/);
+          }
+
+          // 公司规模
           result.companyScale = get('[class*="scale"], [class*="size"], .tCompany_sidebar .com_scale, [class*="company_size"]');
+          if (!result.companyScale) {
+            result.companyScale = findByLabel(['公司规模', '企业规模', '员工人数', '规模'], /(\d+-\d+人|\d+人以上|少于\d+人|\d+余人)/);
+          }
+
+          // 工作地址
           result.address = get('[class*="address"], .bmsg address, [class*="location"], .tBorderL_msg .fp, [class*="workplace"]');
+          if (!result.address) {
+            result.address = findByLabel(['工作地址', '上班地址', '公司地址', '办公地址', '工作地点'], null);
+          }
 
           // 经营范围
           result.businessScope = get('[class*="business"], [class*="bizScope"], [class*="scope"], [class*="businessScope"]');
+          if (!result.businessScope) {
+            result.businessScope = findByLabel(['经营范围', '主营业务', '业务范围'], null);
+          }
 
           // 注册地址
           result.registeredAddress = get('[class*="regAddress"], [class*="registered"], [class*="reg_address"], [class*="companyAddress"]');
+          if (!result.registeredAddress) {
+            result.registeredAddress = findByLabel(['注册地址', '注册地', '登记地址'], null);
+            // 注册地址可能跟公司地址相同
+            if (!result.registeredAddress && result.address) result.registeredAddress = result.address;
+          }
 
           // 职称分类
-          result.titleCategory = get('[class*="jobType"], [class*="jobCategory"], [class*="category"], [class*="positionType"], [class*="title"]');
+          result.titleCategory = get('[class*="jobType"], [class*="jobCategory"], [class*="category"], [class*="positionType"]');
+          if (!result.titleCategory) {
+            result.titleCategory = findByLabel(['职称分类', '职位类别', '岗位类别', '职位类型'], null);
+          }
+          // 避免匹配到完整职位名：职称分类通常是较短分类词
+          if (result.titleCategory && result.titleCategory.length > 15) {
+            result.titleCategory = '';
+          }
 
           // 职能类别
           result.jobCategory = get('[class*="function"], [class*="funcCategory"], [class*="jobCat"], [class*="job_category"]');
+          if (!result.jobCategory) {
+            result.jobCategory = findByLabel(['职能类别', '职能', '工作职能', '岗位职能'], null);
+          }
+          if (result.jobCategory && result.jobCategory.length > 15) {
+            result.jobCategory = '';
+          }
 
           // 是否紧急招聘
           var isUrgent = '';
           var urgentEls = document.querySelectorAll('[class*="urgent"], [class*="emergency"], .urgent-tag, .hot-tag');
           urgentEls.forEach(function(el) {
             var txt = (el.textContent || '').trim();
-            if (txt === '急' || txt.indexOf('急聘') !== -1) {
-              isUrgent = '是';
-            }
+            if (txt === '急' || txt.indexOf('急聘') !== -1) isUrgent = '是';
           });
-          if (!isUrgent && document.body && document.body.innerText && document.body.innerText.indexOf('急聘') !== -1) {
-            isUrgent = '是';
-          }
+          if (!isUrgent && bodyText.indexOf('急聘') !== -1) isUrgent = '是';
           result.isUrgent = isUrgent;
 
           // 公司详情链接
@@ -957,17 +1095,17 @@ export class Job51Crawler {
       companyName: detail.company || basicInfo.company || '未知企业',
       salaryRange: detail.salary || basicInfo.salary || '面议',
       workCity: detail.city || basicInfo.city || config.city || '',
-      workExperience: detail.experience || '',
-      education: detail.education || '',
-      workAddress: detail.address || '',
-      jobDescription: detail.jobDescription || '',
-      jobTags: detail.jobTags || '',
-      jobCategory: detail.jobCategory || basicInfo.titleCategory || '',
+      workExperience: detail.experience || basicInfo.experience || '',
+      education: detail.education || basicInfo.education || '',
+      workAddress: detail.address || basicInfo.address || '',
+      jobDescription: detail.jobDescription || basicInfo.jobDescription || '',
+      jobTags: detail.jobTags || basicInfo.jobTags || '',
+      jobCategory: detail.jobCategory || basicInfo.jobCategory || basicInfo.titleCategory || '',
       companyNature: detail.companyNature || basicInfo.companyNature || '',
       companyScale: detail.companyScale || basicInfo.companyScale || '',
       businessScope: detail.businessScope || basicInfo.businessScope || '',
-      recruitmentCount: detail.recruitmentCount || '',
-      workType: detail.workType || '全职',
+      recruitmentCount: detail.recruitmentCount || basicInfo.recruitmentCount || '',
+      workType: detail.workType || basicInfo.workType || '全职',
       companyCode: '',
       updateDate,
       dataSource: '前程无忧',
@@ -987,17 +1125,17 @@ export class Job51Crawler {
       companyName: basicInfo.company || '未知企业',
       salaryRange: basicInfo.salary || '面议',
       workCity: basicInfo.city || config?.city || '',
-      workExperience: '',
-      education: '',
-      workAddress: '',
-      jobDescription: '',
-      jobTags: '',
-      jobCategory: basicInfo.titleCategory || '',
+      workExperience: basicInfo.experience || '',
+      education: basicInfo.education || '',
+      workAddress: basicInfo.address || '',
+      jobDescription: basicInfo.jobDescription || '',
+      jobTags: basicInfo.jobTags || '',
+      jobCategory: basicInfo.jobCategory || basicInfo.titleCategory || '',
       companyNature: basicInfo.companyNature || '',
       companyScale: basicInfo.companyScale || '',
       businessScope: basicInfo.businessScope || '',
-      recruitmentCount: '',
-      workType: '全职',
+      recruitmentCount: basicInfo.recruitmentCount || '',
+      workType: basicInfo.workType || '全职',
       companyCode: '',
       updateDate: new Date().toISOString().split('T')[0],
       dataSource: '前程无忧',
