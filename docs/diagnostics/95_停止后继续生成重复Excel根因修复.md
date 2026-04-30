@@ -114,6 +114,30 @@ taskService: controller.signal.aborted=true → stop handler 执行
 |------|------|------|
 | catch 块三路分支 | zhilian.ts | if/else if/else 结构替代原有的单路 if |
 | 中止分支不抛错 | zhilian.ts | hasNextPage=false 替代 throw error |
+| 组合退出路径补存 | zhilian.ts | line 1741 处增加 `_resumeState` 保存，覆盖 randomDelay 期间中止场景 |
+
+## 补充修复（第四次迭代）
+
+### 第三层：randomDelay 期间的断点保存缺口
+
+在 while 循环内部，代码结构如下：
+
+```
+while (hasNextPage && !checkAborted()) {
+    try { ... } catch { ... } finally { ... }
+    
+    if (checkAborted() || !hasNextPage) {  // line 1711 ← 正常中止在此保存
+        保存 _resumeState → break;
+    }
+    currentPage++;                          // line 1729
+    await this.randomDelay(2000, 4000);     // line 1736 ← 如果在此中止...
+}
+// line 1741 ← ...走到这里时没有保存 _resumeState！
+```
+
+如果用户在 `randomDelay` 期间点击停止，`abortableSleep` 被中断，while 条件失效退出循环，但 `_resumeState` **不会被保存**（line 1711 已经错过，line 1741 原本只打印日志不保存）。
+
+**修复**：在 line 1741 的 `checkAborted()` 分支中增加防御性保存（仅当 `_resumeState` 不存在时才写入，避免覆盖已有断点）。
 
 ## 效果
 

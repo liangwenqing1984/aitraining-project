@@ -1740,6 +1740,23 @@ strategy1Stats.failedExtractions++;
           // 🔧 修复：如果是用户中止，跳过"完成组合"逻辑，保留当前 _resumeState
           if (this.checkAborted()) {
             this.log('info', `[ZhilianCrawler] ⚠️ 组合 ${currentCombination}/${totalCombinationCount} 被中止，保留断点续传状态`);
+
+            // 🔧 关键修复：保存 _resumeState 到 DB config
+            // 处理在 while 循环外部（如 randomDelay 期间）被中止的场景
+            // 此时 line 1711 的保存点已错过，必须在此处补存
+            try {
+              const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+              if (abortResumeTask) {
+                const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
+                if (!abortConfig._resumeState) {
+                  abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
+                  await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                  this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（组合退出路径）: 组合${currentCombination}, 第${currentPage}页`);
+                }
+              }
+            } catch (e: any) {
+              this.log('error', `[ZhilianCrawler] ❌ 保存中止断点失败:`, e.message);
+            }
             // 不执行组合完成进度更新，让外层的 abort 检测处理返回
           } else {
 
