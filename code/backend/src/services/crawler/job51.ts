@@ -318,22 +318,31 @@ export class Job51Crawler {
                       this.log('info', `[Job51Crawler]   尝试: "${s.selector}" (${s.type}, confidence: ${s.confidence})`);
                       try {
                         // @ts-ignore
-                        const aiJobs = await page.evaluate((selector: string) => {
-                          const els = document.querySelectorAll(selector);
-                          return Array.from(els).slice(0, 50).map((el: Element) => {
-                            const a = el.querySelector('a') || el.closest('a');
-                            const title = el.querySelector('[class*="title"], [class*="name"], [class*="job"], h3, h2')?.textContent?.trim()
-                              || a?.textContent?.trim() || el.textContent?.trim().substring(0, 60) || '';
-                            const companyEl = el.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"]');
+                        const aiJobs = await page.evaluate(function(selector) {
+                          var els = document.querySelectorAll(selector);
+                          return Array.from(els).slice(0, 50).map(function(el) {
+                            var a = el.querySelector('a') || el.closest('a');
+                            var titleEl = el.querySelector('[class*="title"], [class*="name"], [class*="job"], h3, h2');
+                            var title = (titleEl && titleEl.textContent && titleEl.textContent.trim()) || '';
+                            if (!title && a && a.textContent) title = a.textContent.trim();
+                            if (!title && el.textContent) title = el.textContent.trim().substring(0, 60);
+                            var companyEl = el.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"]');
+                            var salaryEl = el.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]');
+                            var cityEl = el.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"]');
+                            var categoryEl = el.querySelector('[class*="jobType"], [class*="category"], [class*="type"]');
+                            var textContent = el.textContent || '';
+                            var companyDetailUrl = '';
+                            var companyLinkEl = (companyEl && companyEl.closest && companyEl.closest('a')) || el.querySelector('a[href*="/company/"], a[href*="coId"]');
+                            if (companyLinkEl && companyLinkEl.href) companyDetailUrl = companyLinkEl.href;
                             return {
-                              title,
-                              company: companyEl?.textContent?.trim() || '',
-                              salary: el.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]')?.textContent?.trim() || '',
-                              city: el.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"]')?.textContent?.trim() || '',
-                              link: a?.href || el.getAttribute('href') || '',
-                              titleCategory: el.querySelector('[class*="jobType"], [class*="category"], [class*="type"]')?.textContent?.trim() || '',
-                              isUrgent: (el.textContent || '').includes('急聘') || (el.textContent || '').includes('急') ? '是' : '',
-                              companyDetailUrl: (companyEl?.closest('a') || el.querySelector('a[href*="/company/"], a[href*="coId"]')) as any ? (companyEl?.closest('a') as HTMLAnchorElement)?.href || el.querySelector('a[href*="/company/"], a[href*="coId"]')?.getAttribute('href') || '' : '',
+                              title: title,
+                              company: (companyEl && companyEl.textContent && companyEl.textContent.trim()) || '',
+                              salary: (salaryEl && salaryEl.textContent && salaryEl.textContent.trim()) || '',
+                              city: (cityEl && cityEl.textContent && cityEl.textContent.trim()) || '',
+                              link: (a && a.href) || el.getAttribute('href') || '',
+                              titleCategory: (categoryEl && categoryEl.textContent && categoryEl.textContent.trim()) || '',
+                              isUrgent: textContent.indexOf('急聘') !== -1 || textContent.indexOf('急') !== -1 ? '是' : '',
+                              companyDetailUrl: companyDetailUrl,
                             };
                           });
                         }, s.selector);
@@ -369,43 +378,108 @@ export class Job51Crawler {
                 ? filteredJobs.slice(0, config.maxRecordsPerPage)
                 : filteredJobs;
 
-              // === 处理职位：列表数据 + 详情页抓取 ===
-              for (let i = 0; i < pageJobs.length && !this.checkAborted(); i++) {
-                const job = pageJobs[i];
-                this.log('info', `[Job51Crawler] [${i + 1}/${pageJobs.length}] ${job.title}`);
+              // === 处理职位：列表数据 + 详情页抓取（支持并发） ===
+              const concurrency = config.concurrency || 1;
+              const maxConcurrency = Math.min(concurrency, 3);
+              this.log('info', `[Job51Crawler] 🚀 处理职位: 并发数=${maxConcurrency} (配置=${concurrency}), 总职位数=${pageJobs.length}`);
 
-                let jobData: JobData;
-                if (job.link) {
-                  try {
-                    const fullUrl = job.link.startsWith('http') ? job.link : `https:${job.link}`;
-                    jobData = await this.fetchJobDetail(browser, fullUrl, job, config);
-                  } catch (e: any) {
-                    if (e.message?.includes('WAF_DETECTED')) {
-                      // AI 反爬接入点 3：详情页触发反爬
-                      if (this.antiCrawlState.lastClassification) {
-                        const action = await recommendAction(this.antiCrawlState.lastClassification);
-                        if (action.action === 'abort') throw e;
-                        await new Promise(r => setTimeout(r, action.waitMs));
+              if (maxConcurrency <= 1) {
+                // 串行模式
+                this.log('info', `[Job51Crawler] ⚡ 使用串行模式处理`);
+                for (let i = 0; i < pageJobs.length && !this.checkAborted(); i++) {
+                  const job = pageJobs[i];
+                  this.log('info', `[Job51Crawler] [${i + 1}/${pageJobs.length}] ${job.title}`);
+
+                  let jobData: JobData;
+                  if (job.link) {
+                    try {
+                      const fullUrl = job.link.startsWith('http') ? job.link : `https:${job.link}`;
+                      jobData = await this.fetchJobDetail(browser, fullUrl, job, config);
+                    } catch (e: any) {
+                      if (e.message?.includes('WAF_DETECTED')) {
+                        if (this.antiCrawlState.lastClassification) {
+                          const action = await recommendAction(this.antiCrawlState.lastClassification);
+                          if (action.action === 'abort') throw e;
+                          await new Promise(r => setTimeout(r, action.waitMs));
+                        }
                       }
+                      this.log('warn', `[Job51Crawler] 详情页失败，使用列表数据: ${e.message}`);
+                      jobData = this.generateBasicJob(job, config);
                     }
-                    this.log('warn', `[Job51Crawler] 详情页失败，使用列表数据: ${e.message}`);
+                  } else {
                     jobData = this.generateBasicJob(job, config);
                   }
-                } else {
-                  jobData = this.generateBasicJob(job, config);
+
+                  yield jobData;
+
+                  if ((i + 1) % 5 === 0 && io) {
+                    io.to(`task:${taskId}`).emit('task:log', {
+                      taskId, level: 'success',
+                      message: `✅ 已采集 ${i + 1}/${pageJobs.length} 条 | ${keyword} × ${city || '全国'}`
+                    });
+                  }
+
+                  await this.randomDelay(1500, 3500);
                 }
+              } else {
+                // 并发模式：批次内并行处理
+                this.log('info', `[Job51Crawler] ⚡ 使用并发模式处理（批次大小=${maxConcurrency}）`);
+                for (let batchStart = 0; batchStart < pageJobs.length && !this.checkAborted(); batchStart += maxConcurrency) {
+                  const batchEnd = Math.min(batchStart + maxConcurrency, pageJobs.length);
+                  const batch = pageJobs.slice(batchStart, batchEnd);
 
-                yield jobData;
+                  const batchPromises = batch.map(async (job, indexInBatch) => {
+                    const globalIndex = batchStart + indexInBatch + 1;
 
-                // 每 5 条发送进度
-                if ((i + 1) % 5 === 0 && io) {
-                  io.to(`task:${taskId}`).emit('task:log', {
-                    taskId, level: 'success',
-                    message: `✅ 已采集 ${i + 1}/${pageJobs.length} 条 | ${keyword} × ${city || '全国'}`
+                    if (this.checkAborted()) {
+                      return { success: false, data: this.generateBasicJob(job, config), index: globalIndex };
+                    }
+
+                    this.log('info', `[Job51Crawler] [${globalIndex}/${pageJobs.length}] 🚀 并发抓取: ${job.title}`);
+
+                    try {
+                      let jobData: JobData;
+                      if (job.link) {
+                        const fullUrl = job.link.startsWith('http') ? job.link : `https:${job.link}`;
+                        jobData = await this.fetchJobDetail(browser, fullUrl, job, config);
+                      } else {
+                        jobData = this.generateBasicJob(job, config);
+                      }
+                      return { success: true, data: jobData, index: globalIndex };
+                    } catch (e: any) {
+                      this.log('warn', `[Job51Crawler] [${globalIndex}/${pageJobs.length}] 详情页失败: ${e.message}`);
+                      return { success: false, data: this.generateBasicJob(job, config), index: globalIndex };
+                    }
                   });
-                }
 
-                await this.randomDelay(1500, 3500);
+                  const batchResults = await Promise.allSettled(batchPromises);
+
+                  let collectedInBatch = 0;
+                  for (const result of batchResults) {
+                    if (result.status === 'fulfilled' && result.value.success) {
+                      yield result.value.data;
+                      collectedInBatch++;
+                      if (result.value.index % 5 === 0 && io) {
+                        io.to(`task:${taskId}`).emit('task:log', {
+                          taskId, level: 'success',
+                          message: `✅ 已采集 ${result.value.index}/${pageJobs.length} 条 | ${keyword} × ${city || '全国'}`
+                        });
+                      }
+                    } else if (result.status === 'fulfilled') {
+                      yield result.value.data;
+                      collectedInBatch++;
+                    } else {
+                      this.log('error', `[Job51Crawler] 批次任务异常: ${result.reason}`);
+                    }
+                  }
+
+                  this.log('info', `[Job51Crawler] 批次完成: ${batchStart + 1}-${batchEnd}/${pageJobs.length} (${collectedInBatch}条)`);
+
+                  // 批次间延迟
+                  if (batchEnd < pageJobs.length) {
+                    await this.randomDelay(2000, 4000);
+                  }
+                }
               }
 
               // 检查下一页（多种方式）
@@ -463,23 +537,25 @@ export class Job51Crawler {
     ];
     await page.setUserAgent(userAgents[Math.floor(Math.random() * userAgents.length)]);
 
-    await page.evaluateOnNewDocument(() => {
-      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    await page.evaluateOnNewDocument(function() {
+      Object.defineProperty(navigator, 'webdriver', { get: function() { return undefined; } });
       Object.defineProperty(navigator, 'plugins', {
-        get: () => [
+        get: function() { return [
           { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
           { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
           { name: 'Native Client', filename: 'internal-nacl-plugin' },
-        ],
+        ]; },
       });
-      Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en-US', 'en'] });
-      (window as any).chrome = { runtime: {}, loadTimes: () => {}, csi: () => {}, app: {} };
-      const origQuery = (window.navigator as any).permissions?.query;
-      if (origQuery) {
-        (window.navigator as any).permissions.query = (params: any) =>
-          params.name === 'notifications'
+      Object.defineProperty(navigator, 'languages', { get: function() { return ['zh-CN', 'zh', 'en-US', 'en']; } });
+      window.chrome = { runtime: {}, loadTimes: function() {}, csi: function() {}, app: {} };
+      var navPerms = window.navigator.permissions;
+      if (navPerms && navPerms.query) {
+        var origQuery = navPerms.query.bind(navPerms);
+        navPerms.query = function(params) {
+          return params.name === 'notifications'
             ? Promise.resolve({ state: Notification.permission })
             : origQuery(params);
+        };
       }
     });
   }
@@ -489,11 +565,11 @@ export class Job51Crawler {
   private async extractJobsFromDOM(page: any): Promise<any[]> {
     // @ts-ignore
     return await page.evaluate(() => {
-      const jobs: any[] = [];
-      const seen = new Set<string>();
+      var jobs = [];
+      var seen = new Set();
 
       // 策略 A：51job 新版 SPA 职位卡片（Vue.js / Element UI 站点）
-      const selectors = [
+      var selectors = [
         '[class*="jobItem"]', '[class*="job-item"]', '[class*="job_item"]',
         '[class*="jobList"] [class*="item"]', '[class*="job_list"] [class*="item"]',
         '#app [class*="result"] [class*="item"]', '#app [class*="list"] [class*="item"]',
@@ -502,35 +578,40 @@ export class Job51Crawler {
         'a[href*="/job/"]', 'a[href*="jobs.51job.com"]', 'a[href*="/pc/detail"]',
       ];
 
-      for (const sel of selectors) {
-        const els = document.querySelectorAll(sel);
-        for (const el of Array.from(els)) {
+      for (var si = 0; si < selectors.length; si++) {
+        var sel = selectors[si];
+        var els = document.querySelectorAll(sel);
+        var elsArr = Array.from(els);
+        for (var ei = 0; ei < elsArr.length; ei++) {
+          var el = elsArr[ei];
           // 对于 a 标签选择器，直接提取链接文本
-          const isLink = sel.startsWith('a[');
-          const container = isLink ? el : el;
+          var isLink = sel.indexOf('a[') === 0;
+          var container = isLink ? el : el;
 
-          const titleEl = container.querySelector('[class*="title"], [class*="name"], [class*="job"], a[href*="/job/"], a[href*="/pc/detail"], h3, h2, .jname a');
-          const companyEl = container.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"], a[class*="com"]');
-          const salaryEl = container.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]');
-          const cityEl = container.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"], .ltype');
-          const linkEl = isLink ? el : container.querySelector('a[href*="/job/"], a[href*="jobs.51job.com"], a[href*="/pc/detail"]');
+          var titleEl = container.querySelector('[class*="title"], [class*="name"], [class*="job"], a[href*="/job/"], a[href*="/pc/detail"], h3, h2, .jname a');
+          var companyEl = container.querySelector('[class*="company"], [class*="cname"], [class*="corp"], [class*="enterprise"], a[class*="com"]');
+          var salaryEl = container.querySelector('[class*="salary"], [class*="pay"], [class*="sal"], [class*="wage"]');
+          var cityEl = container.querySelector('[class*="city"], [class*="area"], [class*="location"], [class*="region"], .ltype');
+          var linkEl = isLink ? el : container.querySelector('a[href*="/job/"], a[href*="jobs.51job.com"], a[href*="/pc/detail"]');
 
-          const title = titleEl?.textContent?.trim() || (isLink ? el.textContent?.trim() : '');
-          const link = (linkEl as HTMLAnchorElement)?.href || (isLink ? (el as HTMLAnchorElement).href : '');
+          var title = (titleEl && titleEl.textContent && titleEl.textContent.trim()) || (isLink ? (el.textContent && el.textContent.trim()) : '');
+          var link = (linkEl && linkEl.href) || (isLink ? (el.href) : '');
 
           if (title && title.length > 3 && title.length < 100 && !seen.has(title)) {
             seen.add(title);
-            const companyName = companyEl?.textContent?.trim() || '';
-            const companyLink = (companyEl?.closest('a') || container.querySelector('a[href*="/company/"], a[href*="coId"], a[href*="comDetail"]')) as HTMLAnchorElement | null;
+            var companyName = (companyEl && companyEl.textContent && companyEl.textContent.trim()) || '';
+            var companyLink = (companyEl && companyEl.closest && companyEl.closest('a')) || container.querySelector('a[href*="/company/"], a[href*="coId"], a[href*="comDetail"]');
+            var catEl = container.querySelector('[class*="jobType"], [class*="category"], [class*="type"]');
+            var containerText = container.textContent || '';
             jobs.push({
-              title,
+              title: title,
               company: companyName,
-              salary: salaryEl?.textContent?.trim() || '',
-              city: cityEl?.textContent?.trim() || '',
-              link: link.startsWith('http') ? link : `https:${link}`,
-              titleCategory: container.querySelector('[class*="jobType"], [class*="category"], [class*="type"]')?.textContent?.trim() || '',
-              isUrgent: (container.textContent || '').includes('急聘') || (container.textContent || '').match(/急(?!救|诊|性)/) ? '是' : '',
-              companyDetailUrl: companyLink?.href || '',
+              salary: (salaryEl && salaryEl.textContent && salaryEl.textContent.trim()) || '',
+              city: (cityEl && cityEl.textContent && cityEl.textContent.trim()) || '',
+              link: link.indexOf('http') === 0 ? link : 'https:' + link,
+              titleCategory: (catEl && catEl.textContent && catEl.textContent.trim()) || '',
+              isUrgent: (containerText.indexOf('急聘') !== -1 || containerText.match(/急(?!救|诊|性)/)) ? '是' : '',
+              companyDetailUrl: (companyLink && companyLink.href) || '',
             });
           }
         }
@@ -539,23 +620,29 @@ export class Job51Crawler {
 
       // 策略 B：文本行分析兜底
       if (jobs.length === 0) {
-        const text = document.body.innerText || '';
-        const lines = text.split('\n').filter(l => l.trim().length > 0);
-        const jobKW = ['工程师', '经理', '专员', '助理', '总监', '主管', '顾问', '分析师', '开发', '设计', '运营'];
+        var bodyText = document.body && document.body.innerText ? document.body.innerText : '';
+        var lines = bodyText.split('\n').filter(function(l) { return l.trim().length > 0; });
+        var jobKW = ['工程师', '经理', '专员', '助理', '总监', '主管', '顾问', '分析师', '开发', '设计', '运营'];
 
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
-          if (jobKW.some(k => line.includes(k)) && line.length > 5 && line.length < 100) {
-            let company = '', salary = '', city = '';
-            for (let j = Math.max(0, i - 5); j <= Math.min(lines.length - 1, i + 5); j++) {
-              const near = lines[j].trim();
-              if (!company && (near.includes('公司') || near.includes('科技') || near.includes('集团')) && near.length > 4) company = near;
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i].trim();
+          var hasKW = false;
+          for (var k = 0; k < jobKW.length; k++) {
+            if (line.indexOf(jobKW[k]) !== -1) { hasKW = true; break; }
+          }
+          if (hasKW && line.length > 5 && line.length < 100) {
+            var company = '', salary = '', city = '';
+            for (var j = Math.max(0, i - 5); j <= Math.min(lines.length - 1, i + 5); j++) {
+              var near = lines[j].trim();
+              if (!company && (near.indexOf('公司') !== -1 || near.indexOf('科技') !== -1 || near.indexOf('集团') !== -1) && near.length > 4) company = near;
               if (!salary && /(万|千|K|元|薪)/.test(near) && /\d/.test(near)) salary = near;
-              if (!city && /(北京|上海|广州|深圳|杭州|南京|成都|武汉|西安|重庆|苏州|郑州|长沙|青岛|大连|厦门|宁波|无锡|佛山|东莞|合肥|福州|济南|昆明|哈尔滨|长春|沈阳|南昌|贵阳|南宁|海口)/.test(near))
-                city = near.match(/(北京|上海|广州|深圳|杭州|南京|成都|武汉|西安|重庆|苏州|郑州|长沙|青岛|大连|厦门|宁波|无锡|佛山|东莞|合肥|福州|济南|昆明|哈尔滨|长春|沈阳|南昌|贵阳|南宁|海口)/)?.[0] || '';
+              if (!city) {
+                var cityMatch = near.match(/(北京|上海|广州|深圳|杭州|南京|成都|武汉|西安|重庆|苏州|郑州|长沙|青岛|大连|厦门|宁波|无锡|佛山|东莞|合肥|福州|济南|昆明|哈尔滨|长春|沈阳|南昌|贵阳|南宁|海口)/);
+                if (cityMatch) city = cityMatch[0] || '';
+              }
             }
             if (company || salary) {
-              jobs.push({ title: line, company: company || '未知', salary: salary || '面议', city, link: '' });
+              jobs.push({ title: line, company: company || '未知', salary: salary || '面议', city: city, link: '' });
             }
           }
         }
@@ -606,20 +693,21 @@ export class Job51Crawler {
 
         // @ts-ignore
         const detail = await page.evaluate(() => {
-          const get = (sels: string) => {
-            for (const s of sels.split(', ')) {
-              const el = document.querySelector(s);
-              if (el?.textContent?.trim()) return el.textContent.trim();
+          var get = function(sels) {
+            var selectors = sels.split(', ');
+            for (var i = 0; i < selectors.length; i++) {
+              var el = document.querySelector(selectors[i]);
+              if (el && el.textContent && el.textContent.trim()) return el.textContent.trim();
             }
             return '';
           };
 
-          const result: any = {};
+          var result = {};
 
-          // 标题：新旧站点多种选择器
+          // 标题
           result.title = get('h1[class*="title"], h1, .job-name h1, .cn h1, [class*="jobName"], [class*="job-name"], [class*="position"] h2, .tHeader h1, .detail-title');
 
-          // 公司名：新旧站点多种选择器
+          // 公司名
           result.company = get('.cname a, .company-name, [class*="company"] a, [class*="company"] h2, .com_name, .tCompany_sidebar a, [class*="corp"] a, [class*="enterprise"] a');
 
           // 薪资
@@ -628,13 +716,13 @@ export class Job51Crawler {
           // 城市
           result.city = get('.ltype, [class*="area"], [class*="location"], [class*="workCity"], [class*="address"], [class*="region"]');
 
-          // 经验/学历/工作类型（新旧站点各种选择器）
-          const infoEls = document.querySelectorAll(
+          // 经验/学历/工作类型
+          var infoEls = document.querySelectorAll(
             '.msg.ltype span, .jtag span, .bmsg, [class*="info"] span, [class*="require"] span, .t1 span, [class*="detail"] span, [class*="condition"] span, [class*="tag"] span'
           );
-          infoEls.forEach((el: Element) => {
-            const t = (el.textContent || '').trim();
-            if (/\d+-?\d*年/.test(t) || t.includes('经验')) result.experience = t;
+          infoEls.forEach(function(el) {
+            var t = (el.textContent || '').trim();
+            if (/\d+-?\d*年/.test(t) || t.indexOf('经验') !== -1) result.experience = t;
             else if (/(本科|硕士|博士|大专|中专|高中|初中|不限)/.test(t)) result.education = t;
             else if (/(全职|兼职|实习|合同)/.test(t)) result.workType = t;
             else if (/招\d+人/.test(t)) result.recruitmentCount = t;
@@ -648,7 +736,7 @@ export class Job51Crawler {
           // 职位标签
           result.jobTags = Array.from(document.querySelectorAll(
             '.jtag .t1 span, [class*="tag"], [class*="skill"], .bmsg .t2 span, [class*="label"], [class*="welfare"] span'
-          )).map(t => t.textContent?.trim()).filter(Boolean).join(',');
+          )).map(function(t) { return t.textContent ? t.textContent.trim() : ''; }).filter(function(v) { return !!v; }).join(',');
 
           // 公司性质/规模
           result.companyNature = get('[class*="type"], [class*="nature"], .com_tag span, .tCompany_sidebar .com_tag, [class*="company_type"]');
@@ -658,7 +746,7 @@ export class Job51Crawler {
           // 经营范围
           result.businessScope = get('[class*="business"], [class*="bizScope"], [class*="scope"], [class*="businessScope"]');
 
-          // 注册地址（可能与工作地址不同）
+          // 注册地址
           result.registeredAddress = get('[class*="regAddress"], [class*="registered"], [class*="reg_address"], [class*="companyAddress"]');
 
           // 职称分类
@@ -667,27 +755,27 @@ export class Job51Crawler {
           // 职能类别
           result.jobCategory = get('[class*="function"], [class*="funcCategory"], [class*="jobCat"], [class*="job_category"]');
 
-          // 是否紧急招聘（检测"急"标签）
-          const urgentEls = document.querySelectorAll('[class*="urgent"], [class*="urgent"], [class*="emergency"], .urgent-tag, .hot-tag, span:not([class])');
-          let isUrgent = '';
-          urgentEls.forEach((el: Element) => {
-            if ((el.textContent || '').trim() === '急' || (el.textContent || '').includes('急聘')) {
+          // 是否紧急招聘
+          var isUrgent = '';
+          var urgentEls = document.querySelectorAll('[class*="urgent"], [class*="emergency"], .urgent-tag, .hot-tag');
+          urgentEls.forEach(function(el) {
+            var txt = (el.textContent || '').trim();
+            if (txt === '急' || txt.indexOf('急聘') !== -1) {
               isUrgent = '是';
             }
           });
-          // 也检查页面整体文本
-          if (!isUrgent && (document.body.innerText || '').includes('急聘')) {
+          if (!isUrgent && document.body && document.body.innerText && document.body.innerText.indexOf('急聘') !== -1) {
             isUrgent = '是';
           }
           result.isUrgent = isUrgent;
 
           // 公司详情链接
-          const companyLinkEl = document.querySelector('a[href*="/company/"], a[href*="/pc/company"], a[href*="coId"], [class*="company"] a[href*="51job"]');
-          result.companyDetailUrl = (companyLinkEl as HTMLAnchorElement)?.href || '';
+          var companyLinkEl = document.querySelector('a[href*="/company/"], a[href*="/pc/company"], a[href*="coId"], [class*="company"] a[href*="51job"]');
+          result.companyDetailUrl = (companyLinkEl && companyLinkEl.href) || '';
 
           // 更新时间
-          const updateEl = document.querySelector('[class*="update"], [class*="refresh"], [class*="time"], [class*="publish"], [class*="date"]');
-          result.updateDateText = updateEl?.textContent?.trim() || '';
+          var updateEl = document.querySelector('[class*="update"], [class*="refresh"], [class*="time"], [class*="publish"], [class*="date"]');
+          result.updateDateText = updateEl && updateEl.textContent ? updateEl.textContent.trim() : '';
 
           return result;
         });
