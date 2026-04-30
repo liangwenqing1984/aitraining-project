@@ -74,63 +74,9 @@ export class Job51Crawler {
     });
 
     try {
-      // === 浏览器会话预热：先访问主页建立 cookies/session ===
-      const MIN_WARMUP_HTML = 50000; // 正常51job搜索页HTML应远大于50KB
-      let warmupSuccess = false;
-      for (let warmupAttempt = 0; warmupAttempt < 2 && !warmupSuccess; warmupAttempt++) {
-        this.log('info', `[Job51Crawler] 🔥 正在预热浏览器会话（第${warmupAttempt + 1}次尝试）...`);
-        let warmupPage: any = null;
-        try {
-          // 预热页面创建（带重试，防 CDP 竞争）
-          for (let pa = 0; pa < 2; pa++) {
-            try {
-              warmupPage = await browser.newPage();
-              break;
-            } catch (newPageErr: any) {
-              if (newPageErr.message?.includes('main frame too early') && pa < 1) {
-                await this.randomDelay(2000, 4000);
-                continue;
-              }
-              throw newPageErr;
-            }
-          }
-          await warmupPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
-          await warmupPage.goto('https://we.51job.com/', { waitUntil: 'networkidle2', timeout: 60000 });
-          await new Promise(r => setTimeout(r, 3000));
-          await warmupPage.goto('https://we.51job.com/pc/search?keyword=java&city=010000', { waitUntil: 'networkidle2', timeout: 60000 });
-          const warmupHtml = await warmupPage.content();
-          if (warmupHtml.length >= MIN_WARMUP_HTML) {
-            this.log('info', `[Job51Crawler] ✅ 主页预热完成，获取 ${warmupHtml.length} 字节 (cookies/session已建立)`);
-            warmupSuccess = true;
-          } else {
-            this.log('warn', `[Job51Crawler] ⚠️ 预热页面过小(${warmupHtml.length}字节 < ${MIN_WARMUP_HTML})，疑似被WAF拦截，将重试...`);
-          }
-        } catch (e: any) {
-          this.log('warn', `[Job51Crawler] ⚠️ 主页预热失败: ${e.message}`);
-        } finally {
-          if (warmupPage) {
-            try { await warmupPage.close(); } catch { /* ignore */ }
-          }
-        }
-        if (!warmupSuccess && warmupAttempt < 1) {
-          this.log('info', `[Job51Crawler] ⏳ 等待5秒后重试预热...`);
-          await this.randomDelay(5000, 8000);
-        }
-      }
-      if (!warmupSuccess) {
-        this.log('warn', `[Job51Crawler] ⚠️ 浏览器预热2次均失败，可能IP已被WAF限制`);
-        // 预热失败后不立即继续 — 给浏览器恢复时间
-        await this.randomDelay(3000, 6000);
-        // 检查浏览器是否仍然健康
-        if (!browser.isConnected()) {
-          this.log('error', `[Job51Crawler] ❌ 浏览器在预热后已断开连接，无法继续`);
-          return;
-        }
-        this.log('info', `[Job51Crawler] 🔄 浏览器仍连接，跳过预热直接尝试爬取...`);
-      } else {
-        // 预热成功后也短暂休息，避免新页面创建与预热页面关闭的 CDP 竞争
-        await this.randomDelay(1000, 2000);
-      }
+      // 浏览器启动后短暂等待，让 Chrome 完全初始化
+      await new Promise(r => setTimeout(r, 1000));
+      this.log('info', `[Job51Crawler] 🚀 浏览器就绪，直接开始爬取（跳过预热避免触发WAF）`);
 
       for (const keyword of keywords) {
         for (const city of cities) {
