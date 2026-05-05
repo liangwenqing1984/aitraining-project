@@ -1,8 +1,9 @@
 // @ts-nocheck - 禁用整个文件的类型检查，因为 page.evaluate 中的代码在浏览器环境中运行
 import puppeteer from 'puppeteer';
 import { JobData, TaskConfig } from '../../types';
-import { ZHILIAN_CITY_CODES } from '../../config/constants';
+import { ZHILIAN_CITY_CODES, PROXY_POOL_CONFIG } from '../../config/constants';
 import { io } from '../../app';
+import { ProxyPool } from './proxyPool';
 import { db } from '../../config/database';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -29,6 +30,10 @@ export class ZhilianCrawler {
 
   // 🔧 串行化 browser.newPage() 调用，防止并发创建时超时导致孤儿标签页泄漏
   private pageCreateMutex: Promise<void> = Promise.resolve();
+  // IP proxy pool state
+  private proxyPool: ProxyPool | null = null;
+  private currentProxy: string | null = null;
+  private proxySwitchCount: number = 0;
 
   async *crawl(config: TaskConfig, signal: AbortSignal): AsyncGenerator<JobData> {
     this.signal = signal;
@@ -102,44 +107,71 @@ export class ZhilianCrawler {
     this.log('info', `[ZhilianCrawler] 总组合数: ${totalCombinationCount} (${keywords.length} × ${cities.length})`);
     this.log('info', `[ZhilianCrawler] =============================================`);
 
+    // === Initialize IP proxy pool ===
+    this.proxyPool = new ProxyPool(PROXY_POOL_CONFIG.poolUrl);
+    this.currentProxy = null;
+    this.proxySwitchCount = 0;
+
+    // Get proxy IP
+    if (PROXY_POOL_CONFIG.enabled && this.proxyPool.isAvailable()) {
+      const poolCount = await this.proxyPool.getCount();
+      this.log('info', `[ZhilianCrawler] Proxy pool status: ${poolCount >= 0 ? poolCount + ' proxies' : 'unreachable, fallback to direct'}`);
+      if (poolCount > 0) {
+        const proxyInfo = await this.proxyPool.getProxy();
+        if (proxyInfo) {
+          this.currentProxy = proxyInfo.proxy;
+          this.log('info', `[ZhilianCrawler] Using proxy: ${this.currentProxy}`);
+        } else {
+          this.log('warn', '[ZhilianCrawler] Failed to get proxy, fallback to direct mode');
+        }
+      } else if (poolCount === 0) {
+        this.log('warn', '[ZhilianCrawler] Proxy pool empty, fallback to direct mode');
+      }
+    } else if (!PROXY_POOL_CONFIG.enabled) {
+      this.log('info', '[ZhilianCrawler] Proxy pool disabled, using direct mode');
+    }
+
     // 启动浏览器 - 使用自定义临时目录避免冲突
-    const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
-    const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\zhilian_${Date.now()}`;
-    
-    this.log('info', `[ZhilianCrawler] 使用临时目录: ${userDataDir}`);
-    
-    // 🔧 优化：增加更多稳定性参数
+    const chromePath = 'C:\\Users\\Administrator\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
+    const userDataDir = `C:\\Users\\Administrator\.cache\\puppeteer\\tmp\\zhilian_${Date.now()}`;
+
+    this.log('info', `[ZhilianCrawler] Temporary dir: ${userDataDir}`);
+
+    // Browser launch args (with proxy)
+    const launchArgs: string[] = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--window-size=1920x1080',
+      '--disable-web-security',
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--disable-site-isolation-trials',
+      '--disable-extensions',
+      '--disable-background-networking',
+      '--disable-default-apps',
+      '--no-first-run',
+      '--disable-sync',
+      '--disable-translate',
+      '--metrics-recording-only',
+      '--safebrowsing-disable-auto-update',
+      '--js-flags="--max-old-space-size=512"',
+      '--disable-hang-monitor',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+    ];
+    if (this.currentProxy) {
+      launchArgs.push(`--proxy-server=http://${this.currentProxy}`);
+    }
+
+    // Launch browser with stability params
     const browser = await puppeteer.launch({
       executablePath: chromePath,
-      userDataDir,  // 使用自定义临时目录
+      userDataDir,
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--window-size=1920x1080',
-        // 🔧 稳定性参数
-        '--disable-web-security',
-        '--disable-features=IsolateOrigins,site-per-process',
-        '--disable-site-isolation-trials',
-        '--disable-extensions',
-        '--disable-background-networking',
-        '--disable-default-apps',
-        '--no-first-run',
-        '--disable-sync',
-        '--disable-translate',
-        '--metrics-recording-only',
-        '--safebrowsing-disable-auto-update',
-        // 🔧 内存与稳定性优化：防止OOM崩溃
-        '--js-flags="--max-old-space-size=512"',  // 限制JS堆内存512MB
-        '--disable-hang-monitor',                   // 禁用挂起监控，防止误杀
-        '--disable-background-timer-throttling',    // 禁用后台定时器节流
-        '--disable-renderer-backgrounding',         // 禁止渲染器降级
-      ],
-      // 🔧 添加超时控制
-      timeout: 30000  // 30秒启动超时
+      args: launchArgs,
+      timeout: 30000
     });
     
     this.log('info', `[ZhilianCrawler] ✅ 浏览器启动成功`);
@@ -1450,7 +1482,14 @@ strategy1Stats.failedExtractions++;
                     );
                     if (wafInBatch) {
                       wafDetected = true;
-                      this.log('warn', `[ZhilianCrawler] 🛡️ 检测到智联WAF安全验证！自动降级为串行模式处理剩余职位`);
+
+                      // Try deleting bad proxy on WAF hit
+                      if (this.currentProxy && PROXY_POOL_CONFIG.enabled && this.proxyPool) {
+                        this.log('warn', `[ZhilianCrawler] WAF hit (batch), deleting bad proxy: ${this.currentProxy}`);
+                        await this.proxyPool.deleteProxy(this.currentProxy);
+                      }
+
+                      this.log('warn', `[ZhilianCrawler] 检测到智联WAF安全验证！自动降级为串行模式处理剩余职位`);
                       if (io && taskId) {
                         io.to(`task:${taskId}`).emit('task:log', {
                           taskId,
@@ -2101,11 +2140,25 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
 
         this.log('info', `[ZhilianCrawler] 📊 页面健康检查: body长度=${pageHealth.bodyLength}`);
 
-        // WAF专项检测
+        // WAF专项检测 - proxy switch on detection
         if (pageHealth.isSecurityVerification) {
-          this.log('error', `[ZhilianCrawler] 🚨 检测到WAF安全验证！页面标题="${pageHealth.pageTitle}"`);
+          this.log('error', `[ZhilianCrawler] WAF detected! Page title="${pageHealth.pageTitle}"`);
+
+          // Delete bad proxy and trigger restart with new IP
+          if (this.currentProxy && PROXY_POOL_CONFIG.enabled && this.proxyPool) {
+            this.log('warn', `[ZhilianCrawler] WAF hit, deleting bad proxy: ${this.currentProxy}`);
+            await this.proxyPool.deleteProxy(this.currentProxy);
+            this.proxySwitchCount++;
+            if (this.proxySwitchCount < PROXY_POOL_CONFIG.maxProxySwitchesPerTask) {
+              this.log('warn', `[ZhilianCrawler] Switching proxy (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask}), restarting browser...`);
+              const restartErr = new Error(`BROWSER_RESTART_SCHEDULED: WAF hit, switching proxy IP (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})`);
+              (restartErr as any).shouldRestart = true;
+              throw restartErr;
+            }
+            this.log('error', `[ZhilianCrawler] Max proxy switches reached (${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})`);
+          }
+
           throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');
-        }
 
         // 内容过少检测
         if (pageHealth.bodyLength < 1000) {
@@ -2421,14 +2474,26 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
 
       this.log('info', `[ZhilianCrawler] 📊 页面健康检查: body长度=${pageHealth.bodyLength}, 有标题=${pageHealth.hasTitle}, 有公司=${pageHealth.hasCompany}`);
 
-      // 🔧 WAF专项检测：Security Verification页面直接放弃（刷新无效）
+      // WAF专项检测：Security Verification页面直接放弃（刷新无效）
       if (pageHealth.isSecurityVerification) {
-        this.log('error', `[ZhilianCrawler] 🚨 检测到WAF安全验证！页面标题="${pageHealth.pageTitle}"`);
-        this.log('error', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);
-        throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');
-      }
+        this.log('error', `[ZhilianCrawler] WAF detected! Page title="${pageHealth.pageTitle}"`);
 
-      // 🔧 反爬检测：验证码或登录页面
+        // Delete bad proxy and trigger restart with new IP
+        if (this.currentProxy && PROXY_POOL_CONFIG.enabled && this.proxyPool) {
+          this.log('warn', `[ZhilianCrawler] WAF hit, deleting bad proxy: ${this.currentProxy}`);
+          await this.proxyPool.deleteProxy(this.currentProxy);
+          this.proxySwitchCount++;
+          if (this.proxySwitchCount < PROXY_POOL_CONFIG.maxProxySwitchesPerTask) {
+            this.log('warn', `[ZhilianCrawler] Switching proxy (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask}), restarting browser...`);
+            const restartErr = new Error(`BROWSER_RESTART_SCHEDULED: WAF hit, switching proxy IP (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})`);
+            (restartErr as any).shouldRestart = true;
+            throw restartErr;
+          }
+          this.log('error', `[ZhilianCrawler] Max proxy switches reached (${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})`);
+        }
+
+        this.log('error', `[ZhilianCrawler] HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);
+        throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');      // 🔧 反爬检测：验证码或登录页面
       if (pageHealth.hasErrorPage || pageHealth.hasLoginPrompt) {
         this.log('error', `[ZhilianCrawler] 🚨 检测到反爬拦截！页面标题="${pageHealth.pageTitle}"`);
         this.log('error', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);

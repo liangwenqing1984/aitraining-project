@@ -893,6 +893,23 @@ export const JOB51_CITY_CODES: Record<string, string> = {
   '阿勒泰': '341500',
 };
 
+// ==================== IP 代理池配置 ====================
+
+export const PROXY_POOL_CONFIG = {
+  /** 是否启用代理池（false 时直连） */
+  enabled: process.env.PROXY_POOL_ENABLED !== 'false',
+  /** 代理池 API 地址 */
+  poolUrl: process.env.PROXY_POOL_URL || 'http://127.0.0.1:5010',
+  /** 单个代理最大使用重试次数 */
+  maxProxyRetries: 3,
+  /** 单任务最大换代理次数（防无限循环） */
+  maxProxySwitchesPerTask: 5,
+  /** 代理可用性检测超时 ms */
+  proxyHealthCheckTimeout: 8000,
+  /** 代理池请求超时 ms */
+  proxyPoolRequestTimeout: 5000,
+};
+
 // 省市列表（用于前端选择器）
 export const REGIONS = [
   { name: '黑龙江省', cities: ['哈尔滨', '齐齐哈尔', '鸡西', '鹤岗', '双鸭山', '大庆', '伊春', '佳木斯', '七台河', '牡丹江', '黑河', '绥化', '大兴安岭'] },

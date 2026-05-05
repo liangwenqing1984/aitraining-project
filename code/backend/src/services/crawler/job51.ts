@@ -2,8 +2,9 @@
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { JobData, TaskConfig } from '../../types';
-import { JOB51_CITY_CODES } from '../../config/constants';
+import { JOB51_CITY_CODES, PROXY_POOL_CONFIG } from '../../config/constants';
 import { classifyPage, suggestSelectors, recommendAction } from '../llm/antiCrawl';
+import { ProxyPool } from './proxyPool';
 import type { PageClassification } from '../llm/antiCrawl';
 import { io } from '../../app';
 import * as fs from 'fs';
@@ -20,6 +21,10 @@ export class Job51Crawler {
   };
   // 页面创建互斥锁：防止并发 browser.newPage() 导致 Chrome CDP 竞争崩溃
   private pageCreateMutex: Promise<void> = Promise.resolve();
+  // IP 代理池相关状态
+  private proxyPool: ProxyPool | null = null;
+  private currentProxy: string | null = null;
+  private proxySwitchCount: number = 0;
 
   setLogger(logger: any) {
     this.logger = logger;
@@ -56,23 +61,53 @@ export class Job51Crawler {
     this.log('info', `[Job51Crawler] 城市: [${cities.join(', ')}] (${cities.length}个)`);
     this.log('info', `[Job51Crawler] 总组合数: ${totalCombinationCount}`);
 
+    // === 初始化 IP 代理池 ===
+    this.proxyPool = new ProxyPool(PROXY_POOL_CONFIG.poolUrl);
+    this.currentProxy = null;
+    this.proxySwitchCount = 0;
+
+    // 获取代理 IP
+    if (PROXY_POOL_CONFIG.enabled && this.proxyPool.isAvailable()) {
+      const poolCount = await this.proxyPool.getCount();
+      this.log('info', `[Job51Crawler] 代理池状态: ${poolCount >= 0 ? poolCount + ' 个代理可用' : '代理池不可达，降级为直连'}`);
+      if (poolCount > 0) {
+        const proxyInfo = await this.proxyPool.getProxy();
+        if (proxyInfo) {
+          this.currentProxy = proxyInfo.proxy;
+          this.log('info', `[Job51Crawler] 使用代理: ${this.currentProxy}`);
+        } else {
+          this.log('warn', '[Job51Crawler] 获取代理失败，降级为直连模式');
+        }
+      } else if (poolCount === 0) {
+        this.log('warn', '[Job51Crawler] 代理池为空，降级为直连模式');
+      }
+    } else if (!PROXY_POOL_CONFIG.enabled) {
+      this.log('info', '[Job51Crawler] 代理池已禁用，使用直连模式');
+    }
+
     // 启动浏览器（使用 stealth 插件）
     const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
     const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\job51_${Date.now()}`;
+
+    // 浏览器启动参数（含代理）
+    const launchArgs: string[] = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--window-size=1920x1080',
+      '--disable-blink-features=AutomationControlled',
+    ];
+    if (this.currentProxy) {
+      launchArgs.push(`--proxy-server=http://${this.currentProxy}`);
+    }
 
     const browser = await puppeteer.launch({
       executablePath: chromePath,
       userDataDir,
       headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--window-size=1920x1080',
-        '--disable-blink-features=AutomationControlled',
-      ],
+      args: launchArgs,
       timeout: 30000,
     });
 
@@ -245,6 +280,22 @@ export class Job51Crawler {
                 this.log('warn', `[Job51Crawler] 🛡️ 页面HTML过小(${htmlLength}字节 < ${MIN_PAGE_HTML})，疑似WAF拦截`);
                 this.antiCrawlState.consecutiveAntiCrawlPages++;
                 wafDetected = true;
+
+                // === 代理池：WAF 检测到拦截，删除失效代理并触发重启换 IP ===
+                if (this.currentProxy && PROXY_POOL_CONFIG.enabled && this.proxyPool) {
+                  this.log('warn', `[Job51Crawler] WAF拦截，删除失效代理: ${this.currentProxy}`);
+                  await this.proxyPool.deleteProxy(this.currentProxy);
+                  this.proxySwitchCount++;
+
+                  if (this.proxySwitchCount < PROXY_POOL_CONFIG.maxProxySwitchesPerTask) {
+                    this.log('warn', `[Job51Crawler] 切换代理 (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})，触发浏览器重启...`);
+                    const restartErr = new Error(`BROWSER_RESTART_SCHEDULED: WAF拦截，切换代理IP重试 (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})`);
+                    (restartErr as any).shouldRestart = true;
+                    throw restartErr;
+                  } else {
+                    this.log('error', `[Job51Crawler] 已达最大代理切换次数(${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})，降级为现有重试策略`);
+                  }
+                }
 
                 await new Promise(r => setTimeout(r, 10000));
                 try {
@@ -662,7 +713,8 @@ export class Job51Crawler {
       }
       // WAF 恢复：如果整个会话被 WAF 拦截且 0 数据，触发浏览器重启重试
       if (totalYielded === 0 && wafDetected) {
-        const restartErr = new Error('BROWSER_RESTART_SCHEDULED: 检测到WAF拦截，零数据产出，触发浏览器重启');
+        const proxyInfo = this.currentProxy ? ` (代理: ${this.currentProxy})` : '';
+        const restartErr = new Error(`BROWSER_RESTART_SCHEDULED: 检测到WAF拦截，零数据产出，触发浏览器重启${proxyInfo}`);
         (restartErr as any).shouldRestart = true;
         throw restartErr;
       }
