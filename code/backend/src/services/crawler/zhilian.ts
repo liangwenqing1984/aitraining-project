@@ -112,17 +112,29 @@ export class ZhilianCrawler {
     this.currentProxy = null;
     this.proxySwitchCount = 0;
 
-    // Get proxy IP
+    // Get proxy IP (with health validation)
     if (PROXY_POOL_CONFIG.enabled && this.proxyPool.isAvailable()) {
       const poolCount = await this.proxyPool.getCount();
       this.log('info', `[ZhilianCrawler] Proxy pool status: ${poolCount >= 0 ? poolCount + ' proxies' : 'unreachable, fallback to direct'}`);
       if (poolCount > 0) {
-        const proxyInfo = await this.proxyPool.getProxy();
-        if (proxyInfo) {
-          this.currentProxy = proxyInfo.proxy;
-          this.log('info', `[ZhilianCrawler] Using proxy: ${this.currentProxy}`);
-        } else {
-          this.log('warn', '[ZhilianCrawler] Failed to get proxy, fallback to direct mode');
+        // Try up to 3 proxies, validate each with health check
+        let validProxy = false;
+        for (let attempt = 0; attempt < 3 && !validProxy; attempt++) {
+          const proxyInfo = await this.proxyPool.getProxy();
+          if (!proxyInfo) break;
+
+          const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy);
+          if (isHealthy) {
+            this.currentProxy = proxyInfo.proxy;
+            this.log('info', `[ZhilianCrawler] Using proxy: ${this.currentProxy} (verified)`);
+            validProxy = true;
+          } else {
+            this.log('warn', `[ZhilianCrawler] Bad proxy ${proxyInfo.proxy}, deleting and trying next...`);
+            await this.proxyPool.deleteProxy(proxyInfo.proxy);
+          }
+        }
+        if (!validProxy) {
+          this.log('warn', '[ZhilianCrawler] No valid proxy found after retries, fallback to direct mode');
         }
       } else if (poolCount === 0) {
         this.log('warn', '[ZhilianCrawler] Proxy pool empty, fallback to direct mode');
@@ -365,12 +377,44 @@ export class ZhilianCrawler {
                   
                 } catch (loadError: any) {
                   retryCount++;
-                  this.log('warn', `[ZhilianCrawler] ⚠️ 第 ${retryCount} 次加载失败:`, loadError.message);
-                  
-                  if (retryCount > maxRetries) {
-                    throw new Error(`页面加载失败，已重试 ${maxRetries} 次: ${loadError.message}`);
+                  const errMsg: string = loadError.message || String(loadError);
+                  this.log('warn', `[ZhilianCrawler] ⚠️ 第 ${retryCount} 次加载失败:`, errMsg);
+
+                  // Proxy tunnel failure: delete bad proxy, switch to new one
+                  const isProxyFailure = errMsg.includes('ERR_TUNNEL_CONNECTION_FAILED') ||
+                                         errMsg.includes('ERR_PROXY_CONNECTION_FAILED') ||
+                                         errMsg.includes('ERR_CONNECTION_RESET') ||
+                                         errMsg.includes('net::ERR_CONNECTION');
+                  if (isProxyFailure && this.currentProxy && PROXY_POOL_CONFIG.enabled && this.proxyPool) {
+                    this.log('warn', `[ZhilianCrawler] Dead proxy detected: ${this.currentProxy}, switching...`);
+                    await this.proxyPool.deleteProxy(this.currentProxy);
+                    this.currentProxy = null;
+                    this.proxySwitchCount++;
+
+                    if (this.proxySwitchCount < PROXY_POOL_CONFIG.maxProxySwitchesPerTask) {
+                      // Try to get a new proxy and restart browser
+                      const newProxy = await this.proxyPool.getProxy();
+                      if (newProxy) {
+                        const isHealthy = await this.proxyPool.checkHealth(newProxy.proxy);
+                        if (isHealthy) {
+                          this.currentProxy = newProxy.proxy;
+                          this.log('info', `[ZhilianCrawler] New proxy: ${this.currentProxy}`);
+                        } else {
+                          await this.proxyPool.deleteProxy(newProxy.proxy);
+                          this.log('warn', '[ZhilianCrawler] New proxy also dead, restarting with direct connection');
+                        }
+                      }
+                      const restartErr = new Error(`BROWSER_RESTART_SCHEDULED: Dead proxy switched (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})`);
+                      (restartErr as any).shouldRestart = true;
+                      throw restartErr;
+                    }
+                    this.log('error', `[ZhilianCrawler] Max proxy switches reached, continuing with direct connection`);
                   }
-                  
+
+                  if (retryCount > maxRetries) {
+                    throw new Error(`页面加载失败，已重试 ${maxRetries} 次: ${errMsg}`);
+                  }
+
                   // 等待2-4秒后重试
                   // 🔧 优化：缩短页间延迟，提高爬取速度
                   await this.randomDelay(1000, 2000);  // 🔧 从2-4秒优化为1-2秒

@@ -66,17 +66,29 @@ export class Job51Crawler {
     this.currentProxy = null;
     this.proxySwitchCount = 0;
 
-    // 获取代理 IP
+    // 获取代理 IP（含可用性验证）
     if (PROXY_POOL_CONFIG.enabled && this.proxyPool.isAvailable()) {
       const poolCount = await this.proxyPool.getCount();
       this.log('info', `[Job51Crawler] 代理池状态: ${poolCount >= 0 ? poolCount + ' 个代理可用' : '代理池不可达，降级为直连'}`);
       if (poolCount > 0) {
-        const proxyInfo = await this.proxyPool.getProxy();
-        if (proxyInfo) {
-          this.currentProxy = proxyInfo.proxy;
-          this.log('info', `[Job51Crawler] 使用代理: ${this.currentProxy}`);
-        } else {
-          this.log('warn', '[Job51Crawler] 获取代理失败，降级为直连模式');
+        // 尝试最多 3 个代理，逐个验证可用性
+        let validProxy = false;
+        for (let attempt = 0; attempt < 3 && !validProxy; attempt++) {
+          const proxyInfo = await this.proxyPool.getProxy();
+          if (!proxyInfo) break;
+
+          const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy);
+          if (isHealthy) {
+            this.currentProxy = proxyInfo.proxy;
+            this.log('info', `[Job51Crawler] 使用代理: ${this.currentProxy} (已验证)`);
+            validProxy = true;
+          } else {
+            this.log('warn', `[Job51Crawler] 代理不可用 ${proxyInfo.proxy}，删除并尝试下一个...`);
+            await this.proxyPool.deleteProxy(proxyInfo.proxy);
+          }
+        }
+        if (!validProxy) {
+          this.log('warn', '[Job51Crawler] 无可用代理，降级为直连模式');
         }
       } else if (poolCount === 0) {
         this.log('warn', '[Job51Crawler] 代理池为空，降级为直连模式');
@@ -222,10 +234,42 @@ export class Job51Crawler {
 
               // === SPA 感知加载（核心修复）===
               if (!usedHomepageSearch) {
-                await page.goto(url, {
-                  waitUntil: 'networkidle2',
-                  timeout: 90000,
-                });
+                try {
+                  await page.goto(url, {
+                    waitUntil: 'networkidle2',
+                    timeout: 90000,
+                  });
+                } catch (gotoErr: any) {
+                  const errMsg: string = gotoErr.message || String(gotoErr);
+                  // 代理隧道失败：删除坏代理，获取新代理，触发生效重启
+                  if ((errMsg.includes('ERR_TUNNEL_CONNECTION_FAILED') ||
+                      errMsg.includes('ERR_PROXY_CONNECTION_FAILED') ||
+                      errMsg.includes('net::ERR_CONNECTION')) &&
+                      this.currentProxy && PROXY_POOL_CONFIG.enabled && this.proxyPool) {
+                    this.log('warn', `[Job51Crawler] 代理不可用: ${this.currentProxy}，切换...`);
+                    await this.proxyPool.deleteProxy(this.currentProxy);
+                    this.currentProxy = null;
+                    this.proxySwitchCount++;
+                    if (this.proxySwitchCount < PROXY_POOL_CONFIG.maxProxySwitchesPerTask) {
+                      const newProxy = await this.proxyPool.getProxy();
+                      if (newProxy) {
+                        const isHealthy = await this.proxyPool.checkHealth(newProxy.proxy);
+                        if (isHealthy) {
+                          this.currentProxy = newProxy.proxy;
+                          this.log('info', `[Job51Crawler] 新代理: ${this.currentProxy}`);
+                        } else {
+                          await this.proxyPool.deleteProxy(newProxy.proxy);
+                          this.log('warn', '[Job51Crawler] 新代理同样不可用，降级直连');
+                        }
+                      }
+                      const restartErr = new Error(`BROWSER_RESTART_SCHEDULED: 代理隧道失败切换IP (${this.proxySwitchCount}/${PROXY_POOL_CONFIG.maxProxySwitchesPerTask})`);
+                      (restartErr as any).shouldRestart = true;
+                      throw restartErr;
+                    }
+                    this.log('error', `[Job51Crawler] 已达最大代理切换次数，降级为直连`);
+                  }
+                  throw gotoErr;
+                }
 
                 // 等待 SPA 渲染职位列表（新版 Vue.js 站点）
                 try {
