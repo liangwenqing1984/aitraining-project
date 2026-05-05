@@ -30,7 +30,7 @@ if exist "%REDIS_DIR%\redis-server.exe" (
     timeout /t 2 /nobreak >nul
     "%REDIS_DIR%\redis-cli.exe" -a pwd ping >nul 2>&1
     if %errorlevel% equ 0 (
-        echo [OK] Redis started (port 6379)
+        echo [OK] Redis started - port 6379
     ) else (
         echo [WARN] Redis may not have started correctly
     )
@@ -45,7 +45,7 @@ if exist "%PYTHON%" (
         timeout /t 1 /nobreak >nul
         start "ProxyPool-API" /MIN cmd /c "cd /d %PROXY_POOL_DIR% && %PYTHON% proxyPool.py server"
         timeout /t 2 /nobreak >nul
-        echo [OK] Proxy pool started (port 5010)
+        echo [OK] Proxy pool started - port 5010
     ) else (
         echo [WARN] Proxy pool project not found at %PROXY_POOL_DIR%
     )
