@@ -144,25 +144,27 @@ export class ProxyPool {
   }
 
   /**
-   * 快速检测代理可用性（尝试连接目标站点）
+   * 快速检测代理可用性（通过代理连接目标站点）
+   * @param proxy ip:port
+   * @param testUrl 测试目标 URL（默认用 51job，建议各爬虫传入自己的目标站）
    */
   async checkHealth(proxy: string, testUrl: string = 'https://www.51job.com/'): Promise<boolean> {
     try {
       const [host, port] = proxy.split(':');
-      // 使用简单 HTTP 请求检测代理是否可用
-      await axios.get(testUrl, {
+      // 通过代理发起 HTTP 请求，仅 2xx 视为成功（排除 3xx/4xx/5xx 等代理错误响应）
+      const resp = await axios.get(testUrl, {
         proxy: {
           host,
           port: parseInt(port || '80'),
           protocol: 'http',
         },
         timeout: 8000,
-        maxRedirects: 5,
-        validateStatus: (status) => status < 500, // 4xx 可能正常（网站正常响应）
+        maxRedirects: 0,  // 不跟随重定向，代理返回 3xx 说明隧道失败
+        validateStatus: (status) => status >= 200 && status < 300,
       });
-      return true;
+      return resp.status >= 200 && resp.status < 300;
     } catch (e: any) {
-      // 超时或连接失败视为不可用
+      // 超时、连接拒绝、DNS 失败、CONNECT 隧道失败等均视为不可用
       return false;
     }
   }

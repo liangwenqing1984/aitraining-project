@@ -123,7 +123,7 @@ export class ZhilianCrawler {
           const proxyInfo = await this.proxyPool.getProxy();
           if (!proxyInfo) break;
 
-          const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy);
+          const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy, 'https://www.zhaopin.com/');
           if (isHealthy) {
             this.currentProxy = proxyInfo.proxy;
             this.log('info', `[ZhilianCrawler] Using proxy: ${this.currentProxy} (verified)`);
@@ -395,7 +395,7 @@ export class ZhilianCrawler {
                       // Try to get a new proxy and restart browser
                       const newProxy = await this.proxyPool.getProxy();
                       if (newProxy) {
-                        const isHealthy = await this.proxyPool.checkHealth(newProxy.proxy);
+                        const isHealthy = await this.proxyPool.checkHealth(newProxy.proxy, 'https://www.zhaopin.com/');
                         if (isHealthy) {
                           this.currentProxy = newProxy.proxy;
                           this.log('info', `[ZhilianCrawler] New proxy: ${this.currentProxy}`);
