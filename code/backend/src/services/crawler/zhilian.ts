@@ -2159,6 +2159,7 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
           }
 
           throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');
+        }
 
         // 内容过少检测
         if (pageHealth.bodyLength < 1000) {
@@ -2493,7 +2494,9 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
         }
 
         this.log('error', `[ZhilianCrawler] HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);
-        throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');      // 🔧 反爬检测：验证码或登录页面
+        throw new Error('WAF_DETECTED: 智联招聘安全验证拦截，此IP/会话已被标记');
+      }
+      // 🔧 反爬检测：验证码或登录页面
       if (pageHealth.hasErrorPage || pageHealth.hasLoginPrompt) {
         this.log('error', `[ZhilianCrawler] 🚨 检测到反爬拦截！页面标题="${pageHealth.pageTitle}"`);
         this.log('error', `[ZhilianCrawler] 📄 HTML片段: ${pageHealth.htmlContent.substring(0, 300)}...`);
