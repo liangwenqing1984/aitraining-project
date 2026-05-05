@@ -132,7 +132,7 @@ export class ZhilianCrawler {
     }
 
     // 启动浏览器 - 使用自定义临时目录避免冲突
-    const chromePath = 'C:\\Users\\Administrator\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
+    const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
     const userDataDir = `C:\\Users\\Administrator\.cache\\puppeteer\\tmp\\zhilian_${Date.now()}`;
 
     this.log('info', `[ZhilianCrawler] Temporary dir: ${userDataDir}`);
