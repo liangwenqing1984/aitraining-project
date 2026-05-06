@@ -2040,7 +2040,7 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
   // === 代理池：axios+代理获取详情页（绕过Chrome CONNECT隧道限制） ===
   // 从 jobUrl 提取智联职位 number 参数（如 CCL1393716650J40938718704）
   private extractPositionNumber(jobUrl: string): string | null {
-    const match = jobUrl.match(/\/jobdetail\/([A-Za-z0-9]+)\.html/);
+    const match = jobUrl.match(/\/jobdetail\/([A-Za-z0-9]+)\.html?/);
     return match ? match[1] : null;
   }
 
