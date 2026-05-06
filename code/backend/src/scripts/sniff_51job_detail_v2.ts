@@ -1,3 +1,4 @@
+// @ts-nocheck
 // 诊断脚本 v3：搜索页建立会话 → SPA内部导航详情 → 拦截详情API
 import puppeteer from 'puppeteer';
 import * as fs from 'fs';
