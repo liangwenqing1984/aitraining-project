@@ -64,37 +64,14 @@ export class Job51Crawler {
     this.log('info', `[Job51Crawler] 总组合数: ${totalCombinationCount}`);
 
     // === 初始化 IP 代理池 ===
+    // 策略：51job 搜索页浏览器直连（免费代理全触发 Aliyun WAF），代理仅用于 axios 详情页回退
     this.proxyPool = new ProxyPool(PROXY_POOL_CONFIG.poolUrl);
     this.currentProxy = null;
     this.proxySwitchCount = 0;
 
-    // 获取代理 IP（含可用性验证）
     if (PROXY_POOL_CONFIG.enabled && this.proxyPool.isAvailable()) {
       const poolCount = await this.proxyPool.getCount();
-      this.log('info', `[Job51Crawler] 代理池状态: ${poolCount >= 0 ? poolCount + ' 个代理可用' : '代理池不可达，降级为直连'}`);
-      if (poolCount > 0) {
-        // 尝试最多 3 个代理，逐个验证可用性
-        let validProxy = false;
-        for (let attempt = 0; attempt < 3 && !validProxy; attempt++) {
-          const proxyInfo = await this.proxyPool.getProxy();
-          if (!proxyInfo) break;
-
-          const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy);
-          if (isHealthy) {
-            this.currentProxy = proxyInfo.proxy;
-            this.log('info', `[Job51Crawler] 使用代理: ${this.currentProxy} (已验证)`);
-            validProxy = true;
-          } else {
-            this.log('warn', `[Job51Crawler] 代理不可用 ${proxyInfo.proxy}，删除并尝试下一个...`);
-            await this.proxyPool.deleteProxy(proxyInfo.proxy);
-          }
-        }
-        if (!validProxy) {
-          this.log('warn', '[Job51Crawler] 无可用代理，降级为直连模式');
-        }
-      } else if (poolCount === 0) {
-        this.log('warn', '[Job51Crawler] 代理池为空，降级为直连模式');
-      }
+      this.log('info', `[Job51Crawler] 代理池状态: ${poolCount >= 0 ? poolCount + ' 个代理（仅用于axios详情页回退）' : '代理池不可达'}`);
     } else if (!PROXY_POOL_CONFIG.enabled) {
       this.log('info', '[Job51Crawler] 代理池已禁用，使用直连模式');
     }
@@ -488,45 +465,58 @@ export class Job51Crawler {
                   // 从 API JSON 映射到内部格式（适配多种字段命名）
                   // 51job search-pc API 实际字段名: jobDescribe, provideSalaryString, workYearString, degreeString,
                   //   companySizeString, companyTypeString, industryType1Str, jobTagsList, jobWelfareCodeDataList
-                  jobs = items.map((item: any) => ({
-                    title: item.jobName || item.job_name || item.title || item.name || item.positionName || '',
-                    company: item.companyName || item.company_name || item.coName || item.company || item.corpName || '',
-                    salary: item.provideSalaryString || item.provideSalary || item.salary || item.salaryDesc || item.salaryRange || item.pay || '',
-                    city: item.jobAreaString || item.workCity || item.workArea || item.cityName || item.city || item.region || '',
-                    // 优先 SPA 同域 URL（we.51job.com），避免 jobs.51job.com 跨域触发 Geetest CAPTCHA
-                    link: (item.jobId ? `https://we.51job.com/pc/detail?jobId=${item.jobId}` : '')
-                      || item.jobHref || item.detailUrl || item.url
-                      || (item.encryptJobId ? `https://we.51job.com/pc/detail?jobId=${item.encryptJobId}` : ''),
-                    jobId: item.jobId || item.encryptJobId || item.id || '',
-                    // 详情字段（51job search-pc API 直接返回）
-                    education: item.degreeString || item.education || item.degree || item.degreeName || item.eduLevel || item.educationLevel || item.degreeRequirement || '',
-                    experience: item.workYearString || item.workYear || item.workExperience || item.experience || item.workingYears || item.requiredExperience || '',
-                    workType: item.workType || item.employType || item.employmentType || item.jobNature || '',
-                    address: item.workAddress || item.companyAddress || item.address || item.workPlace || item.workplace || item.landmarkString || '',
-                    recruitmentCount: item.jobNumString || item.recruitmentCount || item.recruitCount || item.hireCount || item.headCount || '',
-                    jobDescription: (() => {
-                      const raw = item.jobDescribe || item.jobDescription || item.description || item.jobDesc || item.duty || '';
-                      if (!raw) return '';
-                      return raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
-                    })(),
-                    jobTags: (() => {
-                      const tags = item.jobTags || '';
-                      if (typeof tags === 'string') return tags;
-                      if (Array.isArray(tags)) return tags.map((t: any) => t.value || t.name || t).filter(Boolean).join(',');
-                      return '';
-                    })(),
-                    jobCategory: item.industryType1Str || item.jobCategory || item.funcCategory || item.functionName || item.jobFunction || '',
-                    // 51job 新增字段
-                    titleCategory: item.jobType || item.typeName || item.categoryName || item.positionCategory || '',
-                    isUrgent: item.isUrgent || item.urgentJob || item.urgent || item.isEmergent || '',
-                    companyDetailUrl: item.companyHref || item.coUrl || item.companyUrl
-                      || (item.encCoId ? `https://we.51job.com/pc/company?companyId=${item.encCoId}` : '')
-                      || (item.coId ? `https://we.51job.com/pc/company?companyId=${item.coId}` : ''),
-                    registeredAddress: item.companyAddress || item.regAddress || item.registeredAddress || '',
-                    businessScope: item.industryType2Str || item.businessScope || item.bizScope || item.companyBusiness || item.scope || '',
-                    companyScale: item.companySizeString || item.companyScale || item.coSize || item.scale || item.size || item.employeeCount || '',
-                    companyNature: item.companyTypeString || item.companyNature || item.coType || item.companyType || item.nature || item.corpType || '',
-                  }));
+                  jobs = items.map((item: any) => {
+                    // 构建详情页 URL：优先 jobs.51job.com 旧版服务端渲染页面（浏览器渲染后可提取完整数据）
+                    // SPA 版 we.51job.com/pc/detail 是 JS 渲染壳 + Geetest CAPTCHA，cheerio 无法解析
+                    const citySlug = item.hrefAreaPinYin || (item.jobAreaString || '').split('·')[0] || '';
+                    const jobId = item.jobId || item.encryptJobId || '';
+                    const oldDetailUrl = (jobId && citySlug) ? `https://jobs.51job.com/${citySlug}/${jobId}.html` : '';
+                    return {
+                      title: item.jobName || item.job_name || item.title || item.name || item.positionName || '',
+                      company: item.fullCompanyName || item.companyName || item.company_name || item.coName || item.company || item.corpName || '',
+                      salary: item.provideSalaryString || item.provideSalary || item.salary || item.salaryDesc || item.salaryRange || item.pay || '',
+                      city: item.jobAreaString || item.workCity || item.workArea || item.cityName || item.city || item.region || '',
+                      link: oldDetailUrl
+                        || item.jobHref || item.detailUrl || item.url
+                        || (jobId ? `https://we.51job.com/pc/detail?jobId=${jobId}` : ''),
+                      jobId: jobId || item.id || '',
+                      hrefAreaPinYin: item.hrefAreaPinYin || '',
+                      education: item.degreeString || item.education || item.degree || item.degreeName || item.eduLevel || item.educationLevel || item.degreeRequirement || '',
+                      experience: item.workYearString || item.workYear || item.workExperience || item.experience || item.workingYears || item.requiredExperience || '',
+                      workType: item.termStr || item.workType || item.employType || item.employmentType || item.jobNature || '',
+                      address: item.workAddress || item.companyAddress || item.address || item.workPlace || item.workplace || item.landmarkString || '',
+                      recruitmentCount: item.jobNumString || item.recruitmentCount || item.recruitCount || item.hireCount || item.headCount || '',
+                      jobDescription: (() => {
+                        const raw = item.jobDescribe || item.jobDescription || item.description || item.jobDesc || item.duty || '';
+                        if (!raw) return '';
+                        return raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+                      })(),
+                      jobTags: (() => {
+                        const tags = item.jobTags || '';
+                        if (typeof tags === 'string') return tags;
+                        if (Array.isArray(tags)) return tags.map((t: any) => t.value || t.name || t).filter(Boolean).join(',');
+                        // jobTagsList 结构化数组
+                        const tagsList = item.jobTagsList || [];
+                        if (Array.isArray(tagsList)) return tagsList.map((t: any) => t.jobTagName || t.value || t.name || t).filter(Boolean).join(',');
+                        return '';
+                      })(),
+                      jobCategory: item.industryType1Str || item.jobCategory || item.funcCategory || item.functionName || item.jobFunction || '',
+                      titleCategory: item.jobType || item.typeName || item.categoryName || item.positionCategory || '',
+                      isUrgent: item.isUrgent || item.urgentJob || item.urgent || item.isEmergent || '',
+                      companyDetailUrl: (item.encCoId ? `https://we.51job.com/pc/company?companyId=${item.encCoId}` : '')
+                        || item.companyHref || item.coUrl || item.companyUrl
+                        || (item.coId ? `https://we.51job.com/pc/company?companyId=${item.coId}` : ''),
+                      registeredAddress: item.companyAddress || item.regAddress || item.registeredAddress || '',
+                      businessScope: item.industryType2Str || item.businessScope || item.bizScope || item.companyBusiness || item.scope || '',
+                      companyScale: item.companySizeString || item.companyScale || item.coSize || item.scale || item.size || item.employeeCount || '',
+                      companyNature: item.companyTypeString || item.companyNature || item.coType || item.companyType || item.nature || item.corpType || '',
+                      // 附加字段（用于详情页回退和补充）
+                      publishDate: item.issueDateString || item.updateDateTime || '',
+                      lon: item.lon || '',
+                      lat: item.lat || '',
+                      landmarkString: item.landmarkString || '',
+                    };
+                  });
                 }
               }
 
@@ -610,6 +600,17 @@ export class Job51Crawler {
               const pageJobs = config.maxRecordsPerPage && filteredJobs.length > config.maxRecordsPerPage
                 ? filteredJobs.slice(0, config.maxRecordsPerPage)
                 : filteredJobs;
+
+              // === 检查下一页（须在关闭搜索页之前完成，否则 page.evaluate 报 detached Frame） ===
+              hasNextPage = await page.evaluate(() => {
+                const nextBtn = document.querySelector(
+                  '.el-pager .btn-next:not(.disabled), .el-pagination .btn-next:not([disabled]), .ant-pagination .ant-pagination-next:not([disabled]), [class*="pagination"] [class*="next"]:not([class*="disabled"]), .page-next:not(.disabled), [class*="pager"] .next:not(.disabled), a[class*="next"]:not([class*="disabled"]), button[class*="next"]:not([disabled])'
+                );
+                return !!nextBtn;
+              });
+              if (hasNextPage && jobs.length === 0) {
+                hasNextPage = false;
+              }
 
               // === 关闭搜索页释放浏览器资源（防止并发详情页抓取时浏览器崩溃） ===
               try { await page.close(); } catch { /* ignore */ }
@@ -729,19 +730,6 @@ export class Job51Crawler {
                     await this.randomDelay(2000, 4000);
                   }
                 }
-              }
-
-              // 检查下一页（多种方式）
-              hasNextPage = await page.evaluate(() => {
-                // 新版 Element UI / Ant Design 分页器
-                const nextBtn = document.querySelector(
-                  '.el-pager .btn-next:not(.disabled), .el-pagination .btn-next:not([disabled]), .ant-pagination .ant-pagination-next:not([disabled]), [class*="pagination"] [class*="next"]:not([class*="disabled"]), .page-next:not(.disabled), [class*="pager"] .next:not(.disabled), a[class*="next"]:not([class*="disabled"]), button[class*="next"]:not([disabled])'
-                );
-                return !!nextBtn;
-              });
-              // 兜底：如果本页提取到 0 条职位，视为无下一页
-              if (hasNextPage && jobs.length === 0) {
-                hasNextPage = false;
               }
 
               const pageDuration = ((Date.now() - pageStartTime) / 1000).toFixed(1);
@@ -1139,12 +1127,25 @@ export class Job51Crawler {
       },
     };
 
-    // 策略：直连优先。免费代理对 jobs.51job.com 全返回 404，直连反而可能成功
+    // 检测 JS 混淆保护页面（jobs.51job.com 旧版页面反爬机制：内容被加密，需浏览器执行JS解密）
+    const isObfuscatedPage = (html: string): boolean => {
+      return html.length > 5000 && html.length < 50000 &&
+        (html.includes('function M(){') || html.includes('var GH=') || html.includes("Obfuscated"));
+    };
+
+    // 策略：直连优先。免费代理对51job全返回404或WAF，直连可能成功
     const tryFetch = async (proxy?: { host: string; port: number }): Promise<string | null> => {
       try {
         const response = await axios.get(requestUrl, proxy ? { ...axiosCfg, proxy: { host: proxy.host, port: proxy.port, protocol: 'http' } } : axiosCfg);
         const html: string = response.data;
-        if (html && html.length >= 1000) return html;
+        if (html && html.length >= 1000) {
+          // jobs.51job.com 旧版页面是 JS 混淆保护页面，axios 无法解密
+          if (isObfuscatedPage(html)) {
+            this.log('info', `[Job51Crawler] ${proxy ? `Proxy ${proxy.host}:${proxy.port}` : 'Direct'} returned JS-obfuscated page (${html.length}B), need browser to decrypt`);
+            return null;
+          }
+          return html;
+        }
         this.log('warn', `[Job51Crawler] ${proxy ? `Proxy ${proxy.host}:${proxy.port}` : 'Direct'} returned small page (${html?.length || 0}B)`);
         return null;
       } catch (e: any) {
@@ -1156,7 +1157,9 @@ export class Job51Crawler {
     // 1) 直连尝试
     let html = await tryFetch();
     if (html) {
-      return this.parseDetailHtml(html, basicInfo, config);
+      const result = this.parseDetailHtml(html, basicInfo, config);
+      if (result.jobDescription && result.jobDescription.length >= 30) return result;
+      this.log('warn', `[Job51Crawler] Direct axios returned page but cheerio extracted no useful detail data, triggering browser fallback`);
     }
 
     // 2) 代理兜底
@@ -1176,13 +1179,15 @@ export class Job51Crawler {
         const [host, portStr] = proxyInfo.proxy.split(':');
         html = await tryFetch({ host, port: parseInt(portStr || '80') });
         if (html) {
-          return this.parseDetailHtml(html, basicInfo, config);
+          const result = this.parseDetailHtml(html, basicInfo, config);
+          if (result.jobDescription && result.jobDescription.length >= 30) return result;
+          this.log('warn', `[Job51Crawler] Proxy ${proxyInfo.proxy} returned page but cheerio extracted no useful detail data`);
         }
         await this.proxyPool.deleteProxy(proxyInfo.proxy);
       }
     }
 
-    throw new Error('PROXY_EXHAUSTED: direct and proxy both failed for detail page');
+    throw new Error('PROXY_EXHAUSTED: direct and proxy both failed for detail page, need browser fallback');
   }
 
   // 用 cheerio 解析 51job 详情页 HTML
@@ -1394,12 +1399,20 @@ export class Job51Crawler {
     basicInfo: any,
     config: TaskConfig
   ): Promise<JobData> {
+    // 无有效 URL 时直接使用搜索 API 数据
+    if (!jobUrl || jobUrl.length < 10) {
+      this.log('info', `[Job51Crawler] 无有效详情URL，使用搜索API数据`);
+      return this.generateBasicJob(basicInfo, config);
+    }
+
     // 优先尝试 axios+代理（绕过 Chrome CONNECT 隧道限制）
+    // 但 jobs.51job.com 旧版页面是 JS 混淆保护页面，axios 无法解密，
+    // fetchDetailViaProxy 会检测到并抛出异常，触发浏览器回退
     if (this.proxyPool && this.proxyPool.isAvailable()) {
       try {
         return await this.fetchDetailViaProxy(jobUrl, basicInfo, config);
       } catch (proxyErr: any) {
-        this.log('warn', `[Job51Crawler] Proxy detail failed: ${proxyErr.message}, falling back to browser`);
+        this.log('warn', `[Job51Crawler] axios detail failed: ${proxyErr.message}, falling back to browser`);
       }
     }
 
@@ -1434,7 +1447,9 @@ export class Job51Crawler {
             }
           });
 
-          await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+          await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 45000 });
+          // 旧版 jobs.51job.com 页面有 JS 混淆保护，需要额外等待 JS 解密并渲染 DOM
+          await new Promise(r => setTimeout(r, 2000));
         } finally {
           releaseMutex!();
         }
@@ -1769,6 +1784,9 @@ export class Job51Crawler {
           updateDate = today.toISOString().split('T')[0];
         }
       }
+    } else if (basicInfo.publishDate) {
+      const m = basicInfo.publishDate.match(/(\d{4}-\d{2}-\d{2})/);
+      if (m) updateDate = m[1];
     }
 
     return {
@@ -1779,7 +1797,7 @@ export class Job51Crawler {
       workCity: detail.city || basicInfo.city || config.city || '',
       workExperience: detail.experience || basicInfo.experience || '',
       education: detail.education || basicInfo.education || '',
-      workAddress: detail.address || basicInfo.address || '',
+      workAddress: detail.address || basicInfo.address || basicInfo.landmarkString || '',
       jobDescription: detail.jobDescription || basicInfo.jobDescription || '',
       jobTags: detail.jobTags || basicInfo.jobTags || '',
       jobCategory: detail.jobCategory || basicInfo.jobCategory || basicInfo.titleCategory || '',
@@ -1792,7 +1810,7 @@ export class Job51Crawler {
       updateDate,
       dataSource: '前程无忧',
       // 51job 新增字段
-      registeredAddress: detail.registeredAddress || basicInfo.registeredAddress || detail.address || basicInfo.address || '',
+      registeredAddress: detail.registeredAddress || basicInfo.registeredAddress || detail.address || basicInfo.address || basicInfo.landmarkString || '',
       titleCategory: detail.titleCategory || basicInfo.titleCategory || '',
       isUrgent: detail.isUrgent || basicInfo.isUrgent || '',
       jobDetailUrl: basicInfo.link || '',
@@ -1801,6 +1819,12 @@ export class Job51Crawler {
   }
 
   private generateBasicJob(basicInfo: any, config?: TaskConfig): JobData {
+    let updateDate = new Date().toISOString().split('T')[0];
+    if (basicInfo.publishDate) {
+      // API 返回格式: "2026-05-06 09:35:40"
+      const m = basicInfo.publishDate.match(/(\d{4}-\d{2}-\d{2})/);
+      if (m) updateDate = m[1];
+    }
     return {
       jobId: basicInfo.jobId || `51fb${Date.now()}${Math.random().toString(36).substring(2, 7)}`,
       jobName: basicInfo.title || '',
@@ -1809,7 +1833,7 @@ export class Job51Crawler {
       workCity: basicInfo.city || config?.city || '',
       workExperience: basicInfo.experience || '',
       education: basicInfo.education || '',
-      workAddress: basicInfo.address || '',
+      workAddress: basicInfo.address || basicInfo.landmarkString || '',
       jobDescription: basicInfo.jobDescription || '',
       jobTags: basicInfo.jobTags || '',
       jobCategory: basicInfo.jobCategory || basicInfo.titleCategory || '',
@@ -1819,10 +1843,10 @@ export class Job51Crawler {
       recruitmentCount: basicInfo.recruitmentCount || '',
       workType: basicInfo.workType || '全职',
       companyCode: '',
-      updateDate: new Date().toISOString().split('T')[0],
+      updateDate,
       dataSource: '前程无忧',
       // 51job 新增字段
-      registeredAddress: basicInfo.registeredAddress || basicInfo.address || '',
+      registeredAddress: basicInfo.registeredAddress || basicInfo.address || basicInfo.landmarkString || '',
       titleCategory: basicInfo.titleCategory || '',
       isUrgent: basicInfo.isUrgent || '',
       jobDetailUrl: basicInfo.link || '',

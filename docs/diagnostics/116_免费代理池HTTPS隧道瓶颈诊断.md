@@ -189,6 +189,69 @@ zhilian 详情页数据获取问题**已解决**。
 - `jobs.51job.com/{city}/{jobId}.html` 是服务端渲染页面（非 SPA），axios+代理+cheerio 方案理论上可解析
 - 51job 暂时保持 cheerio HTML 解析方案
 
+### 阶段 8：51job 详情页深入诊断与改造（2026-05-06）
+
+#### 8.1 SPA 详情 API 抓包（sniff_51job_detail_v2.ts）
+
+通过 Puppeteer 访问 `we.51job.com/pc/detail?jobId=XXX`（SPA 详情页），拦截 XHR 请求：
+
+**结果**: SPA 详情页仅触发 Geetest CAPTCHA 初始化 API（`vapi.51job.com/open.php?module=initgeetest`），**未捕获到任何职位数据 API**。说明 51job SPA 的职位数据加载被 Geetest 验证码门控。
+
+#### 8.2 旧版页面测试（jobs.51job.com）
+
+访问 `jobs.51job.com/beijing/155549199.html`：
+- **axios 直连**: 返回 26KB **JS 混淆保护页面**（`function M(){var GH=['XK392UY'...`），cheerio 无法提取任何内容
+- **Puppeteer 浏览器**: 返回 98KB 渲染后 HTML（浏览器执行 JS 解密后得到真实 DOM）
+
+#### 8.3 搜索 API 字段分析（pc-job-mini-detail）
+
+通过抓包数据确认搜索 API 实际返回字段：
+- **有**: `jobName`, `companyName`, `fullCompanyName`, `provideSalaryString`, `jobAreaString`, `hrefAreaPinYin`, `degreeString`, `workYearString`, `companySizeString`, `companyTypeString`, `industryType1Str`, `industryType2Str`, `jobDescribe`（完整 HTML 格式职位描述）, `jobTagsList`, `termStr`, `issueDateString`, `lon`, `lat`, `landmarkString`
+- **无**: `workAddress`（工作地址）、`registeredAddress`（注册地址）、`companyAddress`（公司地址）
+
+**结论**: 51job 搜索 API 不提供地址字段，这些字段仅在详情页（受 Geetest CAPTCHA 保护）中存在。
+
+#### 8.4 job51.ts 改造方案
+
+**问题**: 当前 `fetchDetailViaProxy()` 用 axios 获取 `we.51job.com/pc/detail?jobId=XXX`（SPA 壳），cheerio 提取不到数据但也不报错，导致浏览器回退路径永远不触发。
+
+**改造**:
+
+1. **详情 URL 改用旧版格式**：
+   ```
+   jobs.51job.com/{hrefAreaPinYin}/{jobId}.html
+   ```
+   旧版页面是服务端渲染（含 JS 混淆），Puppeteer 浏览器执行 JS 后可获得 98KB 真实 DOM。
+
+2. **`fetchDetailViaProxy()` 增加混淆检测**：
+   - 检测 JS 混淆页面特征（`function M(){`, `var GH=`）
+   - cheerio 解析结果校验：`jobDescription` 不足 30 字则抛出异常
+   - 异常触发浏览器回退路径
+
+3. **浏览器回退路径增强**：
+   - `page.goto()` 超时从 30s 延长到 45s（JS 解密需要时间）
+   - 额外等待 2s 确保 DOM 渲染完成
+   - `page.evaluate()` 中已有完整的旧版页面选择器（`.cn h1`, `.bmsg`, `.tCompany_sidebar` 等）
+
+4. **搜索 API 字段映射增强**：
+   - 新增 `fullCompanyName`、`hrefAreaPinYin`、`landmarkString`、`publishDate`、`lon`、`lat`、`jobTagsList` 字段
+   - `address` 回退链增加 `landmarkString`
+   - `updateDate` 增加 `publishDate` 回退
+
+5. **搜索页浏览器直连**：
+   - 移除启动时的代理验证循环（免费代理对搜索页全触发 Aliyun WAF）
+   - 代理仅用于 axios 详情页回退
+
+**数据流**:
+```
+搜索 API (JSON)
+  → 提取基础字段 + hrefAreaPinYin
+  → 构建 jobs.51job.com/{city}/{jobId}.html URL
+  → fetchDetailViaProxy() axios 尝试 → 检测到 JS 混淆 → 抛异常
+  → fetchJobDetail() 浏览器回退 → page.goto(旧版URL) → JS 解密渲染
+  → page.evaluate() 提取完整数据 → buildJobData() 合并
+```
+
 ---
 
 ## 涉及文件
@@ -197,10 +260,11 @@ zhilian 详情页数据获取问题**已解决**。
 |------|------|
 | `code/backend/src/services/crawler/proxyPool.ts` | 新增 — 代理池 HTTP 客户端 |
 | `code/backend/src/services/crawler/zhilian.ts` | 修改 — 集成代理池 + **API JSON 解析**（替代 cheerio） |
-| `code/backend/src/services/crawler/job51.ts` | 修改 — 集成代理池 + axios cheerio HTML 解析 |
+| `code/backend/src/services/crawler/job51.ts` | 修改 — 集成代理池 + 旧版 URL 格式 + 浏览器回退提取详情 |
 | `code/backend/src/config/constants.ts` | 修改 — 新增 PROXY_POOL_CONFIG |
 | `code/backend/src/scripts/sniff_zhilian_api.ts` | 新增 — 智联 API 抓包诊断脚本 |
 | `code/backend/src/scripts/sniff_51job_api.ts` | 新增 — 51job API 抓包诊断脚本 |
 | `code/backend/src/scripts/sniff_51job_detail.ts` | 新增 — 51job SPA 详情页 API 抓包脚本 |
+| `code/backend/src/scripts/sniff_51job_detail_v2.ts` | 新增 — 51job 详情页 v2 诊断脚本（搜索→SPA导航→旧版页面） |
 | `start-dev.bat` / `start-dev.ps1` | 修改 — 集成代理池（Redis + proxy_pool）启动 |
 | `start-proxy-pool.bat` | 新增 — 独立代理池启动脚本 |
