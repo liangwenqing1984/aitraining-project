@@ -493,17 +493,22 @@ export class Job51Crawler {
                     company: item.companyName || item.company_name || item.coName || item.company || item.corpName || '',
                     salary: item.provideSalaryString || item.provideSalary || item.salary || item.salaryDesc || item.salaryRange || item.pay || '',
                     city: item.jobAreaString || item.workCity || item.workArea || item.cityName || item.city || item.region || '',
-                    link: item.jobHref || item.detailUrl || item.url
-                      || (item.jobId ? `https://jobs.51job.com/${city || 'all'}/${item.jobId}.html` : '')
+                    // 优先 SPA 同域 URL（we.51job.com），避免 jobs.51job.com 跨域触发 Geetest CAPTCHA
+                    link: (item.jobId ? `https://we.51job.com/pc/detail?jobId=${item.jobId}` : '')
+                      || item.jobHref || item.detailUrl || item.url
                       || (item.encryptJobId ? `https://we.51job.com/pc/detail?jobId=${item.encryptJobId}` : ''),
                     jobId: item.jobId || item.encryptJobId || item.id || '',
                     // 详情字段（51job search-pc API 直接返回）
                     education: item.degreeString || item.education || item.degree || item.degreeName || item.eduLevel || item.educationLevel || item.degreeRequirement || '',
                     experience: item.workYearString || item.workYear || item.workExperience || item.experience || item.workingYears || item.requiredExperience || '',
                     workType: item.workType || item.employType || item.employmentType || item.jobNature || '',
-                    address: item.landmarkString || item.workAddress || item.companyAddress || item.address || item.workPlace || item.workplace || '',
+                    address: item.workAddress || item.companyAddress || item.address || item.workPlace || item.workplace || item.landmarkString || '',
                     recruitmentCount: item.jobNumString || item.recruitmentCount || item.recruitCount || item.hireCount || item.headCount || '',
-                    jobDescription: item.jobDescribe || item.jobDescription || item.description || item.jobDesc || item.duty || '',
+                    jobDescription: (() => {
+                      const raw = item.jobDescribe || item.jobDescription || item.description || item.jobDesc || item.duty || '';
+                      if (!raw) return '';
+                      return raw.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').trim();
+                    })(),
                     jobTags: (() => {
                       const tags = item.jobTags || '';
                       if (typeof tags === 'string') return tags;
@@ -515,8 +520,8 @@ export class Job51Crawler {
                     titleCategory: item.jobType || item.typeName || item.categoryName || item.positionCategory || '',
                     isUrgent: item.isUrgent || item.urgentJob || item.urgent || item.isEmergent || '',
                     companyDetailUrl: item.companyHref || item.coUrl || item.companyUrl
-                      || (item.coId ? `https://jobs.51job.com/company/${item.coId}.html` : '')
-                      || (item.companyId ? `https://we.51job.com/pc/company?companyId=${item.companyId}` : ''),
+                      || (item.encCoId ? `https://we.51job.com/pc/company?companyId=${item.encCoId}` : '')
+                      || (item.coId ? `https://we.51job.com/pc/company?companyId=${item.coId}` : ''),
                     registeredAddress: item.companyAddress || item.regAddress || item.registeredAddress || '',
                     businessScope: item.industryType2Str || item.businessScope || item.bizScope || item.companyBusiness || item.scope || '',
                     companyScale: item.companySizeString || item.companyScale || item.coSize || item.scale || item.size || item.employeeCount || '',
@@ -1787,7 +1792,7 @@ export class Job51Crawler {
       updateDate,
       dataSource: '前程无忧',
       // 51job 新增字段
-      registeredAddress: detail.registeredAddress || basicInfo.registeredAddress || '',
+      registeredAddress: detail.registeredAddress || basicInfo.registeredAddress || detail.address || basicInfo.address || '',
       titleCategory: detail.titleCategory || basicInfo.titleCategory || '',
       isUrgent: detail.isUrgent || basicInfo.isUrgent || '',
       jobDetailUrl: basicInfo.link || '',
@@ -1817,7 +1822,7 @@ export class Job51Crawler {
       updateDate: new Date().toISOString().split('T')[0],
       dataSource: '前程无忧',
       // 51job 新增字段
-      registeredAddress: basicInfo.registeredAddress || '',
+      registeredAddress: basicInfo.registeredAddress || basicInfo.address || '',
       titleCategory: basicInfo.titleCategory || '',
       isUrgent: basicInfo.isUrgent || '',
       jobDetailUrl: basicInfo.link || '',
