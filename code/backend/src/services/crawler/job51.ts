@@ -1,6 +1,8 @@
 // @ts-nocheck - page.evaluate 代码在浏览器环境中运行
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 import { JobData, TaskConfig } from '../../types';
 import { JOB51_CITY_CODES, PROXY_POOL_CONFIG } from '../../config/constants';
 import { classifyPage, suggestSelectors, recommendAction } from '../llm/antiCrawl';
@@ -101,7 +103,7 @@ export class Job51Crawler {
     const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
     const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\job51_${Date.now()}`;
 
-    // 浏览器启动参数（含代理）
+    // 浏览器启动参数（直连模式 — 代理仅用于 axios 详情页请求）
     const launchArgs: string[] = [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -111,9 +113,6 @@ export class Job51Crawler {
       '--window-size=1920x1080',
       '--disable-blink-features=AutomationControlled',
     ];
-    if (this.currentProxy) {
-      launchArgs.push(`--proxy-server=http://${this.currentProxy}`);
-    }
 
     const browser = await puppeteer.launch({
       executablePath: chromePath,
@@ -1109,12 +1108,281 @@ export class Job51Crawler {
 
   // ==================== 详情页抓取 ====================
 
+  // === 代理池：axios+代理获取详情页（绕过Chrome CONNECT隧道限制） ===
+  private async fetchDetailViaProxy(jobUrl: string, basicInfo: any, config: TaskConfig): Promise<JobData> {
+    const MAX_PROXY_ATTEMPTS = 3;
+    for (let attempt = 0; attempt < MAX_PROXY_ATTEMPTS; attempt++) {
+      if (!this.proxyPool || !this.proxyPool.isAvailable()) break;
+      const poolCount = await this.proxyPool.getCount();
+      if (poolCount <= 0) break;
+
+      const proxyInfo = await this.proxyPool.getProxy();
+      if (!proxyInfo) break;
+
+      const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy, 'https://www.51job.com/');
+      if (!isHealthy) {
+        await this.proxyPool.deleteProxy(proxyInfo.proxy);
+        continue;
+      }
+
+      try {
+        const [host, portStr] = proxyInfo.proxy.split(':');
+        const port = parseInt(portStr || '80');
+        // 强制 HTTPS + 添加 Referer 模拟从搜索结果导航
+        const requestUrl = jobUrl.replace(/^http:\/\//, 'https://');
+        const referer = `https://we.51job.com/pc/search?keyword=${encodeURIComponent(basicInfo.title || basicInfo.keyword || '')}`;
+        const response = await axios.get(requestUrl, {
+          proxy: { host, port, protocol: 'http' },
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Referer': referer,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+          maxRedirects: 5,
+          validateStatus: (status) => status >= 200 && status < 300,
+        });
+
+        const html: string = response.data;
+        if (!html || html.length < 1000) {
+          this.log('warn', `[Job51Crawler] Proxy ${proxyInfo.proxy} returned small page (${html?.length || 0}B), likely WAF`);
+          await this.proxyPool.deleteProxy(proxyInfo.proxy);
+          continue;
+        }
+
+        const $ = cheerio.load(html);
+        const detail: any = {};
+        const bodyText = $('body').text();
+        const textLines = bodyText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+        const get = (sels: string): string => {
+          for (const sel of sels.split(', ')) {
+            const text = $(sel).first().text().trim();
+            if (text) return text;
+          }
+          return '';
+        };
+
+        const findByLabel = (labels: string[], fallbackPattern?: RegExp | null): string => {
+          for (const line of textLines) {
+            for (const label of labels) {
+              const idx = line.indexOf(label);
+              if (idx !== -1) {
+                const val = line.substring(idx + label.length).replace(/^[：:\s]+/, '').trim();
+                if (val && val.length < 80) return val;
+                const lineIdx = textLines.indexOf(line);
+                if (!val && lineIdx + 1 < textLines.length) {
+                  const nextLine = textLines[lineIdx + 1];
+                  if (nextLine && nextLine.length < 80 && !nextLine.includes('：') && !nextLine.includes(':')) {
+                    return nextLine;
+                  }
+                }
+              }
+            }
+          }
+          if (fallbackPattern) {
+            const m = bodyText.match(fallbackPattern);
+            if (m) return m[1] || m[0] || '';
+          }
+          return '';
+        };
+
+        // 标题
+        detail.title = get('h1[class*="title"], h1, .job-name h1, .cn h1, [class*="jobName"], [class*="job-name"], .tHeader h1, .detail-title');
+
+        // 公司名
+        detail.company = get('.cname a, .company-name, [class*="company"] a, .com_name, .tCompany_sidebar a, [class*="corp"] a, [class*="enterprise"] a');
+
+        // 薪资
+        detail.salary = get('[class*="salary"], .sal, .cn strong, [class*="pay"], .tHeader strong, [class*="wage"], [class*="remuneration"]');
+
+        // 城市（复合字段 .ltype 第一段）
+        const rawCity = get('.ltype, [class*="area"], [class*="location"], [class*="workCity"], [class*="address"], [class*="region"]');
+        if (rawCity && rawCity.includes('|')) {
+          const segments = rawCity.split('|').map(s => s.trim()).filter(s => s.length > 0);
+          detail.city = segments[0] || rawCity;
+          if (!detail.experience && segments.length >= 2) {
+            const expMatch = segments[1].match(/(\d+-\d+年|\d+年以上|\d+年及以上|\d+年经验|经验不限|应届生|无需经验|在校生|\d+年)/);
+            if (expMatch) detail.experience = expMatch[0];
+          }
+          if (!detail.education && segments.length >= 3) {
+            const eduMatch = segments[2].match(/(本科|硕士|博士|大专|中专|高中|初中|MBA|EMBA|学历不限)/);
+            if (eduMatch) detail.education = eduMatch[0];
+          }
+        } else {
+          detail.city = rawCity;
+        }
+
+        // 遍历 info spans 提取经验/学历/工作类型/招聘人数
+        $('.msg.ltype span, .jtag span, .jtag .t1 span, .bmsg span, [class*="info"] span, [class*="require"] span, .t1 span, [class*="detail"] span, [class*="condition"] span, [class*="tag"] span, [class*="item"] span, .job-header span').each((_i, el) => {
+          const t = $(el).text().trim();
+          if (!t || t.length > 80) return;
+          if (!detail.experience && (/\d+-?\d*年/.test(t) || t.includes('经验'))) {
+            const m = t.match(/(\d+-\d+年|\d+年以上|\d+年及以上|\d+年经验|经验不限|应届生|无需经验|在校生|\d+年)/);
+            detail.experience = m ? m[0] : t.substring(0, 30);
+          } else if (/(本科|硕士|博士|大专|中专|高中|初中|不限|MBA|EMBA)/.test(t) && t.length < 20) {
+            detail.education = detail.education || t;
+          } else if (/(全职|兼职|实习|合同制|劳务派遣|临时工)/.test(t) && t.length < 10) {
+            detail.workType = detail.workType || t;
+          } else if (/招\d+人/.test(t)) {
+            detail.recruitmentCount = detail.recruitmentCount || t;
+          }
+        });
+
+        // 文本兜底
+        if (!detail.experience) {
+          const m = bodyText.match(/(\d+-\d+年|\d+年以上|\d+年及以上|\d+年经验|经验不限|应届生|无需经验|在校生|\d+年)/);
+          if (m) detail.experience = m[0];
+        }
+        if (!detail.education) {
+          const m = bodyText.match(/(本科|硕士|博士|大专|中专|高中|初中|MBA|EMBA|学历不限)/);
+          if (m) detail.education = m[0];
+        }
+        if (detail.education && detail.education.length > 10) detail.education = '';
+
+        if (!detail.workType) {
+          const m = bodyText.match(/(全职|兼职|实习|合同制|劳务派遣|临时工)/);
+          if (m) detail.workType = m[0]; else detail.workType = '全职';
+        }
+        if (detail.workType && !/^(全职|兼职|实习|合同制|劳务派遣|临时工)$/.test(detail.workType)) {
+          detail.workType = '全职';
+        }
+
+        if (!detail.recruitmentCount) {
+          const m = bodyText.match(/招(\d+)人/);
+          if (m) detail.recruitmentCount = m[0];
+        }
+
+        // 职位描述
+        detail.jobDescription = get('.job_msg, .bmsg, .tBorderL_msg, [class*="job-detail"], [class*="jobDesc"], [class*="description"], .tCompany_main, [class*="job_content"], [class*="detail_content"], [class*="responsibility"]');
+        if (!detail.jobDescription || detail.jobDescription.length < 20) {
+          const longTexts = textLines.filter(l => l.length > 50);
+          if (longTexts.length > 0) detail.jobDescription = longTexts.slice(0, 5).join('\n');
+        }
+
+        // 职位标签
+        const tagTexts = $('.jtag .t1 span, [class*="tag"], [class*="skill"], .bmsg .t2 span, [class*="label"], [class*="welfare"] span')
+          .map((_i, el) => $(el).text().trim()).get().filter(v => !!v);
+        detail.jobTags = tagTexts.join(',');
+        if (!detail.jobTags) {
+          const welfareMatch = bodyText.match(/(五险一金|周末双休|带薪年假|绩效奖金|节日福利|定期体检|员工旅游|餐补|交通补助|通讯补贴|住房补贴|年终奖|股票期权|弹性工作|专业培训|出国机会|包吃|包住|全勤奖|加班补助|高温补贴|补充医保|补充公积金)/g);
+          if (welfareMatch) detail.jobTags = welfareMatch.join(',');
+        }
+
+        // 公司性质
+        detail.companyNature = get('[class*="company_type"], [class*="nature"], .com_tag span, .tCompany_sidebar .com_tag');
+        if (detail.companyNature && !/[民营国企外资上市合资股份独资创业个体有限]/i.test(detail.companyNature)) {
+          detail.companyNature = '';
+        }
+        if (!detail.companyNature) {
+          detail.companyNature = findByLabel(['公司性质', '企业性质', '单位性质', '企业类型', '公司类型'],
+            /(民营公司|民营企业|民营|国有企业|国企|外商独资|外资企业|外资|中外合资|合资|上市公司|已上市|事业单位|政府机关|非营利机构|创业公司|初创企业|股份制|个体工商|有限责任公司)/);
+        }
+        if (detail.companyNature) {
+          const n = detail.companyNature;
+          if (/已上市|上市公司|创业板上市|A股上市/.test(n)) detail.companyNature = '上市公司';
+          else if (/国有企业|国企/.test(n)) detail.companyNature = '国有企业';
+          else if (/外商独资|外资/.test(n)) detail.companyNature = '外资企业';
+          else if (/中外合资|合资/.test(n)) detail.companyNature = '合资企业';
+          else if (/民营/.test(n)) detail.companyNature = '民营企业';
+          else if (/事业单位/.test(n)) detail.companyNature = '事业单位';
+          else if (/政府机关/.test(n)) detail.companyNature = '政府机关';
+          else if (/股份制/.test(n)) detail.companyNature = '股份制企业';
+          else if (/个体工商/.test(n)) detail.companyNature = '个体工商户';
+          else if (/非营利/.test(n)) detail.companyNature = '非营利机构';
+          else if (/创业|初创/.test(n)) detail.companyNature = '创业公司';
+          else if (/有限责任/.test(n)) detail.companyNature = '民营企业';
+        }
+
+        // 公司规模
+        detail.companyScale = get('[class*="scale"], [class*="size"], .tCompany_sidebar .com_scale, [class*="company_size"]');
+        if (!detail.companyScale) {
+          detail.companyScale = findByLabel(['公司规模', '企业规模', '员工人数', '规模'], /(\d+-\d+人|\d+人以上|少于\d+人|\d+余人)/);
+        }
+
+        // 工作地址
+        detail.address = get('[class*="address"], .bmsg address, [class*="location"], .tBorderL_msg .fp, [class*="workplace"]');
+        if (!detail.address) {
+          detail.address = findByLabel(['工作地址', '上班地址', '公司地址', '办公地址', '工作地点'], null);
+        }
+
+        // 经营范围
+        detail.businessScope = get('[class*="business"], [class*="bizScope"], [class*="scope"], [class*="businessScope"]');
+        if (!detail.businessScope) {
+          detail.businessScope = findByLabel(['经营范围', '主营业务', '业务范围'], null);
+        }
+
+        // 注册地址
+        detail.registeredAddress = get('[class*="regAddress"], [class*="registered"], [class*="reg_address"], [class*="companyAddress"]');
+        if (!detail.registeredAddress) {
+          detail.registeredAddress = findByLabel(['注册地址', '注册地', '登记地址'], null);
+          if (!detail.registeredAddress && detail.address) detail.registeredAddress = detail.address;
+        }
+
+        // 职称分类
+        detail.titleCategory = get('[class*="jobType"], [class*="jobCategory"], [class*="category"], [class*="positionType"]');
+        if (!detail.titleCategory) {
+          detail.titleCategory = findByLabel(['职称分类', '职位类别', '岗位类别', '职位类型'], null);
+        }
+        if (detail.titleCategory && detail.titleCategory.length > 15) detail.titleCategory = '';
+
+        // 职能类别
+        detail.jobCategory = get('[class*="function"], [class*="funcCategory"], [class*="jobCat"], [class*="job_category"]');
+        if (!detail.jobCategory) {
+          detail.jobCategory = findByLabel(['职能类别', '职能', '工作职能', '岗位职能'], null);
+        }
+        if (detail.jobCategory && detail.jobCategory.length > 15) detail.jobCategory = '';
+
+        // 是否紧急
+        detail.isUrgent = '';
+        $('[class*="urgent"], [class*="emergency"], .urgent-tag, .hot-tag').each((_i, el) => {
+          const txt = $(el).text().trim();
+          if (txt === '急' || txt.includes('急聘')) detail.isUrgent = '是';
+        });
+        if (!detail.isUrgent && bodyText.includes('急聘')) detail.isUrgent = '是';
+
+        // 公司详情链接
+        const companyLinkEl = $('a[href*="/company/"], a[href*="/pc/company"], a[href*="coId"], [class*="company"] a[href*="51job"]').first();
+        detail.companyDetailUrl = companyLinkEl.attr('href') || '';
+
+        // 更新时间
+        detail.updateDateText = $('[class*="update"], [class*="refresh"], [class*="time"], [class*="publish"], [class*="date"]').first().text().trim();
+
+        if (!detail.title && !detail.company) {
+          this.log('warn', `[Job51Crawler] Proxy fetch extracted no title/company, trying next proxy`);
+          continue;
+        }
+
+        this.log('info', `[Job51Crawler] ✅ Proxy detail fetch OK via ${proxyInfo.proxy}: ${detail.title?.substring(0, 30)}`);
+        return this.buildJobData(detail, basicInfo, config);
+      } catch (e: any) {
+        this.log('warn', `[Job51Crawler] Proxy ${proxyInfo.proxy} request failed: ${e.message}`);
+        await this.proxyPool.deleteProxy(proxyInfo.proxy);
+        continue;
+      }
+    }
+    throw new Error('PROXY_EXHAUSTED: all proxies failed for detail page');
+  }
+
   private async fetchJobDetail(
     browser: any,
     jobUrl: string,
     basicInfo: any,
     config: TaskConfig
   ): Promise<JobData> {
+    // 优先尝试 axios+代理（绕过 Chrome CONNECT 隧道限制）
+    if (this.proxyPool && this.proxyPool.isAvailable()) {
+      try {
+        return await this.fetchDetailViaProxy(jobUrl, basicInfo, config);
+      } catch (proxyErr: any) {
+        this.log('warn', `[Job51Crawler] Proxy detail failed: ${proxyErr.message}, falling back to browser`);
+      }
+    }
+
     let page: any = null;
     const maxRetries = 2;
 

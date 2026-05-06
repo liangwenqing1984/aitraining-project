@@ -1,5 +1,7 @@
 // @ts-nocheck - 禁用整个文件的类型检查，因为 page.evaluate 中的代码在浏览器环境中运行
 import puppeteer from 'puppeteer';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 import { JobData, TaskConfig } from '../../types';
 import { ZHILIAN_CITY_CODES, PROXY_POOL_CONFIG } from '../../config/constants';
 import { io } from '../../app';
@@ -149,7 +151,7 @@ export class ZhilianCrawler {
 
     this.log('info', `[ZhilianCrawler] Temporary dir: ${userDataDir}`);
 
-    // Browser launch args (with proxy)
+    // Browser launch args (direct mode — proxy used only for axios detail fetching)
     const launchArgs: string[] = [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -173,9 +175,6 @@ export class ZhilianCrawler {
       '--disable-background-timer-throttling',
       '--disable-renderer-backgrounding',
     ];
-    if (this.currentProxy) {
-      launchArgs.push(`--proxy-server=http://${this.currentProxy}`);
-    }
 
     // Launch browser with stability params
     const browser = await puppeteer.launch({
@@ -2039,8 +2038,202 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
     return this.signal?.aborted || false;
   }
 
+  // === 代理池：axios+代理获取详情页（绕过Chrome CONNECT隧道限制） ===
+  private async fetchDetailViaProxy(jobUrl: string, basicInfo: any): Promise<JobData> {
+    const MAX_PROXY_ATTEMPTS = 3;
+    for (let attempt = 0; attempt < MAX_PROXY_ATTEMPTS; attempt++) {
+      if (!this.proxyPool || !this.proxyPool.isAvailable()) break;
+      const poolCount = await this.proxyPool.getCount();
+      if (poolCount <= 0) break;
+
+      const proxyInfo = await this.proxyPool.getProxy();
+      if (!proxyInfo) break;
+
+      // 快速健康检测
+      const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy, 'https://www.zhaopin.com/');
+      if (!isHealthy) {
+        await this.proxyPool.deleteProxy(proxyInfo.proxy);
+        continue;
+      }
+
+      try {
+        const [host, portStr] = proxyInfo.proxy.split(':');
+        const port = parseInt(portStr || '80');
+        // 强制 HTTPS：列表页给的链接可能是 http://，智联要求 https
+        const requestUrl = jobUrl.replace(/^http:\/\//, 'https://');
+        // 从 jobUrl 提取搜索来源页作为 Referer
+        const referer = jobUrl.includes('sou?') ? jobUrl : `https://www.zhaopin.com/sou?keyword=${encodeURIComponent(basicInfo.keyword || basicInfo.title || '')}`;
+        const response = await axios.get(requestUrl, {
+          proxy: { host, port, protocol: 'http' },
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Referer': referer,
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'same-origin',
+          },
+          maxRedirects: 5,
+          validateStatus: (status) => status >= 200 && status < 300,
+        });
+
+        const html: string = response.data;
+        if (!html || html.length < 1000) {
+          this.log('warn', `[ZhilianCrawler] Proxy ${proxyInfo.proxy} returned small page (${html?.length || 0}B), likely WAF`);
+          await this.proxyPool.deleteProxy(proxyInfo.proxy);
+          continue;
+        }
+
+        const $ = cheerio.load(html);
+        const detail: any = {};
+
+        // 职位名称
+        const titleSelectors = ['.summary-planes__title', '.job-title', '[class*="job-title"]', '[class*="position-title"]', 'h1[class*="title"]'];
+        for (const sel of titleSelectors) {
+          const text = $(sel).first().text().trim();
+          if (text) { detail.title = text; break; }
+        }
+
+        // 公司名称
+        const companySelectors = ['.company-name', '.company-info__name', '.cname', '[class*="company-name"]', '[class*="cname"]'];
+        for (const sel of companySelectors) {
+          const text = $(sel).first().text().trim();
+          if (text) { detail.company = text; break; }
+        }
+
+        // 薪资
+        detail.salary = $('.summary-planes__salary, [class*="salary"]').first().text().trim();
+
+        // 城市
+        detail.city = $('.workCity-link, [class*="city"] a').first().text().trim();
+
+        // 区域
+        detail.area = $('.summary-planes__info li span, [class*="area"]').first().text().trim();
+
+        // 经验/学历/工作类型/招聘人数 — 遍历 info li
+        $('.summary-planes__info li, [class*="job-info"] li').each((_i, el) => {
+          const text = $(el).text().trim();
+          if ($(el).find('a').length > 0) return;
+          if (text.match(/\d+-?\d*年/)) detail.experience = text;
+          else if (text.match(/(本科|硕士|博士|大专|中专|高中|初中)/)) detail.education = text;
+          else if (text.match(/(全职|兼职|实习)/)) detail.workType = text;
+          else if (text.match(/招\d+人/)) detail.recruitmentCount = text;
+        });
+
+        // 工作地址
+        detail.address = $('.address-info__bubble, [class*="address"]').first().text().trim();
+
+        // 公司信息（性质/规模/经营范围）
+        const companyDescText = $('.company-info__desc, [class*="company-desc"]').first().text().trim();
+        if (companyDescText) {
+          const parts = companyDescText.split('·').map(p => p.trim());
+          if (parts.length >= 2) {
+            detail.companyNature = parts[0];
+            detail.companyScale = parts[1];
+            if (parts.length >= 3) detail.businessScope = parts.slice(2).join(', ');
+          }
+        }
+
+        // 岗位更新日期
+        const updateText = $('.summary-planes__time, [class*="update-time"]').first().text().trim();
+        const timeMatch = updateText.match(/更新于\s*(.+)/);
+        if (timeMatch) detail.updateDateText = timeMatch[1].trim();
+
+        // 职位标签
+        const skillItems = $('.describtion-card__skills-item, [class*="skill"]');
+        if (skillItems.length > 0) {
+          detail.jobTags = skillItems.map((_i, el) => $(el).text().trim()).get().join(',');
+        }
+
+        // 正文文本兜底：学历/经验
+        const bodyText = $('body').text();
+        if (!detail.experience) {
+          const expMatch = bodyText.match(/(\d+-\d+年|\d+年以上|\d+年及以上|\d+年经验|经验不限|应届生|无需经验|在校生|\d+年)/);
+          if (expMatch) detail.experience = expMatch[0];
+        }
+        if (!detail.education) {
+          const eduMatch = bodyText.match(/(本科|硕士|博士|大专|中专|高中|初中|MBA|EMBA|学历不限)/);
+          if (eduMatch) detail.education = eduMatch[0];
+        }
+        if (!detail.workType) {
+          const wtMatch = bodyText.match(/(全职|兼职|实习|合同制|劳务派遣|临时工)/);
+          if (wtMatch) detail.workType = wtMatch[0];
+        }
+
+        if (!detail.title && !detail.company) {
+          this.log('warn', `[ZhilianCrawler] Proxy fetch extracted no title/company, trying next proxy`);
+          continue;
+        }
+
+        this.log('info', `[ZhilianCrawler] ✅ Proxy detail fetch OK via ${proxyInfo.proxy}: ${detail.title?.substring(0, 30)}`);
+        return this.buildJobDataFromDetail(detail, basicInfo);
+      } catch (e: any) {
+        this.log('warn', `[ZhilianCrawler] Proxy ${proxyInfo.proxy} request failed: ${e.message}`);
+        await this.proxyPool.deleteProxy(proxyInfo.proxy);
+        continue;
+      }
+    }
+    throw new Error('PROXY_EXHAUSTED: all proxies failed for detail page');
+  }
+
+  // 从 detail 对象构建 JobData（proxy 和 browser 路径共用）
+  private buildJobDataFromDetail(detail: any, basicInfo: any): JobData {
+    let updateDate = new Date().toISOString().split('T')[0];
+    if (detail.updateDateText) {
+      const today = new Date();
+      if (detail.updateDateText === '今天') {
+        updateDate = today.toISOString().split('T')[0];
+      } else if (detail.updateDateText === '昨天') {
+        today.setDate(today.getDate() - 1);
+        updateDate = today.toISOString().split('T')[0];
+      } else {
+        const daysMatch = detail.updateDateText.match(/(\d+)天前/);
+        if (daysMatch) {
+          today.setDate(today.getDate() - parseInt(daysMatch[1]));
+          updateDate = today.toISOString().split('T')[0];
+        }
+      }
+    }
+
+    return {
+      companyName: detail.company || basicInfo.company || '',
+      jobId: `ZL${Date.now()}${Math.random().toString(36).substr(2, 9)}`,
+      jobName: detail.title || basicInfo.title,
+      jobCategory: basicInfo.keyword || '',
+      jobTags: detail.jobTags || '',
+      jobDescription: '',
+      salaryRange: detail.salary || basicInfo.salary || '',
+      workCity: detail.city || basicInfo.city || '',
+      workExperience: detail.experience || '',
+      workAddress: detail.address || `${detail.city || ''}${detail.area || ''}` || '',
+      education: detail.education || '',
+      companyCode: '',
+      companyNature: (basicInfo as any).companyNature || detail.companyNature || '',
+      businessScope: (basicInfo as any).businessScope || detail.businessScope || '',
+      companyScale: (basicInfo as any).companyScale || detail.companyScale || '',
+      recruitmentCount: detail.recruitmentCount || '',
+      updateDate,
+      workType: detail.workType || '',
+      dataSource: '智联招聘',
+    };
+  }
+
   // ✅ 优化：访问职位详情页获取完整信息（复用浏览器实例，增加智能重试机制）
   private async fetchJobDetail(browser: any, jobUrl: string, basicInfo: any): Promise<JobData> {
+    // 优先尝试 axios+代理（绕过 Chrome CONNECT 隧道限制）
+    if (this.proxyPool && this.proxyPool.isAvailable()) {
+      try {
+        return await this.fetchDetailViaProxy(jobUrl, basicInfo);
+      } catch (proxyErr: any) {
+        this.log('warn', `[ZhilianCrawler] Proxy detail failed: ${proxyErr.message}, falling back to browser`);
+      }
+    }
+
     let page: any = null;
     let retryCount = 0;
     const maxRetries = 3;  // 🔧 优化：从2次增加到3次重试
@@ -2455,6 +2648,15 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
   // ✅ 新增：使用已创建的page对象抓取详情页（避免并发创建标签页导致的浏览器崩溃）
   // ✅ 新增：使用已创建的page对象抓取详情页（避免并发创建标签页导致的浏览器崩溃）
   private async fetchJobDetailWithPage(page: any, jobUrl: string, basicInfo: any): Promise<JobData> {
+    // 优先尝试 axios+代理（绕过 Chrome CONNECT 隧道限制）
+    if (this.proxyPool && this.proxyPool.isAvailable()) {
+      try {
+        return await this.fetchDetailViaProxy(jobUrl, basicInfo);
+      } catch (proxyErr: any) {
+        this.log('warn', `[ZhilianCrawler] Proxy detail failed: ${proxyErr.message}, falling back to browser`);
+      }
+    }
+
     try {
       this.log('info', `[ZhilianCrawler] 📑 开始抓取详情页: ${jobUrl.substring(0, 60)}...`);
 
