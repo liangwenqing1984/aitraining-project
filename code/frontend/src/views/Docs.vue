@@ -127,39 +127,222 @@ const docs: Record<string, { title: string; content: string }> = {
   <tr><th>功能</th><th>说明</th></tr>
   <tr><td>多平台支持</td><td>智联招聘、前程无忧（可扩展）</td></tr>
   <tr><td>批量任务</td><td>多关键词 × 多城市笛卡尔积组合</td></tr>
-  <tr><td>断点续传</td><td>浏览器崩溃后从上次中断位置恢复</td></tr>
+  <tr><td>断点续传</td><td>浏览器崩溃后从上次中断位置恢复，最大 10 次重启</td></tr>
   <tr><td>智能去重</td><td>基于职位 ID 自动去重</td></tr>
-  <tr><td>WAF 对抗</td><td>反爬检测自动降级串行 + 随机延迟 + 指纹随机化</td></tr>
-  <tr><td>实时监控</td><td>WebSocket 推送进度条、分级彩色日志</td></tr>
+  <tr><td>反爬对抗</td><td>AI 页面分类 + 硬编码签名检测 + 指纹随机化 + IP 代理池 + 自动降级</td></tr>
+  <tr><td>实时监控</td><td>WebSocket 推送进度条、分级彩色日志、详情页阶段状态</td></tr>
   <tr><td>Excel 导出</td><td>格式化 .xlsx 输出，带样式表头、冻结行、交替行颜色</td></tr>
 </table>
 
-<h3>技术原理</h3>
+<hr>
+
+<h2>反爬策略总结</h2>
+
+<h3>一、智联招聘 (zhilian.ts)</h3>
+
+<h4>1.1 平台反爬机制</h4>
+<table>
+  <tr><th>层级</th><th>机制</th><th>表现</th></tr>
+  <tr><td>WAF 防火墙</td><td>页面标题变为 <code>"Security Verification"</code></td><td>浏览器标签页标题异常，页面内容为空壳</td></tr>
+  <tr><td>反爬空壳</td><td>body 被完全替换为空白</td><td><code>bodyLength === 0</code>，页面被 GeeTest 等反爬壳接管</td></tr>
+  <tr><td>登录拦截</td><td>弹出登录框或跳转登录页</td><td>body 出现"登录"关键词、DOM 出现 <code>.need-login</code></td></tr>
+  <tr><td>验证码</td><td>机器人验证页面</td><td>body 出现"验证"关键词、DOM 出现 <code>#verifyCode</code>/<code>.robot-check</code></td></tr>
+  <tr><td>频率限制</td><td>高频访问触发限制</td><td>返回空数据或错误页面</td></tr>
+</table>
+
+<h4>1.2 我方应对策略</h4>
+
+<h5>🖥️ 浏览器层伪装</h5>
+<ul>
+  <li><strong>随机视口</strong>：1366-1920 × 768-1080，每次 <code>newPage</code> 随机化</li>
+  <li><strong>UA 轮换池</strong>：4 种 User-Agent（Chrome 129/130/131 + Firefox 132）</li>
+  <li><strong>独立会话</strong>：每次启动浏览器使用 <code>zhilian_${Date.now()}</code> 独立 userDataDir，不留 cookie 痕迹</li>
+  <li><strong>21 项 Chrome 启动参数</strong>：包括 <code>--disable-web-security</code>、<code>--disable-features=IsolateOrigins</code>、<code>--disable-sync</code> 等</li>
+  <li><strong>资源拦截保留 CSS</strong>：只拦截 image/font/media，保留 CSS 加载避免 WAF 指纹识别</li>
+</ul>
+
+<h5>🕐 类人行为模拟</h5>
+<ul>
+  <li><strong>分级延迟</strong>：正常 2-4s；WAF 检测后升为 4-8s；WAF 降级模式 5-10s</li>
+  <li><strong>批次间隔</strong>：批次间 8-10s 等待（浏览器 GC/内存恢复）</li>
+  <li><strong>懒加载滚动</strong>：8 次渐进式滚动（每次 800ms），模拟人工浏览</li>
+  <li><strong>搜索 URL 编码</strong>：使用查询参数 <code>?jl=622&kw=XX</code> 而非路径编码，规避路径特征检测</li>
+</ul>
+
+<h5>🔄 并发智能降级</h5>
+<ul>
+  <li><strong>最高并发 5</strong>，使用 <code>Promise.allSettled</code>（单条失败不中断批次）</li>
+  <li><strong>互斥锁序列化 newPage</strong>：<code>pageCreateMutex</code> 防止 CDP 竞争崩溃，10s 超时孤儿页捕获</li>
+  <li><strong>WAF 检测后自动降级串行</strong>：检测到反爬 → 删除坏代理 → 切串行 + 5-10s 大延迟</li>
+  <li><strong>Tab 泄漏管理</strong>：批次前后清理孤儿标签页，>5 个 tab 主动回收</li>
+</ul>
+
+<h5>🌐 IP 代理池</h5>
+<ul>
+  <li><strong>代理健康验证</strong>：获取代理后先访问 <code>zhaopin.com</code> 验证可用性（8s 超时，仅 2xx 视为可用）</li>
+  <li><strong>隧道失败自动切换</strong>：<code>ERR_TUNNEL_CONNECTION_FAILED</code> → 删代理 → 取新代理 → 浏览器重启</li>
+  <li><strong>上限保护</strong>：单任务最多换代理 N 次（<code>maxProxySwitchesPerTask</code>）</li>
+  <li><strong>降级直连</strong>：代理池耗尽时自动回退直连模式</li>
+</ul>
+
+<h5>🛠️ 浏览器级恢复</h5>
+<ul>
+  <li><strong>主动重启</strong>：每 5 个关键词/城市组合主动重启浏览器，刷新指纹</li>
+  <li><strong>崩溃恢复</strong>：<code>BROWSER_RESTART_SCHEDULED</code> 携带断点坐标（组合索引 + 页码 + 职位索引）</li>
+  <li><strong>指数退避</strong>：计划重启 30s 基数、崩溃 3s 基数 × 尝试次数，上限 120s</li>
+  <li><strong>断点续传</strong>：配置存 JSONB，数据库级断点恢复</li>
+  <li><strong>Frame detached 恢复</strong>：<code>page.reload()</code> 尝试恢复而非直接重启浏览器</li>
+</ul>
+
+<h5>🔑 关键绕过：API 直连逃逸</h5>
+<ul>
+  <li>智联 WAF 主要保护 <code>www.zhaopin.com</code> 的 HTML 页面</li>
+  <li><strong>内部 API <code>fe-api.zhaopin.com/c/i/jobs/position-detail-new</code> 对直连更宽松</strong></li>
+  <li>详情页优先 axios 直连 API（含 Referer/Origin 头），失败后才走代理 → 浏览器渲染</li>
+</ul>
+
+<hr>
+
+<h3>二、前程无忧 / 51job (job51.ts)</h3>
+
+<h4>2.1 平台反爬机制</h4>
+<table>
+  <tr><th>层级</th><th>机制</th><th>表现</th></tr>
+  <tr><td>Aliyun WAF 滑动验证</td><td>Geetest 滑块 CAPTCHA</td><td>页面标题"滑动验证页面"，内容"访问验证"+"请按住滑块，拖动到最右边"</td></tr>
+  <tr><td>Aliyun WAF JS 挑战</td><td>JS 混淆重定向脚本</td><td>HTML &lt; 1KB，含 <code>cf-app-waf.cfc.aliyuncs.com</code> 脚本</td></tr>
+  <tr><td>旧版 JS 混淆保护</td><td><code>jobs.51job.com</code> 页面内容加密</td><td>26KB 密文，需浏览器执行 JS 解密后才能读取 DOM（axios 无法解析）</td></tr>
+  <tr><td>频率限制</td><td>高频访问触发验证</td><td>返回"访问太频繁"或"请输入验证码"</td></tr>
+  <tr><td>搜索参数校验</td><td>特定参数触发 WAF</td><td><code>pageSize</code> 等参数会直接命中 WAF 规则</td></tr>
+</table>
+
+<h4>2.2 我方应对策略</h4>
+
+<h5>🖥️ 浏览器层伪装（Stealth 增强）</h5>
+<ul>
+  <li><strong>puppeteer-extra + StealthPlugin</strong>：专业反检测插件，修补 <code>navigator.webdriver</code>、Chrome runtime、权限等数十个检测向量</li>
+  <li><strong><code>--disable-blink-features=AutomationControlled</code></strong>：二次确保 webdriver 标记不泄露</li>
+  <li><strong>每页独立指纹</strong>：<code>setupPageFingerprint()</code> 随机视口 + UA 轮换 + 伪造 <code>navigator.plugins</code>（PDF Viewer/Native Client）+ 伪造 <code>window.chrome</code> + 伪造 <code>permissions.query</code></li>
+  <li><strong>独立 userDataDir</strong>：每次会话 <code>job51_${Date.now()}</code> 干净环境</li>
+  <li><strong>阻止非必要资源</strong>：image/font/media，保留 CSS/script/xhr</li>
+</ul>
+
+<h5>🔐 会话初始化（Cookie 建立）</h5>
+<ul>
+  <li>首次访问前先浏览 <code>www.51job.com</code> 首页：3-7s 停留 + 滚动 200-700px + 1.5-3.5s 等待</li>
+  <li>建立合法 cookie 后再访问搜索页，降低 WAF 触发概率</li>
+</ul>
+
+<h5>🕵️ WAF 检测体系（双重防线）</h5>
+<ol>
+  <li><strong>硬编码签名检测（零延迟安全网）</strong>：在 AI 分类之前执行，覆盖 5 类签名：
+    <ul>
+      <li>HTML &lt; 1000B → 疑似 WAF</li>
+      <li>"滑动验证页面" 标题 → Aliyun Geetest CAPTCHA</li>
+      <li>"访问验证" + "请按住滑块" → 滑块验证文本</li>
+      <li><code>cf-app-waf.cfc.aliyuncs.com</code> / <code>g.alicdn.com/AWSC/nc</code> → Aliyun JS 挑战脚本</li>
+      <li>"访问太频繁" / "请输入验证码" → 51job 频率限制</li>
+    </ul>
+  </li>
+  <li><strong>AI 页面分类</strong>：LLM 识别 6 种页面类型（normal/captcha/waf/login/error/empty），提供分类+置信度+应对建议</li>
+</ol>
+
+<h5>🔄 WAF 恢复三级策略</h5>
+<table>
+  <tr><th>策略</th><th>操作</th><th>等待</th><th>说明</th></tr>
+  <tr><td>1. 快速重载</td><td><code>page.reload()</code></td><td>10s</td><td>尝试重新加载同一 URL（带 <code>reportType=1</code>）</td></tr>
+  <tr><td>2. 长等待过期</td><td>原 URL 重导航</td><td>45-90s 随机</td><td>等待 WAF 封锁窗口自然过期</td></tr>
+  <tr><td>3. 最后手段</td><td>去 <code>reportType</code> → 首页搜索回退</td><td>2-3s + 搜索时间</td><td>模拟人工从首页搜索的完整流程</td></tr>
+</table>
+
+<h5>📡 XHR 拦截主力提取</h5>
+<ul>
+  <li><strong>捕获内部 API</strong>：<code>page.on('response')</code> 拦截 <code>we.51job.com/api/job/search-pc</code> JSON 响应</li>
+  <li><strong>text() 替代 json()</strong>：避免 CDP "body already consumed" 竞争错误</li>
+  <li><strong>多层 API 结构适配</strong>：支持 <code>resultbody.job.items</code> / <code>data.results</code> / <code>items</code> 等多种响应结构</li>
+  <li><strong>诊断计数器</strong>：记录 XHR 拦截总数/成功解析数/失败数，输出 API 响应字段名</li>
+  <li><strong>DOM 降级 + AI 选择器推荐</strong>：XHR 和 DOM 都失败时，AI 分析 HTML 推荐新 CSS 选择器</li>
+</ul>
+
+<h5>🌐 IP 代理池（axios 回退路径）</h5>
+<ul>
+  <li><strong>仅用于 axios 详情页请求</strong>，不用于浏览器导航（免费代理都会触发 WAF）</li>
+  <li><strong>死代理黑名单</strong>：<code>deadProxyCache: Set&lt;string&gt;</code>，404/ECONNRESET/ETIMEDOUT/&lt;1KB 响应的代理自动加入</li>
+  <li><strong>连续失败保护</strong>：连续 5 次失败停止返回代理</li>
+  <li><strong>注：51job 已跳过 axios 详情路径</strong>（直连返回 JS 混淆密文，代理返回 404），详情全部走浏览器渲染</li>
+</ul>
+
+<h5>⚡ 并发控制</h5>
+<ul>
+  <li><strong>最高并发 5</strong>（详情页抓取），互斥锁序列化 <code>newPage</code> + <code>goto</code></li>
+  <li><strong>批次内错峰</strong>：0.8-2s 偏移避免同时冲击服务器</li>
+  <li><strong>批次间隔</strong>：2-4s，<code>Promise.allSettled</code> 不因单条失败中断批次</li>
+  <li><strong>浏览器健康哨兵</strong>：每次请求前检查 <code>browser.isConnected()</code></li>
+</ul>
+
+<h5>🛠️ 恢复机制</h5>
+<ul>
+  <li><strong>指数退避</strong>：连续 3 页反爬 → <code>30000 × 2^n</code> 退避，上限 5 分钟</li>
+  <li><strong>BROWSER_RESTART</strong>：零产出+WAF 检测时触发浏览器重启（<code>shouldRestart</code> 信号）</li>
+  <li><strong>详情页 3 次重试</strong>：WAF_DETECTED → 3-5s 延迟 → 重试，最终降级使用搜索 API 数据</li>
+  <li><strong>搜索页重试</strong>：最多 2 次重试（共 3 次尝试），1-2s 间隔</li>
+</ul>
+
+<h5>⚙️ 关键绕过：reportType=1</h5>
+<ul>
+  <li>51job 搜索 URL 添加 <code>&reportType=1</code> 参数</li>
+  <li>WAF 将其识别为"报表导出请求"（合法业务场景）从而放行</li>
+  <li>不加此参数 → 7884 字节 WAF 页面；加上 → 642KB 正常页面</li>
+</ul>
+
+<hr>
+
+<h3>三、对比总结</h3>
+<table>
+  <tr><th>维度</th><th>智联招聘</th><th>前程无忧 (51job)</th></tr>
+  <tr><td>WAF 类型</td><td>自研反爬壳（空 body + Security Verification）</td><td>Aliyun WAF（Geetest 滑块 + JS 挑战）</td></tr>
+  <tr><td>首要用 AI 分类</td><td>❌ 未使用（规则引擎）</td><td>✅ classifyPage 6 分类 + recommendAction</td></tr>
+  <tr><td>硬编码检测</td><td>❌ 无</td><td>✅ hasCaptchaSignatures 5 类签名</td></tr>
+  <tr><td>Stealth 方案</td><td>21 项 Chrome flags + UA/视口随机化</td><td>puppeteer-extra-stealth 插件 + 每页独立指纹</td></tr>
+  <tr><td>WAF 恢复策略</td><td>代理切换 → 浏览器重启 → 断点续传</td><td>三级策略：重载(10s) → 长等(45-90s) → 首页回退</td></tr>
+  <tr><td>详情页路径</td><td>axios API 直连优先 → 代理 → 浏览器渲染</td><td>纯浏览器渲染（axios 路径已移除）</td></tr>
+  <tr><td>代理用途</td><td>浏览器级代理（--proxy-server）</td><td>仅 axios 回退（浏览器走直连）</td></tr>
+  <tr><td>并发上限</td><td>5（WAF 后自动降串行）</td><td>5（互斥锁序列化 newPage）</td></tr>
+  <tr><td>会话初始化</td><td>无需（直连参数编码绕过）</td><td>须先访问首页建 cookie</td></tr>
+  <tr><td>关键绕过参数</td><td>查询参数编码 <code>?jl=622</code></td><td><code>reportType=1</code> 业务参数</td></tr>
+  <tr><td>浏览器重启</td><td>5 组合主动重启 + 崩溃检测重启</td><td>零产出 + WAF 时触发重启</td></tr>
+  <tr><td>断点续传</td><td>✅ 数据库 JSONB 存储断点</td><td>✅ 数据库 JSONB 存储断点</td></tr>
+  <tr><td>进度日志粒度</td><td>批次级</td><td>详情页阶段级（加载/AI分类/提取）</td></tr>
+</table>
+
+<hr>
+
+<h3>四、技术原理</h3>
 
 <h4>Puppeteer 浏览器自动化</h4>
-<p>Puppeteer 通过 Chrome DevTools Protocol (CDP) 控制无头 Chrome 浏览器：</p>
 <ol>
   <li><strong>Browser 实例管理</strong>：每个爬虫维护一个 Browser，通过 <code>puppeteer.launch({ headless: "new" })</code> 启动，独立 <code>userDataDir</code> 隔离 cookie/缓存</li>
   <li><strong>Page 生命周期</strong>：搜索→列表→详情页，page 间通过 <code>pageCreateMutex</code> 互斥锁序列化 newPage + goto 防止 CDP 竞争崩溃</li>
-  <li><strong>SPA 等待</strong>：<code>waitUntil: "networkidle2"</code> 等网络空闲 2s + <code>waitForSelector</code> 等目标 DOM，覆盖 Vue/React 异步渲染</li>
-  <li><strong>XHR 拦截</strong>：<code>page.on("response")</code> 捕获 51job/智联内部 API JSON，作 DOM 解析失败备用</li>
-  <li><strong>指纹隐藏</strong>：随机化 <code>navigator.webdriver</code>、<code>plugins</code>、<code>languages</code>，修改 <code>window.chrome</code>，避免反爬检测</li>
+  <li><strong>SPA 等待</strong>：<code>waitUntil: "networkidle2"</code> 等网络空闲 2s + 渐进式滚动触发懒加载 + <code>waitForSelector</code> 等目标 DOM</li>
+  <li><strong>XHR 拦截</strong>（51job 主力）：<code>page.on("response")</code> 捕获内部 API JSON，<code>.text()</code> + <code>JSON.parse()</code> 避免 CDP 竞争，多层响应结构适配</li>
+  <li><strong>API 直连</strong>（智联主力）：axios 直连 <code>fe-api.zhaopin.com</code> 内部 API，绕开 HTML 页面 WAF</li>
 </ol>
 
-<h4>WAF 对抗</h4>
-<ul>
-  <li><strong>检测</strong>：htmlLength &lt; 5000 字节判定 WAF（正常页面 600KB+）</li>
-  <li><strong>绕过</strong>：添加 <code>reportType=1</code> 业务参数，WAF 将其视为合法报表请求放行</li>
-  <li><strong>降级</strong>：自动串行 + 随机延迟 2-5s 降低频率</li>
-  <li><strong>恢复</strong>：BROWSER_RESTART 换新浏览器 + 新 userDataDir + 首页建 cookie 重试</li>
-</ul>
+<h4>AI 反爬体系（51job 专用）</h4>
+<ol>
+  <li><strong>双重防线</strong>：硬编码签名检测（零延迟）→ AI classifyPage（语义理解），硬编码作为 AI 异常时的安全网</li>
+  <li><strong>LLM 分类</strong>：截取 HTML 前 3000 字符 → LLM 返回 <code>{ pageType, confidence }</code> → confidence ≥ 0.5 且非 normal 时触发应对</li>
+  <li><strong>选择器推荐</strong>：DOM + XHR 均无数据时，AI 分析 HTML 推荐新 CSS 选择器，按置信度降序尝试</li>
+  <li><strong>5 秒冷却</strong>：<code>lastClassifyTime</code> 防高频 LLM 调用</li>
+  <li><strong>LLM 故障容错</strong>：异常/空响应/JSON解析失败 → 返回 normal（低置信度），不阻塞流程</li>
+</ol>
 
 <h4>并发控制与断点续传</h4>
 <ul>
-  <li><strong>互斥锁</strong>：覆盖 newPage + goto 全流程，唯一 page 执行浏览器密集操作</li>
-  <li><strong>资源释放</strong>：搜索页提前 close 释放 request interception，防多 tab 竞争</li>
-  <li><strong>崩溃恢复</strong>：捕获 <code>Connection closed</code>/<code>Target closed</code>，抛 <code>{ shouldRestart: true }</code>，外层指数退避重试</li>
-  <li><strong>断点续传</strong>：配置存 JSONB，崩溃后从页码+组合索引恢复，jobId 去重保证幂等</li>
+  <li><strong>互斥锁</strong>：覆盖 newPage + goto 全流程，唯一 page 执行浏览器密集操作，10s 超时孤儿页捕获</li>
+  <li><strong>资源释放</strong>：搜索页提前 close 释放 request interception，防多 tab 竞争；批次前后清理孤儿标签页</li>
+  <li><strong>崩溃恢复</strong>：捕获 <code>Connection closed</code>/<code>Target closed</code>/<code>detached Frame</code>，抛 <code>{ shouldRestart: true }</code> 携带断点坐标，外层指数退避重试</li>
+  <li><strong>断点续传</strong>：配置存 JSONB（组合索引 + 页码 + 职位索引），崩溃后精确恢复，jobId 去重保证幂等</li>
+  <li><strong>最大 10 次重启</strong>：防止无限重启递归爆炸</li>
 </ul>`
   },
   'feat-enrich': {

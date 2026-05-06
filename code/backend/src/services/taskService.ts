@@ -350,17 +350,19 @@ class TaskService {
           const totalCombinations = keywords.length * cities.length;
           const isMultiCombination = totalCombinations > 1;
 
-          // 🔧 更新条件：时间间隔>=2秒 或 每采集5条数据
+          // 🔧 更新条件：时间间隔>=2秒 或 自上次更新后累计>=5条
           // ⚠️ 注意：即使totalRecords为0，也要定期更新以显示"正在运行"状态
-          const shouldUpdate = elapsed >= 2 || totalRecords % 5 === 0 || (totalRecords === 0 && elapsed >= 5);
+          // 使用增量检测（非取模）防止时间触发器和条数触发器在同一批次窗口内重复触发
+          const recordsSinceLastUpdate = totalRecords - lastRecordCount;
+          const shouldUpdate = elapsed >= 2 || recordsSinceLastUpdate >= 5 || (totalRecords === 0 && elapsed >= 5);
           
           if (shouldUpdate) {
             lastUpdateTime = now;
             lastRecordCount = totalRecords;
             
             // 🔧 诊断日志：记录更新触发原因
-            const triggerReason = totalRecords === 0 ? '心跳(无数据)' : 
-                                 (elapsed >= 2 ? `时间间隔(${elapsed.toFixed(1)}s)` : `数据量(${totalRecords}条)`);
+            const triggerReason = totalRecords === 0 ? '心跳(无数据)' :
+                                 (elapsed >= 2 ? `时间间隔(${elapsed.toFixed(1)}s)` : `数据增量(${recordsSinceLastUpdate}条)`);
             taskLogger.info(`[TaskService] 📊 准备更新进度 - 触发原因: ${triggerReason}, totalRecords=${totalRecords}, isMultiCombination=${isMultiCombination}`);
 
             // 🔧 关键修复：无论单/多组合，都更新record_count（已采集记录数）
@@ -694,8 +696,13 @@ class TaskService {
             message: `🔄 浏览器崩溃，正在重启并从第${combinationIndex}个组合、第${currentPage}页继续...`
           });
 
-          // 🔧 等待3秒后重启浏览器并重试
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          // 🔧 退避等待：计划内重启（WAF/代理切换）需要更长时间让WAF过期
+          // 第1次30s，第2次60s，第3次90s，上限120s
+          const restartCount = progressInfo?.restartCount || 1;
+          const baseDelay = isPlannedRestart ? 30 : 3;
+          const backoff = Math.min(baseDelay * restartCount, 120);
+          taskLogger?.info(`[TaskService] ⏳ 等待 ${backoff}s 后重启浏览器（第${restartCount}次${restartReason}）...`);
+          await new Promise(resolve => setTimeout(resolve, backoff * 1000));
 
           // 🔧 循环重试：设置变量后 continue，避免递归调用栈爆炸
           taskLogger?.info(`[TaskService] 🚀 设置重试状态，循环重试（第${progressInfo?.restartCount || 1}次）...`);

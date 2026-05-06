@@ -27,6 +27,9 @@ export class Job51Crawler {
   private proxyPool: ProxyPool | null = null;
   private currentProxy: string | null = null;
   private proxySwitchCount: number = 0;
+  // 日志去重：减少重复的 axios 失败日志噪音
+  private jsObfuscatedLogCount: number = 0;
+  private deadProxyCache: Set<string> = new Set();  // 已知对51job返回404的代理，跳过不再尝试
 
   setLogger(logger: any) {
     this.logger = logger;
@@ -190,8 +193,10 @@ export class Job51Crawler {
                 }
               });
 
-              // === XHR 拦截：捕获 API 响应（支持新旧多种 API 端点）===
+              // === XHR 拦截：捕获 API 响应（text() 替代 json() 避免 body 已消费异常）===
               const xhrResponses: any[] = [];
+              let xhrApiCallCount = 0;  // 诊断计数器
+              let xhrJsonParseFailCount = 0;
               page.on('response', async (response) => {
                 const respUrl = response.url();
                 const contentType = response.headers()['content-type'] || '';
@@ -199,12 +204,27 @@ export class Job51Crawler {
                   respUrl.includes('/api/') || respUrl.includes('/open/') || respUrl.includes('search-pc')
                 );
                 if (isApiUrl) {
+                  xhrApiCallCount++;
                   try {
-                    const json = await response.json();
-                    if (json && typeof json === 'object') {
-                      xhrResponses.push({ url: respUrl, data: json });
+                    // 用 text() 而非 json()：避免 body 已被浏览器消费导致的 "already used" 异常
+                    const text = await response.text();
+                    if (text && text.length > 20) {
+                      try {
+                        const json = JSON.parse(text);
+                        if (json && typeof json === 'object') {
+                          xhrResponses.push({ url: respUrl, data: json });
+                        }
+                      } catch {
+                        xhrJsonParseFailCount++;
+                        // 仅前 3 次记录，避免噪音
+                        if (xhrJsonParseFailCount <= 3) {
+                          this.log('warn', `[Job51Crawler] XHR响应非JSON (${text.substring(0, 80)}...), contentType=${contentType}`);
+                        }
+                      }
                     }
-                  } catch { /* 非 JSON 或已消费 */ }
+                  } catch {
+                    // body 已被消费（常见于 Puppeteer CDP 竞争），静默跳过
+                  }
                 }
               });
 
@@ -258,14 +278,20 @@ export class Job51Crawler {
                   this.log('warn', `[Job51Crawler] ⚠️ SPA 职位列表未在预期时间内出现，尝试从已加载的 DOM/XHR 提取`);
                 }
 
-                // 额外滚动触发懒加载
+                // 额外滚动触发懒加载（51job使用虚拟滚动，需逐步滚动触发API加载）
+                // 增加到 6 次滚动 + 更长间隔，确保触发完整列表加载
                 await page.evaluate(async () => {
-                  for (let i = 0; i < 3; i++) {
-                    window.scrollTo(0, document.body.scrollHeight);
-                    await new Promise(r => setTimeout(r, 800));
+                  for (let i = 0; i < 6; i++) {
+                    window.scrollTo(0, document.body.scrollHeight * (i + 1) / 6);
+                    await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
                   }
+                  // 最后滚到底部
+                  window.scrollTo(0, document.body.scrollHeight);
+                  await new Promise(r => setTimeout(r, 1000));
                 });
-                await this.randomDelay(2000, 3000);
+                // 等待滚动触发的 AJAX 请求完成
+                await new Promise(r => setTimeout(r, 2000));
+                await this.randomDelay(1000, 2000);
               } else {
                 // 首页搜索已跳转到搜索结果，等待 SPA 渲染
                 this.log('info', `[Job51Crawler] 📄 使用首页搜索跳转结果，等待页面渲染...`);
@@ -276,10 +302,12 @@ export class Job51Crawler {
                   );
                 } catch { /* 搜索页可能使用不同结构 */ }
                 await page.evaluate(async () => {
-                  for (let i = 0; i < 2; i++) {
-                    window.scrollTo(0, document.body.scrollHeight);
-                    await new Promise(r => setTimeout(r, 600));
+                  for (let i = 0; i < 5; i++) {
+                    window.scrollTo(0, document.body.scrollHeight * (i + 1) / 5);
+                    await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
                   }
+                  window.scrollTo(0, document.body.scrollHeight);
+                  await new Promise(r => setTimeout(r, 1000));
                 });
                 await this.randomDelay(1500, 2500);
               }
@@ -317,30 +345,53 @@ export class Job51Crawler {
                   }
                 }
 
+                // === WAF 恢复策略（按成功率排序，避免无效重试） ===
+                // 实测：reload / 去reportType / 首页搜索均无效时，WAF 需自然过期（通常30-120s）
+                // 优化：快速重载 → 无效则长等待 → 仍无效才触发浏览器重启
+                const wafRecoveryStart = Date.now();
+
+                // 策略1：10s后重载（WAF 可能是瞬时触发）
                 await new Promise(r => setTimeout(r, 10000));
                 try {
                   await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
                   html = await page.content();
                   htmlLength = html.length;
                   this.log('info', `[Job51Crawler] 🔄 重载后HTML: ${htmlLength}字符`);
+                } catch (reloadErr: any) {
+                  this.log('error', `[Job51Crawler] ❌ 页面重载失败: ${reloadErr.message}`);
+                }
 
-                  if (htmlLength < MIN_PAGE_HTML) {
-                    this.log('warn', `[Job51Crawler] 🔄 重载后仍过小，尝试去掉reportType参数...`);
-                    // 主URL带reportType=1，如果被WAF拦截则尝试去掉该参数
-                    const altUrl = url.replace('&reportType=1', '').replace('?reportType=1&', '?').replace('?reportType=1', '');
-                    await page.goto(altUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                // 策略2：重载无效 → 长等待让 WAF 自然过期（跳过已证无效的去reportType/首页搜索）
+                if (htmlLength < MIN_PAGE_HTML) {
+                  const wafWait = 45000 + Math.random() * 45000; // 45-90s
+                  this.log('warn', `[Job51Crawler] ⏳ 重载无效，等待 ${(wafWait/1000).toFixed(0)}s 让WAF自然过期...`);
+                  await new Promise(r => setTimeout(r, wafWait));
+
+                  // 用原始 URL（带 reportType=1，已知可绕过WAF）重新加载
+                  try {
+                    await page.goto(url, { waitUntil: 'networkidle2', timeout: 90000 });
                     html = await page.content();
                     htmlLength = html.length;
-                    this.log('info', `[Job51Crawler] 🔄 备用URL HTML: ${htmlLength}字符`);
+                    this.log('info', `[Job51Crawler] 🔄 WAF等待后HTML: ${htmlLength}字符`);
+                  } catch (gotoErr: any) {
+                    this.log('error', `[Job51Crawler] ❌ WAF等待后重试失败: ${gotoErr.message}`);
+                  }
 
-                    // 如果备用 URL 仍然返回 WAF，回首页通过搜索表单重新搜索（带完整人类行为链）
+                  // 策略3（最后手段）：去掉reportType + 首页搜索回退（仅当长等待也失败时）
+                  if (htmlLength < MIN_PAGE_HTML) {
+                    this.log('warn', `[Job51Crawler] 🔄 长等待仍WAF，尝试去reportType+首页搜索最后回退...`);
+                    const altUrl = url.replace('&reportType=1', '').replace('?reportType=1&', '?').replace('?reportType=1', '');
+                    try {
+                      await page.goto(altUrl, { waitUntil: 'networkidle2', timeout: 60000 });
+                      html = await page.content();
+                      htmlLength = html.length;
+                      this.log('info', `[Job51Crawler] 🔄 备用URL HTML: ${htmlLength}字符`);
+                    } catch { /* ignore */ }
+
                     if (htmlLength < MIN_PAGE_HTML) {
-                      this.log('warn', `[Job51Crawler] 🔄 备用URL仍过小(${htmlLength}字符)，回首页通过搜索表单重新搜索...`);
                       try {
-                        // 先回首页
                         await page.goto('https://www.51job.com/', { waitUntil: 'networkidle2', timeout: 30000 });
                         await new Promise(r => setTimeout(r, 2000 + Math.random() * 3000));
-                        // 在首页执行搜索
                         const retrySearchOk = await this.searchViaHomepage(page, keyword, city);
                         if (retrySearchOk) {
                           await new Promise(r => setTimeout(r, 2000));
@@ -355,9 +406,9 @@ export class Job51Crawler {
                       }
                     }
                   }
-                } catch (reloadErr: any) {
-                  this.log('error', `[Job51Crawler] ❌ 页面重载失败: ${reloadErr.message}`);
                 }
+                const wafRecoveryDuration = ((Date.now() - wafRecoveryStart) / 1000).toFixed(1);
+                this.log('info', `[Job51Crawler] WAF恢复流程结束 (${wafRecoveryDuration}s), 最终HTML: ${htmlLength}字符`);
                 // 保存恢复后的 HTML 快照用于诊断
                 try {
                   fs.writeFileSync(path.join(debugDir, `job51_page_${currentPage}_recovered_${Date.now()}.html`), html);
@@ -366,9 +417,14 @@ export class Job51Crawler {
 
               // === AI 反爬接入点 1：页面分类 + 智能重试（仅大页面调用AI） ===
               const wasHtmlSmall = htmlLength < MIN_PAGE_HTML;
-              const classification = !wasHtmlSmall
+              // 硬编码 CAPTCHA 签名检测（在 AI classifyPage 之前执行）
+              const captchaCheck = !wasHtmlSmall ? this.hasCaptchaSignatures(html) : { detected: false, reason: '' };
+              const classification = !wasHtmlSmall && !captchaCheck.detected
                 ? await classifyPage(html, url)
-                : { pageType: 'waf' as const, confidence: 1.0, indicators: ['html_too_small'], reason: 'HTML过小，判定为WAF拦截页面' };
+                : { pageType: 'waf' as const, confidence: 1.0, indicators: captchaCheck.detected ? ['captcha_signature_detected'] : ['html_too_small'], reason: captchaCheck.reason || 'HTML过小，判定为WAF拦截页面' };
+              if (captchaCheck.detected) {
+                this.log('warn', `[Job51Crawler] 🔒 硬编码检测: ${captchaCheck.reason}`);
+              }
               this.log('info', `[Job51Crawler] 🤖 AI分类: type=${classification.pageType}, confidence=${classification.confidence.toFixed(2)}`);
 
               // 如果已经在HTML大小检测中处理过WAF，跳过此处的重复重载
@@ -433,6 +489,12 @@ export class Job51Crawler {
               }
 
               // === 数据提取 ===
+              // 诊断：报告 XHR 拦截统计
+              if (xhrApiCallCount > 0 || xhrResponses.length > 0) {
+                this.log('info', `[Job51Crawler] 📡 XHR诊断: 拦截${xhrApiCallCount}个API调用, 成功解析${xhrResponses.length}个JSON, 失败${xhrJsonParseFailCount}个`);
+              } else {
+                this.log('warn', `[Job51Crawler] ⚠️ XHR拦截未捕获任何API调用，将回退到DOM选择器提取`);
+              }
               // 策略1：优先使用 XHR 拦截的 JSON 数据（支持多种 API 响应格式）
               let jobs: any[] = [];
               if (xhrResponses.length > 0) {
@@ -617,7 +679,7 @@ export class Job51Crawler {
 
               // === 处理职位：列表数据 + 详情页抓取（支持并发） ===
               const concurrency = config.concurrency || 1;
-              const maxConcurrency = Math.min(concurrency, 3);
+              const maxConcurrency = Math.min(concurrency, 5);
               this.log('info', `[Job51Crawler] 🚀 处理职位: 并发数=${maxConcurrency} (配置=${concurrency}), 总职位数=${pageJobs.length}`);
 
               if (maxConcurrency <= 1) {
@@ -1135,21 +1197,50 @@ export class Job51Crawler {
 
     // 策略：直连优先。免费代理对51job全返回404或WAF，直连可能成功
     const tryFetch = async (proxy?: { host: string; port: number }): Promise<string | null> => {
+      const proxyKey = proxy ? `${proxy.host}:${proxy.port}` : null;
+      // 跳过已知对51job无效的代理
+      if (proxyKey && this.deadProxyCache.has(proxyKey)) {
+        return null;
+      }
       try {
         const response = await axios.get(requestUrl, proxy ? { ...axiosCfg, proxy: { host: proxy.host, port: proxy.port, protocol: 'http' } } : axiosCfg);
         const html: string = response.data;
         if (html && html.length >= 1000) {
           // jobs.51job.com 旧版页面是 JS 混淆保护页面，axios 无法解密
           if (isObfuscatedPage(html)) {
-            this.log('info', `[Job51Crawler] ${proxy ? `Proxy ${proxy.host}:${proxy.port}` : 'Direct'} returned JS-obfuscated page (${html.length}B), need browser to decrypt`);
+            this.jsObfuscatedLogCount++;
+            if (this.jsObfuscatedLogCount <= 2) {
+              this.log('info', `[Job51Crawler] ${proxy ? `Proxy ${proxyKey}` : 'Direct'} returned JS-obfuscated page (${html.length}B), need browser to decrypt`);
+            } else if (this.jsObfuscatedLogCount === 3) {
+              this.log('info', `[Job51Crawler] JS混淆检测已是常态（已出现${this.jsObfuscatedLogCount}次），后续不再逐条报告`);
+            }
             return null;
           }
           return html;
         }
-        this.log('warn', `[Job51Crawler] ${proxy ? `Proxy ${proxy.host}:${proxy.port}` : 'Direct'} returned small page (${html?.length || 0}B)`);
+        if (html?.length > 0) {
+          // 小页面（WAF/空壳）：代理对51job无效，加入黑名单
+          if (proxyKey && html.length < 1000) {
+            if (!this.deadProxyCache.has(proxyKey)) {
+              this.deadProxyCache.add(proxyKey);
+              this.log('warn', `[Job51Crawler] Proxy ${proxyKey} 返回小页面(${html.length}B)，加入黑名单（已累计${this.deadProxyCache.size}个）`);
+            }
+          } else {
+            this.log('warn', `[Job51Crawler] ${proxy ? `Proxy ${proxyKey}` : 'Direct'} returned small page (${html.length}B)`);
+          }
+        }
         return null;
       } catch (e: any) {
-        this.log('warn', `[Job51Crawler] ${proxy ? `Proxy ${proxy.host}:${proxy.port}` : 'Direct'} request failed: ${e.message}`);
+        // 404/ECONNRESET 等永久性错误：标记代理为对51job不可用
+        if (proxyKey && (e.message?.includes('404') || e.message?.includes('ECONNRESET') || e.message?.includes('ETIMEDOUT'))) {
+          if (!this.deadProxyCache.has(proxyKey)) {
+            this.deadProxyCache.add(proxyKey);
+            this.log('warn', `[Job51Crawler] Proxy ${proxyKey} 对51job不可用(${e.message})，后续跳过（已累计${this.deadProxyCache.size}个死代理）`);
+          }
+        } else if (!proxyKey) {
+          // 直连失败才记录（代理失败已在上方处理）
+          this.log('warn', `[Job51Crawler] Direct request failed: ${e.message}`);
+        }
         return null;
       }
     };
@@ -1393,6 +1484,32 @@ export class Job51Crawler {
     return this.buildJobData(detail, basicInfo, config);
   }
 
+  /**
+   * 硬编码 CAPTCHA / WAF 签名检测（零成本安全网）
+   * 在 AI classifyPage 之前执行，防止 LLM 异常/冷却期/JSON解析失败导致 CAPTCHA 页面被误判为 normal
+   */
+  private hasCaptchaSignatures(html: string): { detected: boolean; reason: string } {
+    if (html.length < 1000 && html.length > 0) {
+      return { detected: true, reason: `HTML过小(${html.length}B)，疑似WAF拦截` };
+    }
+    // Aliyun WAF Geetest 滑动验证页面特征
+    if (html.includes('滑动验证页面') || html.includes('<title>滑动验证页面</title>')) {
+      return { detected: true, reason: '检测到Aliyun WAF滑动验证页面签名' };
+    }
+    if (html.includes('访问验证') && html.includes('请按住滑块')) {
+      return { detected: true, reason: '检测到Geetest滑块验证文本' };
+    }
+    // Aliyun WAF JS 挑战页面（JS混淆重定向）
+    if (html.includes('cf-app-waf.cfc.aliyuncs.com') || html.includes('g.alicdn.com/AWSC/nc')) {
+      return { detected: true, reason: '检测到Aliyun WAF JS挑战脚本' };
+    }
+    // 51job 访问频繁提示
+    if (html.includes('访问太频繁') || html.includes('请输入验证码') || html.includes('请完成以下验证')) {
+      return { detected: true, reason: '检测到51job频率限制/验证码页面' };
+    }
+    return { detected: false, reason: '' };
+  }
+
   private async fetchJobDetail(
     browser: any,
     jobUrl: string,
@@ -1405,16 +1522,10 @@ export class Job51Crawler {
       return this.generateBasicJob(basicInfo, config);
     }
 
-    // 优先尝试 axios+代理（绕过 Chrome CONNECT 隧道限制）
-    // 但 jobs.51job.com 旧版页面是 JS 混淆保护页面，axios 无法解密，
-    // fetchDetailViaProxy 会检测到并抛出异常，触发浏览器回退
-    if (this.proxyPool && this.proxyPool.isAvailable()) {
-      try {
-        return await this.fetchDetailViaProxy(jobUrl, basicInfo, config);
-      } catch (proxyErr: any) {
-        this.log('warn', `[Job51Crawler] axios detail failed: ${proxyErr.message}, falling back to browser`);
-      }
-    }
+    // 51job 详情页直连浏览器渲染：
+    // - 直连 axios: jobs.51job.com 旧版页面是 JS 混淆保护，axios 返回 26KB 密文无法解密
+    // - 代理 axios: 免费代理对 51job 域名全返回 404 或小页面
+    // - 结论: axios 路径对 51job 永远失败，跳过以节省每条约 3-5 秒
 
     let page: any = null;
     const maxRetries = 2;
@@ -1434,8 +1545,10 @@ export class Job51Crawler {
         let releaseMutex: () => void;
         this.pageCreateMutex = new Promise<void>(resolve => { releaseMutex = resolve; });
         await currentMutex;
+        page = await browser.newPage();
+        const pageStartTime = Date.now();
+        this.log('info', `[Job51Crawler] 🌐 加载详情页: ${basicInfo.title} (重试${retry})`);
         try {
-          page = await browser.newPage();
           await this.setupPageFingerprint(page);
 
           await page.setRequestInterception(true);
@@ -1448,13 +1561,16 @@ export class Job51Crawler {
           });
 
           await page.goto(jobUrl, { waitUntil: 'networkidle2', timeout: 45000 });
+          const gotoTime = ((Date.now() - pageStartTime) / 1000).toFixed(1);
           // 旧版 jobs.51job.com 页面有 JS 混淆保护，需要额外等待 JS 解密并渲染 DOM
           await new Promise(r => setTimeout(r, 2000));
+          this.log('info', `[Job51Crawler] 📄 页面加载完成 (${gotoTime}s): ${basicInfo.title}`);
         } finally {
           releaseMutex!();
         }
 
         const html = await page.content();
+        const htmlKB = (html.length / 1024).toFixed(0);
 
         // 保存详情页HTML快照（用于诊断提取问题）
         try {
@@ -1464,7 +1580,16 @@ export class Job51Crawler {
           fs.writeFileSync(path.join(debugDir, `job51_detail_${safeName}_${Date.now()}.html`), html);
         } catch { /* ignore */ }
 
+        // 硬编码 CAPTCHA 签名检测（AI classifyPage 的安全网）
+        const captchaCheck = this.hasCaptchaSignatures(html);
+        if (captchaCheck.detected) {
+          this.log('warn', `[Job51Crawler] 🔒 硬编码检测(${htmlKB}KB): ${captchaCheck.reason}`);
+          throw new Error('WAF_DETECTED: 详情页被拦截');
+        }
+
+        this.log('info', `[Job51Crawler] 🤖 AI分类中(${htmlKB}KB): ${basicInfo.title}`);
         const classification = await classifyPage(html, jobUrl);
+        this.log('info', `[Job51Crawler] 🤖 AI分类完成: ${classification.pageType}(${classification.confidence.toFixed(2)}): ${basicInfo.title}`);
 
         if (classification.confidence >= 0.5 && (classification.pageType === 'waf' || classification.pageType === 'captcha')) {
           throw new Error('WAF_DETECTED: 详情页被拦截');
@@ -1747,6 +1872,8 @@ export class Job51Crawler {
           return result;
         });
 
+        const totalTime = ((Date.now() - pageStartTime) / 1000).toFixed(1);
+        this.log('info', `[Job51Crawler] ✅ 详情提取完成 (${totalTime}s): ${basicInfo.title} → ${detail.title || basicInfo.title}`);
         return this.buildJobData(detail, basicInfo, config);
 
       } catch (error: any) {
