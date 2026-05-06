@@ -110,13 +110,97 @@ axios+代理成功 GET 到 zhilian 详情页 URL 后，返回的 HTML 只有 5KB
 | **逆向智联内部 API** | 高（需抓包分析 JS bundle） | axios+代理可直接调 API 取 JSON 数据 |
 | **Selenium + undetected-chromedriver** | 中 | 可能绕过 WAF，但不解决代理问题 |
 
+## 阶段 7：智联内部 API 逆向成功（2026-05-06）
+
+### 方法
+
+1. 通过 Puppeteer 网络拦截抓包捕获智联 SPA 的 XHR 请求
+2. 发现 API 域名为 `fe-api.zhaopin.com`，路径 `/c/i/jobs/position-detail-new`
+3. 参数名为 `number`（即 URL 中的 `CCL...` 编号）
+
+### API 端点
+
+```
+GET https://fe-api.zhaopin.com/c/i/jobs/position-detail-new?number=CCL1393716650J40938718704
+```
+
+无需鉴权，直接返回完整 JSON：
+
+```json
+{
+  "code": 200,
+  "data": {
+    "detailedCompany": {
+      "companyName": "...",
+      "companySize": "1000-9999人",
+      "industryNameLevel": "...",
+      "companyDescription": "...",
+      "financingStageName": "未融资",
+      "companyNumber": "CZL...",
+      "companyUrl": "..."
+    },
+    "detailedPosition": {
+      "number": "CCL...",
+      "name": "职位名",
+      "salary60": "8000-12000元",
+      "workCity": "哈尔滨",
+      "cityDistrict": "道里区",
+      "education": "大专",
+      "workingExp": "不限",
+      "emplType": "全职",
+      "recruitNumber": 2,
+      "jobDesc": "HTML格式职位描述",
+      "jobDescPC": "PC版HTML职位描述",
+      "workAddress": "...",
+      "positionPublishTime": "2026-05-06 01:10:39",
+      "skillLabel": [{"state": 0, "value": "演员"}],
+      "welfareLabel": [],
+      "jobTypeLevelName": "...",
+      "latitude": "45.72...",
+      "longitude": "126.51..."
+    }
+  }
+}
+```
+
+### zhilian.ts 变更
+
+- `fetchDetailViaProxy()` 重写为调用 JSON API，不再使用 cheerio 解析 HTML
+- 新增 `extractPositionNumber()` 从 URL 提取 `number` 参数
+- `buildJobDataFromDetail()` 增强，支持 `YYYY-MM-DD HH:mm:ss` 格式的发布日期
+- `jobDescription`、`jobDetailUrl`、`companyDetailUrl` 等字段现在有值
+- 移除 `cheerio` 依赖导入
+
+### 效果
+
+| 路径 | 列表页 | 详情页 |
+|------|:--:|:--:|
+| 浏览器直连 | 可用 | WAF "Security Verification" |
+| **axios+代理 → JSON API** | - | **可用（完整 JSON 数据）** |
+| generateBasicJob | - | 兜底 |
+
+zhilian 详情页数据获取问题**已解决**。
+
+### 51job API 探索
+
+51job 详情 API 探索未完全成功：
+- `cupid.51job.com` API 网关有时间戳鉴权（`api_key=51job&timestamp=...`），过期时间很短
+- 详情页有 Geetest 验证码保护（`api.geetest.com`）
+- `jobs.51job.com/{city}/{jobId}.html` 是服务端渲染页面（非 SPA），axios+代理+cheerio 方案理论上可解析
+- 51job 暂时保持 cheerio HTML 解析方案
+
+---
+
 ## 涉及文件
 
 | 文件 | 变更 |
 |------|------|
 | `code/backend/src/services/crawler/proxyPool.ts` | 新增 — 代理池 HTTP 客户端 |
-| `code/backend/src/services/crawler/zhilian.ts` | 修改 — 集成代理池 + axios fetchDetailViaProxy |
-| `code/backend/src/services/crawler/job51.ts` | 修改 — 集成代理池 + axios fetchDetailViaProxy |
+| `code/backend/src/services/crawler/zhilian.ts` | 修改 — 集成代理池 + **API JSON 解析**（替代 cheerio） |
+| `code/backend/src/services/crawler/job51.ts` | 修改 — 集成代理池 + axios cheerio HTML 解析 |
 | `code/backend/src/config/constants.ts` | 修改 — 新增 PROXY_POOL_CONFIG |
+| `code/backend/src/scripts/sniff_zhilian_api.ts` | 新增 — 智联 API 抓包诊断脚本 |
+| `code/backend/src/scripts/sniff_51job_api.ts` | 新增 — 51job API 抓包诊断脚本 |
+| `code/backend/src/scripts/sniff_51job_detail.ts` | 新增 — 51job SPA 详情页 API 抓包脚本 |
 | `start-dev.bat` / `start-dev.ps1` | 修改 — 集成代理池（Redis + proxy_pool）启动 |
 | `start-proxy-pool.bat` | 新增 — 独立代理池启动脚本 |
