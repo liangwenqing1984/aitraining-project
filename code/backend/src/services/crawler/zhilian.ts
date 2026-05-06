@@ -2078,7 +2078,7 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
     };
   }
 
-  // 通过 axios+代理 调用智联内部职位详情 API（逆向自 fe-api.zhaopin.com）
+  // 获取职位详情：直连优先（fe-api.zhaopin.com 不触发WAF），代理兜底
   private async fetchDetailViaProxy(jobUrl: string, basicInfo: any): Promise<JobData> {
     const positionNumber = this.extractPositionNumber(jobUrl);
     if (!positionNumber) {
@@ -2100,44 +2100,8 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
       validateStatus: (status: number) => status >= 200 && status < 300,
     };
 
-    const MAX_PROXY_ATTEMPTS = 3;
-    for (let attempt = 0; attempt < MAX_PROXY_ATTEMPTS; attempt++) {
-      if (!this.proxyPool || !this.proxyPool.isAvailable()) break;
-      const poolCount = await this.proxyPool.getCount();
-      if (poolCount <= 0) break;
-
-      const proxyInfo = await this.proxyPool.getProxy();
-      if (!proxyInfo) break;
-
-      const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy, 'https://www.zhaopin.com/');
-      if (!isHealthy) {
-        await this.proxyPool.deleteProxy(proxyInfo.proxy);
-        continue;
-      }
-
-      try {
-        const [host, portStr] = proxyInfo.proxy.split(':');
-        const port = parseInt(portStr || '80');
-        const response = await axios.get(apiUrl, {
-          ...axiosConfig,
-          proxy: { host, port, protocol: 'http' },
-        });
-        const detail = this.parseApiResponse(response.data, jobUrl);
-        if (detail) {
-          this.log('info', `[ZhilianCrawler] ✅ Proxy API fetch OK via ${proxyInfo.proxy}: ${detail.title?.substring(0, 30)}`);
-          return this.buildJobDataFromDetail(detail, basicInfo);
-        }
-        this.log('warn', `[ZhilianCrawler] API returned invalid data via proxy ${proxyInfo.proxy}`);
-      } catch (e: any) {
-        this.log('warn', `[ZhilianCrawler] Proxy ${proxyInfo.proxy} API request failed: ${e.message}`);
-        await this.proxyPool.deleteProxy(proxyInfo.proxy);
-        continue;
-      }
-    }
-
-    // 兜底：直连 API（不经过代理）
+    // 策略：直连优先。fe-api.zhaopin.com 对直连 IP 宽松，免费代理反而被识别拒绝
     try {
-      this.log('info', `[ZhilianCrawler] All proxies exhausted, trying direct API call...`);
       const response = await axios.get(apiUrl, axiosConfig);
       const detail = this.parseApiResponse(response.data, jobUrl);
       if (detail) {
@@ -2145,10 +2109,46 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
         return this.buildJobDataFromDetail(detail, basicInfo);
       }
     } catch (directErr: any) {
-      this.log('warn', `[ZhilianCrawler] Direct API call also failed: ${directErr.message}`);
+      this.log('warn', `[ZhilianCrawler] Direct API failed: ${directErr.message}, trying proxies...`);
     }
 
-    throw new Error('PROXY_EXHAUSTED: all proxies and direct API failed for detail page');
+    // 直连失败时才尝试代理（本地IP被封锁的降级路径）
+    if (this.proxyPool && this.proxyPool.isAvailable()) {
+      const MAX_PROXY_ATTEMPTS = 3;
+      for (let attempt = 0; attempt < MAX_PROXY_ATTEMPTS; attempt++) {
+        const poolCount = await this.proxyPool.getCount();
+        if (poolCount <= 0) break;
+
+        const proxyInfo = await this.proxyPool.getProxy();
+        if (!proxyInfo) break;
+
+        const isHealthy = await this.proxyPool.checkHealth(proxyInfo.proxy, 'https://www.zhaopin.com/');
+        if (!isHealthy) {
+          await this.proxyPool.deleteProxy(proxyInfo.proxy);
+          continue;
+        }
+
+        try {
+          const [host, portStr] = proxyInfo.proxy.split(':');
+          const port = parseInt(portStr || '80');
+          const response = await axios.get(apiUrl, {
+            ...axiosConfig,
+            proxy: { host, port, protocol: 'http' },
+          });
+          const detail = this.parseApiResponse(response.data, jobUrl);
+          if (detail) {
+            this.log('info', `[ZhilianCrawler] ✅ Proxy API fetch OK via ${proxyInfo.proxy}: ${detail.title?.substring(0, 30)}`);
+            return this.buildJobDataFromDetail(detail, basicInfo);
+          }
+          this.log('warn', `[ZhilianCrawler] API returned invalid data via proxy ${proxyInfo.proxy}`);
+        } catch (e: any) {
+          this.log('warn', `[ZhilianCrawler] Proxy ${proxyInfo.proxy} API request failed: ${e.message}`);
+          await this.proxyPool.deleteProxy(proxyInfo.proxy);
+        }
+      }
+    }
+
+    throw new Error('PROXY_EXHAUSTED: direct and proxy API both failed for detail page');
   }
 
   // 从 detail 对象构建 JobData（proxy API、proxy HTML 和 browser 路径共用）
