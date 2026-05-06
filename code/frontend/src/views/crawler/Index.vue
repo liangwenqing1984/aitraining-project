@@ -438,7 +438,8 @@ async function handleResumeTask(row: any) {
             <el-progress
               :percentage="row.progress"
               :status="row.status === 'completed' ? 'success' : undefined"
-              :stroke-width="16"
+              :stroke-width="8"
+              class="task-progress"
             />
             <div v-if="getComboInfo(row).isMultiCombo" class="combo-info">{{ getComboInfo(row).comboText }}</div>
           </template>
@@ -542,13 +543,15 @@ async function handleResumeTask(row: any) {
 
 /* 统计卡片容器 */
 .stats-row {
-  margin-bottom: var(--spacing-lg);
+  margin-bottom: 20px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  font-weight: 600;
+  color: var(--color-text-primary);
 }
 
 .header-actions {
@@ -560,20 +563,21 @@ async function handleResumeTask(row: any) {
 /* 关键词详情样式 */
 .keyword-summary {
   cursor: pointer;
-  padding: 6px 10px;
+  padding: 6px 12px;
   border-radius: var(--radius-sm);
-  transition: all var(--transition-fast);
+  transition: all var(--transition-base);
   color: var(--color-text-regular);
   font-size: var(--font-size-sm);
   line-height: 1.6;
-  background-color: #fafafa;
+  background: var(--glass-bg-weak);
   border: 1px solid transparent;
 }
 
 .keyword-summary:hover {
-  background-color: var(--color-bg-hover);
-  border-color: var(--color-border-light);
+  background: var(--glass-bg-hover);
+  border-color: rgba(102, 126, 234, 0.15);
   color: var(--color-text-primary);
+  box-shadow: var(--shadow-xs);
 }
 
 .keyword-detail-popover {
@@ -671,17 +675,17 @@ async function handleResumeTask(row: any) {
 }
 
 .keyword-detail-popover::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: transparent;
   border-radius: 3px;
 }
 
 .keyword-detail-popover::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: #d1d5db;
   border-radius: 3px;
 }
 
 .keyword-detail-popover::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: #9ca3af;
 }
 
 /* 操作按钮一行显示 */
@@ -699,12 +703,22 @@ async function handleResumeTask(row: any) {
   font-size: 13px;
 }
 
+/* 进度条文字大小与记录数列一致 */
+:deep(.task-progress .el-progress__text) {
+  font-size: var(--font-size-base) !important;
+}
+
 /* 组合进度信息 */
 .combo-info {
   font-size: 11px;
-  color: #909399;
-  margin-top: 2px;
+  color: var(--color-text-secondary);
+  margin-top: 3px;
   text-align: center;
   line-height: 1;
+}
+
+/* 任务列表卡片 */
+.task-list-card {
+  margin-top: 0;
 }
 </style>

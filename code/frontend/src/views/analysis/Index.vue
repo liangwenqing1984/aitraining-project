@@ -1278,7 +1278,6 @@ onUnmounted(() => {
 <style scoped>
 .analysis-page {
   padding: 0;
-  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
   min-height: 100vh;
 }
 
@@ -1287,13 +1286,7 @@ onUnmounted(() => {
 }
 
 .info-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
-}
-
-.info-card:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-xl);
 }
 
 .card-header {
@@ -1304,8 +1297,8 @@ onUnmounted(() => {
 
 .title {
   font-size: 20px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 700;
+  color: var(--color-text-primary);
 }
 
 /* 统计卡片样式 */
@@ -1317,30 +1310,55 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   padding: 20px;
-  border-radius: 10px;
-  background: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: all 0.3s ease;
+  border-radius: var(--radius-xl);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--glass-border-subtle);
+  transition: all var(--transition-base);
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.35) 0%, transparent 50%);
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity var(--transition-base);
 }
 
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+  border-color: rgba(102, 126, 234, 0.15);
+}
+
+.stat-card:hover::after {
+  opacity: 1;
 }
 
 .stat-icon {
   font-size: 40px;
   margin-right: 15px;
+  position: relative;
+  z-index: 1;
 }
 
 .stat-content {
   flex: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .stat-value {
   font-size: 28px;
-  font-weight: bold;
+  font-weight: 700;
   margin-bottom: 5px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   -webkit-background-clip: text;
@@ -1349,8 +1367,9 @@ onUnmounted(() => {
 }
 
 .stat-label {
-  font-size: 14px;
-  color: #909399;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 
 .stat-primary .stat-value {
@@ -1384,44 +1403,48 @@ onUnmounted(() => {
 
 .section-title {
   font-size: 18px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 700;
+  color: var(--color-text-primary);
   margin-bottom: 16px;
-  padding-left: 10px;
-  border-left: 4px solid #409EFF;
+  padding-left: 12px;
+  border-left: 4px solid var(--color-primary);
 }
 
 .insight-card {
   display: flex;
   align-items: flex-start;
   padding: 16px;
-  border-radius: 8px;
-  background: white;
+  border-radius: var(--radius-lg);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   margin-bottom: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-  transition: all 0.3s ease;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--glass-border-subtle);
+  transition: all var(--transition-base);
   border-left: 4px solid transparent;
 }
 
 .insight-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(102, 126, 234, 0.12);
 }
 
 .insight-info {
-  border-left-color: #409EFF;
+  border-left-color: var(--color-info);
 }
 
 .insight-success {
-  border-left-color: #67C23A;
+  border-left-color: var(--color-success);
 }
 
 .insight-warning {
-  border-left-color: #E6A23C;
+  border-left-color: var(--color-warning);
 }
 
 .insight-danger {
-  border-left-color: #F56C6C;
+  border-left-color: var(--color-danger);
 }
 
 .insight-icon {
@@ -1435,14 +1458,14 @@ onUnmounted(() => {
 
 .insight-title {
   font-size: 15px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 700;
+  color: var(--color-text-primary);
   margin-bottom: 6px;
 }
 
 .insight-text {
   font-size: 13px;
-  color: #606266;
+  color: var(--color-text-secondary);
   line-height: 1.6;
 }
 
@@ -1452,7 +1475,7 @@ onUnmounted(() => {
 }
 
 .diagnosis-title {
-  border-left-color: #909399;
+  border-left-color: var(--color-text-secondary);
 }
 
 .diagnosis-content {
@@ -1462,7 +1485,7 @@ onUnmounted(() => {
 .diagnosis-content p {
   margin: 8px 0;
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-secondary);
 }
 
 .diagnosis-list {
@@ -1474,22 +1497,22 @@ onUnmounted(() => {
 .diagnosis-list li {
   margin: 8px 0;
   font-size: 13px;
-  color: #606266;
+  color: var(--color-text-secondary);
   line-height: 1.6;
   padding-left: 8px;
 }
 
 .diagnosis-list li strong {
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .diagnosis-tip {
   margin-top: 12px;
   padding: 8px 12px;
-  background: #f4f4f5;
-  border-radius: 4px;
+  background: var(--glass-bg-weak);
+  border-radius: var(--radius-sm);
   font-size: 13px;
-  color: #909399;
+  color: var(--color-text-secondary);
 }
 
 /* 图表区域样式 */
@@ -1507,15 +1530,24 @@ onUnmounted(() => {
 }
 
 .chart-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  transition: all 0.3s ease;
+  border-radius: var(--radius-xl);
+  transition: all var(--transition-base);
   height: 100%;
 }
 
 .chart-card:hover {
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
   transform: translateY(-2px);
+}
+
+.enrich-card {
+  border-radius: var(--radius-xl);
+  border-left: 4px solid var(--color-success);
+}
+
+/* AI Report Styles */
+.ai-report-card {
+  border-radius: var(--radius-xl);
+  border-left: 4px solid var(--color-warning);
 }
 
 .loading-container {
@@ -1573,63 +1605,51 @@ onUnmounted(() => {
   }
 }
 
-.enrich-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-left: 4px solid #67c23a;
-}
-
 .na-text {
-  color: #c0c4cc;
+  color: var(--color-text-placeholder);
 }
 
 /* AI Report Styles */
 .generating-card {
-  border-left: 4px solid #409eff;
+  border-left: 4px solid var(--color-info);
   animation: pulse-border 2s infinite;
 }
 @keyframes pulse-border {
-  0%, 100% { border-left-color: #409eff; }
+  0%, 100% { border-left-color: var(--color-info); }
   50% { border-left-color: #a0cfff; }
 }
 .generating-status {
   display: flex; align-items: center; gap: 20px; padding: 20px 0;
 }
-.generating-status h3 { margin: 0 0 8px; color: #303133; }
-.generating-status p { margin: 0; color: #909399; font-size: 13px; }
-
-.ai-report-card {
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-left: 4px solid #e6a23c;
-}
+.generating-status h3 { margin: 0 0 8px; color: var(--color-text-primary); }
+.generating-status p { margin: 0; color: var(--color-text-secondary); font-size: 13px; }
 
 .ai-report-summary {
   padding: 16px 20px;
-  background: linear-gradient(135deg, #fff9e6 0%, #fff3cc 100%);
-  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.04) 100%);
+  border-radius: var(--radius-lg);
   margin-bottom: 20px;
-  border: 1px solid #faecd8;
+  border: 1px solid rgba(102, 126, 234, 0.1);
 }
 
 .report-section {
   margin-bottom: 24px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid var(--glass-border-subtle);
 }
 
 .report-section:last-child { border-bottom: none; }
 
 .report-heading {
   font-size: 17px;
-  font-weight: bold;
-  color: #303133;
+  font-weight: 700;
+  color: var(--color-text-primary);
   margin: 0 0 10px;
 }
 
 .report-body {
   font-size: 14px;
-  color: #606266;
+  color: var(--color-text-secondary);
   line-height: 1.8;
 }
 
@@ -1640,20 +1660,20 @@ onUnmounted(() => {
 }
 
 .report-body :deep(td) {
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--color-border-light);
   padding: 6px 12px;
   font-size: 13px;
 }
 
 .report-body :deep(code) {
-  background: #f5f7fa;
+  background: var(--glass-bg-weak);
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 12px;
 }
 
 .report-body :deep(strong) {
-  color: #303133;
+  color: var(--color-text-primary);
 }
 
 .report-insight {
@@ -1662,16 +1682,16 @@ onUnmounted(() => {
   gap: 8px;
   margin-top: 12px;
   padding: 10px 14px;
-  background: #ecf5ff;
-  border-radius: 6px;
+  background: var(--color-info-light);
+  border-radius: var(--radius-sm);
   font-size: 13px;
-  color: #409eff;
+  color: var(--color-info);
 }
 
 .ai-charts { margin-top: 20px; }
 
 .ai-chart-card {
   margin-bottom: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
 }
 </style>

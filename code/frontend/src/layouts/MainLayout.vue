@@ -254,15 +254,27 @@ const getCurrentPageTitle = () => {
   width: 100%;
 }
 
-/* ===== 左侧边栏 - 浅色柔和主题 ===== */
+/* ===== 左侧边栏 — 玻璃质感 ===== */
 .sidebar {
-  background: #ffffff;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong));
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
-  border-right: 1px solid var(--color-border);
+  box-shadow: var(--shadow-md);
+  border-right: 1px solid var(--glass-border);
   position: relative;
   z-index: var(--z-sidebar);
+}
+
+/* 侧边栏顶部微弱渐变叠加层 */
+.sidebar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(102, 126, 234, 0.03) 0%, transparent 40%, rgba(118, 75, 162, 0.03) 100%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* Logo区域 */
@@ -271,9 +283,11 @@ const getCurrentPageTitle = () => {
   display: flex;
   align-items: center;
   padding: 0 20px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-bottom: 1px solid #e8eaed;
+  background: transparent;
+  border-bottom: 1px solid var(--glass-border-subtle);
   gap: 12px;
+  position: relative;
+  z-index: 1;
 }
 
 .logo-icon {
@@ -313,7 +327,9 @@ const getCurrentPageTitle = () => {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px 0;
-  background: #fafbfc;
+  background: transparent;
+  position: relative;
+  z-index: 1;
 }
 
 .menu-wrapper::-webkit-scrollbar {
@@ -357,15 +373,15 @@ const getCurrentPageTitle = () => {
 }
 
 :deep(.menu-item-custom:hover) {
-  background: #ffffff !important;
-  border-color: #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--glass-bg-hover) !important;
+  border-color: rgba(102, 126, 234, 0.15);
+  box-shadow: var(--shadow-xs);
 }
 
 :deep(.menu-item-custom.is-active) {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%) !important;
-  border-color: rgba(102, 126, 234, 0.2);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%) !important;
+  border-color: rgba(102, 126, 234, 0.25);
+  box-shadow: 0 2px 12px rgba(102, 126, 234, 0.1), inset 0 1px 0 rgba(255,255,255,0.5);
 }
 
 :deep(.menu-item-custom.is-active .el-menu-item) {
@@ -420,19 +436,33 @@ const getCurrentPageTitle = () => {
 .main-container {
   display: flex;
   flex-direction: column;
-  background-color: #f5f7fa;
+  background: var(--color-bg-page-gradient);
+  position: relative;
 }
 
-/* ===== 顶部导航栏 - 简洁现代风格 ===== */
+.main-container::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 30% 20%, rgba(102, 126, 234, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 70% 80%, rgba(118, 75, 162, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ===== 顶部导航栏 - 玻璃质感 ===== */
 .header {
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  box-shadow: var(--shadow-md);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
   height: 70px;
-  border-bottom: 1px solid #e8eaed;
+  border-bottom: 1px solid var(--glass-border);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -442,16 +472,20 @@ const getCurrentPageTitle = () => {
   display: flex;
   align-items: center;
   gap: 16px;
+  position: relative;
+  z-index: 1;
 }
 
 /* 折叠按钮 */
 .collapse-btn {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  background: #f5f7fa;
-  border: 1px solid #e8eaed;
-  transition: all 0.3s ease;
+  border-radius: 10px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border-subtle);
+  transition: all var(--transition-base);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -459,10 +493,11 @@ const getCurrentPageTitle = () => {
 }
 
 .collapse-btn:hover {
-  background: #667eea;
-  border-color: #667eea;
-  color: #fff;
+  background: var(--glass-bg-hover);
+  border-color: rgba(102, 126, 234, 0.25);
+  color: #667eea;
   transform: scale(1.05);
+  box-shadow: var(--shadow-xs);
 }
 
 /* 面包屑区域 */
@@ -498,6 +533,8 @@ const getCurrentPageTitle = () => {
 .header-right {
   display: flex;
   align-items: center;
+  position: relative;
+  z-index: 1;
 }
 
 /* 用户信息区域 */
@@ -507,16 +544,19 @@ const getCurrentPageTitle = () => {
   gap: 12px;
   cursor: pointer;
   padding: 8px 16px;
-  border-radius: 10px;
-  transition: all 0.3s ease;
-  background: #f9fafb;
-  border: 1px solid transparent;
+  border-radius: 12px;
+  transition: all var(--transition-base);
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border-subtle);
 }
 
 .user-info:hover {
-  background: #f3f4f6;
-  border-color: #e5e7eb;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  background: var(--glass-bg-hover);
+  border-color: rgba(102, 126, 234, 0.15);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
 
 .user-avatar {
@@ -586,7 +626,9 @@ const getCurrentPageTitle = () => {
 .main {
   padding: 24px;
   overflow-y: auto;
-  background: #f5f7fa;
+  background: transparent;
+  position: relative;
+  z-index: 1;
 }
 
 /* ===== 过渡动画 ===== */

@@ -396,13 +396,13 @@ function handleSizeChange(size: number) {
 }
 
 .empty-value {
-  color: #c0c4cc;
+  color: var(--color-text-placeholder);
   font-style: italic;
 }
 
 .preview-empty {
   text-align: center;
-  color: #999;
+  color: var(--color-text-secondary);
   padding: 40px 0;
 }
 
@@ -413,7 +413,7 @@ function handleSizeChange(size: number) {
 
 /* 优化表格边框 */
 :deep(.el-table--border) {
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   overflow: hidden;
 }
 

@@ -9,7 +9,7 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* ===== Design Tokens ===== */
+  /* ===== Design Tokens — 玻璃质感主题 ===== */
 
   /* Primary Colors */
   --color-primary: #667eea;
@@ -26,29 +26,42 @@
   --color-info: #3b82f6;
   --color-info-light: #eff6ff;
 
-  /* Text Colors */
-  --color-text-primary: #1e293b;
-  --color-text-regular: #303133;
-  --color-text-secondary: #4b5563;
-  --color-text-placeholder: #909399;
+  /* Text Colors — 更高对比度保证清晰感 */
+  --color-text-primary: #0f172a;
+  --color-text-regular: #1e293b;
+  --color-text-secondary: #475569;
+  --color-text-placeholder: #94a3b8;
   --color-text-disabled: #c0c4cc;
 
-  /* Background Colors */
-  --color-bg-page: #f5f7fa;
-  --color-bg-card: #ffffff;
-  --color-bg-sidebar: #fafbfc;
-  --color-bg-hover: #f3f4f6;
-  --color-bg-input: #ffffff;
+  /* Glass Surface Colors */
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg-strong: rgba(255, 255, 255, 0.85);
+  --glass-bg-weak: rgba(255, 255, 255, 0.55);
+  --glass-bg-hover: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.5);
+  --glass-border-subtle: rgba(0, 0, 0, 0.06);
+  --glass-blur: 20px;
+  --glass-blur-strong: 30px;
+
+  /* Background Colors — 带纹理感的渐变背景 */
+  --color-bg-page: #f0f2f7;
+  --color-bg-page-gradient: linear-gradient(165deg, #e8ecf4 0%, #f0f2f7 30%, #f5f3f8 70%, #edf0f5 100%);
+  --color-bg-card: var(--glass-bg);
+  --color-bg-sidebar: var(--glass-bg);
+  --color-bg-hover: rgba(255, 255, 255, 0.85);
+  --color-bg-input: rgba(255, 255, 255, 0.65);
 
   /* Border Colors */
-  --color-border: #e8eaed;
-  --color-border-light: #f0f0f0;
-  --color-border-hover: #d0d3d9;
+  --color-border: rgba(0, 0, 0, 0.06);
+  --color-border-light: rgba(0, 0, 0, 0.04);
+  --color-border-hover: rgba(0, 0, 0, 0.1);
 
-  /* Shadow */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 6px 24px rgba(0, 0, 0, 0.12);
+  /* Shadow — 带色彩倾向的多层阴影 */
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.03);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.05), 0 2px 6px rgba(102, 126, 234, 0.04);
+  --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.07), 0 4px 12px rgba(102, 126, 234, 0.06);
+  --shadow-glow: 0 0 20px rgba(102, 126, 234, 0.12);
 
   /* Spacing Scale (4px base) */
   --spacing-xs: 4px;
@@ -142,4 +155,175 @@ html, body, #app {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ===== Global Element-Plus Glass Overrides ===== */
+
+/* el-card — 玻璃卡片 */
+.el-card {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border-subtle) !important;
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.el-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(102, 126, 234, 0.12) !important;
+}
+
+.el-card__header {
+  background: transparent !important;
+  border-bottom: 1px solid var(--glass-border-subtle) !important;
+  padding: 16px 24px !important;
+}
+
+.el-card__body {
+  padding: 20px 24px !important;
+}
+
+/* el-table — 嵌入玻璃卡片 */
+.el-table {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: rgba(102, 126, 234, 0.04);
+  --el-table-row-hover-bg-color: var(--glass-bg-hover);
+  --el-table-border-color: var(--color-border-light);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.el-table th.el-table__cell {
+  background: rgba(102, 126, 234, 0.05);
+  color: var(--color-text-primary);
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  letter-spacing: 0.3px;
+  border-bottom: 2px solid rgba(102, 126, 234, 0.1);
+}
+
+.el-table .el-table__row:hover > td.el-table__cell {
+  background: var(--glass-bg-hover) !important;
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+  background: rgba(102, 126, 234, 0.02);
+}
+
+/* el-button — 微交互增强 */
+.el-button {
+  border-radius: var(--radius-md) !important;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  transition: all var(--transition-base) !important;
+}
+
+.el-button:hover {
+  transform: translateY(-1px);
+}
+
+.el-button:active {
+  transform: translateY(0);
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--color-primary);
+  --el-button-border-color: var(--color-primary);
+  --el-button-hover-bg-color: var(--color-primary-light);
+  --el-button-hover-border-color: var(--color-primary-light);
+}
+
+.el-button--primary:hover {
+  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.35);
+}
+
+/* el-tag — 柔和标签 */
+.el-tag {
+  border-radius: var(--radius-sm) !important;
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+/* el-input — 玻璃输入框 */
+.el-input__wrapper {
+  background: var(--color-bg-input) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--color-border) !important;
+  box-shadow: none !important;
+  transition: all var(--transition-base) !important;
+}
+
+.el-input__wrapper:hover {
+  border-color: var(--color-border-hover) !important;
+}
+
+.el-input__wrapper.is-focus {
+  border-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 1px var(--color-primary) inset, 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+}
+
+/* el-pagination — 融入玻璃主题 */
+.el-pagination .el-pager li {
+  border-radius: var(--radius-sm) !important;
+  transition: all var(--transition-base);
+}
+
+.el-pagination .el-pager li.is-active {
+  background: var(--color-primary) !important;
+}
+
+/* el-dialog — 玻璃弹窗 */
+.el-dialog {
+  border-radius: var(--radius-xl) !important;
+  overflow: hidden;
+}
+
+.el-dialog__header {
+  background: var(--glass-bg-strong);
+  border-bottom: 1px solid var(--glass-border-subtle);
+  padding: 20px 24px !important;
+}
+
+/* el-menu — 透明基色（sidebar 内使用） */
+.el-menu {
+  --el-menu-bg-color: transparent;
+  --el-menu-hover-bg-color: var(--glass-bg-hover);
+}
+
+/* el-progress — 圆润进度条 */
+.el-progress-bar__outer {
+  border-radius: 10px !important;
+  background: rgba(0, 0, 0, 0.06) !important;
+}
+
+.el-progress-bar__inner {
+  border-radius: 10px !important;
+}
+
+/* el-skeleton — 适配玻璃背景 */
+.el-skeleton {
+  --el-skeleton-color: rgba(0, 0, 0, 0.06);
+  --el-skeleton-to-color: rgba(0, 0, 0, 0.03);
+}
+
+/* el-select / el-dropdown — 玻璃下拉 */
+.el-select-dropdown,
+.el-dropdown-menu {
+  background: var(--glass-bg-strong) !important;
+  backdrop-filter: blur(var(--glass-blur-strong));
+  -webkit-backdrop-filter: blur(var(--glass-blur-strong));
+  border: 1px solid var(--glass-border) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  overflow: hidden;
+}
+
+.el-select-dropdown__item:hover,
+.el-dropdown-menu__item:hover {
+  background: var(--glass-bg-hover) !important;
 }

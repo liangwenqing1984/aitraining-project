@@ -16,4 +16,9 @@ html, body, #app {
   height: 100%;
   width: 100%;
 }
+
+body {
+  background: var(--color-bg-page-gradient);
+  background-attachment: fixed;
+}
 </style>
