@@ -79,7 +79,9 @@ export class CloudProvider {
 
     // Handle reasoning models (DeepSeek-R1/V4, etc.) where thinking tokens consume max_tokens
     if (!content.trim() && message.reasoning_content) {
-      console.warn(`[CloudProvider.${this.name}] 推理模型思考占满了token限制，content为空。reasoning_content长度: ${message.reasoning_content.length}`);
+      const errMsg = `推理模型思考占满了token限制(${options.maxTokens ?? 4096})，content为空。reasoning_content长度: ${message.reasoning_content.length}。需要更大的maxTokens。`;
+      console.warn(`[CloudProvider.${this.name}] ${errMsg}`);
+      throw new Error(`REASONING_EXHAUSTED: ${errMsg}`);
     }
 
     const usage = data.usage;

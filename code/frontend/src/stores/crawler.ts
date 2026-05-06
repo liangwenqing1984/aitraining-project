@@ -17,6 +17,9 @@ export const useCrawlerStore = defineStore('crawler', () => {
   
   // 🔧 修复: 使用Map存储每个任务的独立日志,而不是全局共享数组
   const taskLogs = ref<Map<string, Array<{ time: string; level: string; message: string }>>>(new Map())
+
+  // AI 增强进度追踪（taskId → 进度信息）
+  const enrichmentProgress = ref<Map<string, { total: number; completed: number; failed: number; message: string }>>(new Map())
   
   // 兼容旧代码: 提供一个计算属性返回当前任务的日志
   // 🔧 关键修复: 直接返回Map中的数组引用，而不是创建新数组
@@ -189,9 +192,19 @@ export const useCrawlerStore = defineStore('crawler', () => {
     socket.value.on('enrichment:progress', (data: any) => {
       const { taskId, status, message } = data
       if (status === 'completed') {
+        enrichmentProgress.value.delete(taskId)
         ElMessage.success(`[AI 增强] ${message}`)
       } else if (status === 'failed') {
+        enrichmentProgress.value.delete(taskId)
         ElMessage.error(`[AI 增强] ${message}`)
+      } else {
+        // 运行中：更新进度信息
+        enrichmentProgress.value.set(taskId, {
+          total: data.total || 0,
+          completed: data.completed || 0,
+          failed: data.failed || 0,
+          message,
+        })
       }
       // Also log to task
       if (taskId) {
@@ -640,6 +653,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
     logs, // 保持兼容性,现在是计算属性
     taskLogs, // 暴露完整的日志Map
     isConnected,
+    enrichmentProgress,  // AI 增强进度
     reconnectAttempts,  // 🔧 新增：重连尝试次数
     maxReconnectAttempts,  // 🔧 新增：最大重连次数
     runningTasks,

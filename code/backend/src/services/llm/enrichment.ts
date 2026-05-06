@@ -5,8 +5,8 @@ import { io } from '../../app';
 import ExcelJS from 'exceljs';
 import crypto from 'crypto';
 
-const BATCH_SIZE = 1;
-const BATCH_DELAY_MS = 500;
+const BATCH_SIZE = 10;
+const BATCH_DELAY_MS = 200;
 
 export interface EnrichmentProgress {
   taskId: string;
@@ -19,6 +19,8 @@ export interface EnrichmentProgress {
 
 // Track running enrichments to prevent duplicates
 const runningEnrichments = new Map<string, boolean>();
+// Store latest progress for replay on WebSocket reconnect
+const latestProgress = new Map<string, EnrichmentProgress>();
 
 export async function startEnrichment(taskId: string): Promise<void> {
   if (runningEnrichments.get(taskId)) {
@@ -39,14 +41,16 @@ export async function startEnrichment(taskId: string): Promise<void> {
   let failed = 0;
 
   const emitProgress = (message: string) => {
-    io.to(`task:${taskId}`).emit('enrichment:progress', {
+    const progress: EnrichmentProgress = {
       taskId,
       status: 'running',
       total,
       completed,
       failed,
       message,
-    } as EnrichmentProgress);
+    };
+    io.to(`task:${taskId}`).emit('enrichment:progress', progress);
+    latestProgress.set(taskId, progress);
     console.log(`[Enrichment] ${taskId}: ${message} (${completed}/${total})`);
   };
 
@@ -73,14 +77,32 @@ export async function startEnrichment(taskId: string): Promise<void> {
       row.eachCell((cell, colNumber) => {
         rowData[headers[colNumber - 1] || `col_${colNumber}`] = String(cell.value || '');
       });
+      // 生成稳定 jobId：有职位ID用职位ID，否则用行号（Excel行顺序稳定）
+      rowData['_jobId'] = rowData['职位ID'] || `row_${rows.length}`;
       rows.push(rowData);
     });
 
-    emitProgress(`数据读取完成，共 ${rows.length} 条记录，开始 AI 增强...`);
+    emitProgress(`数据读取完成，共 ${rows.length} 条记录`);
+
+    // 查询已增强的 job_id，跳过重复处理
+    const existingRows = await db.prepare(
+      `SELECT job_id FROM job_enrichments WHERE task_id = $1`
+    ).all(taskId) as any[];
+    const enrichedIds = new Set(existingRows.map((r: any) => r.jobId));
+    const rowsToProcess = rows.filter(row => {
+      return !enrichedIds.has(row['_jobId']);
+    });
+    const skipped = rows.length - rowsToProcess.length;
+    completed = skipped;  // 已增强的记录也算入完成数
+    if (skipped > 0) {
+      emitProgress(`跳过已增强 ${skipped} 条，待处理 ${rowsToProcess.length} 条，开始 AI 增强...`);
+    } else {
+      emitProgress(`共 ${rowsToProcess.length} 条记录，开始 AI 增强...`);
+    }
 
     // Process in batches
-    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-      const batch = rows.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < rowsToProcess.length; i += BATCH_SIZE) {
+      const batch = rowsToProcess.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.allSettled(
         batch.map((row) => enrichSingleJob(taskId, row))
       );
@@ -94,37 +116,43 @@ export async function startEnrichment(taskId: string): Promise<void> {
         }
       }
 
-      emitProgress(`处理中... (第 ${Math.min(i + BATCH_SIZE, rows.length)}/${rows.length} 条)`);
+      emitProgress(`处理中... (第 ${Math.min(i + BATCH_SIZE, rowsToProcess.length)}/${rowsToProcess.length} 条)`);
 
       // Delay between batches to avoid rate limiting
-      if (i + BATCH_SIZE < rows.length) {
+      if (i + BATCH_SIZE < rowsToProcess.length) {
         await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
       }
     }
 
-    io.to(`task:${taskId}`).emit('enrichment:progress', {
+    const finalProgress: EnrichmentProgress = {
       taskId,
       status: 'completed',
-      total: rows.length,
+      total,
       completed,
       failed,
       message: `增强完成：成功 ${completed} 条，失败 ${failed} 条`,
-    } as EnrichmentProgress);
+    };
+    io.to(`task:${taskId}`).emit('enrichment:progress', finalProgress);
+    latestProgress.set(taskId, finalProgress);
 
     console.log(`[Enrichment] ✅ ${taskId} 完成: 成功 ${completed}, 失败 ${failed}`);
   } catch (e: any) {
     console.error(`[Enrichment] ❌ ${taskId} 失败:`, e.message);
-    io.to(`task:${taskId}`).emit('enrichment:progress', {
+    const failProgress: EnrichmentProgress = {
       taskId,
       status: 'failed',
       total,
       completed,
       failed,
       message: `增强失败: ${e.message}`,
-    } as EnrichmentProgress);
+    };
+    io.to(`task:${taskId}`).emit('enrichment:progress', failProgress);
+    latestProgress.set(taskId, failProgress);
     throw e;
   } finally {
     runningEnrichments.delete(taskId);
+    // Clean up progress cache after 5 minutes
+    setTimeout(() => { latestProgress.delete(taskId); }, 5 * 60 * 1000);
   }
 }
 
@@ -180,10 +208,12 @@ async function enrichSingleJob(
     jobDescription: row['职位描述'] || '',
   };
 
-  const jobId = row['职位ID'] || `${taskId}_${Date.now()}`;
+  const jobId = row['_jobId'] || row['职位ID'] || `${taskId}_${Date.now()}`;
 
-  // Retry up to 3 times on failure
+  // Retry up to 3 times on failure, with progressive maxTokens for reasoning models
   let lastError: Error | null = null;
+  // 16384 → 32768 → 49152: 推理模型思考消耗大，从较高起点开始避免无谓重试
+  const tokenLimits = [16384, 32768, 49152];
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const result = await llmService.callLLM(
@@ -192,7 +222,7 @@ async function enrichSingleJob(
         {
           taskType: 'enrichment',
           temperature: attempt === 0 ? 0.1 : 0.3,
-          maxTokens: 8192,
+          maxTokens: tokenLimits[attempt],
         }
       );
 
@@ -277,6 +307,8 @@ export async function getEnrichmentStatus(taskId: string): Promise<{
   exists: boolean;
   total: number;
   lastEnrichedAt: string | null;
+  isRunning: boolean;
+  runningProgress: EnrichmentProgress | null;
 }> {
   const result = await db.prepare(`
     SELECT COUNT(*) as total, MAX(enriched_at) as last_enriched_at
@@ -287,6 +319,8 @@ export async function getEnrichmentStatus(taskId: string): Promise<{
     exists: result?.total > 0,
     total: result?.total || 0,
     lastEnrichedAt: result?.lastEnrichedAt || null,
+    isRunning: runningEnrichments.get(taskId) || false,
+    runningProgress: latestProgress.get(taskId) || null,
   };
 }
 

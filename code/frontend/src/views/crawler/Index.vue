@@ -111,15 +111,26 @@ async function enrichTask(taskId: string) {
 async function checkEnrichStatus(taskId: string) {
   try {
     const res = await getEnrichmentStatus(taskId)
-    if (res.data?.exists) {
+    if (res.data?.isRunning && res.data.runningProgress) {
+      // 增强仍在运行，恢复进度显示
+      const p = res.data.runningProgress
+      crawlerStore.enrichmentProgress.set(taskId, {
+        total: p.total,
+        completed: p.completed,
+        failed: p.failed,
+        message: p.message,
+      })
+      enrichingTasks.value[taskId] = true
+      setTimeout(() => checkEnrichStatus(taskId), 3000)
+    } else if (res.data?.exists) {
       enrichingTasks.value[taskId] = false
-      ElMessage.success(`数据增强完成，共 ${res.data.total} 条记录`)
+      crawlerStore.enrichmentProgress.delete(taskId)
     } else {
-      // 还未完成，继续等待
       setTimeout(() => checkEnrichStatus(taskId), 5000)
     }
   } catch {
     enrichingTasks.value[taskId] = false
+    crawlerStore.enrichmentProgress.delete(taskId)
   }
 }
 
@@ -502,10 +513,14 @@ async function handleResumeTask(row: any) {
               type="success"
               link
               size="small"
-              :loading="enrichingTasks[row.id]"
+              :loading="enrichingTasks[row.id] && !crawlerStore.enrichmentProgress.get(row.id)"
               @click="enrichTask(row.id)"
             >
-              <el-icon class="action-icon"><DataAnalysis /></el-icon>AI 增强
+              <el-icon class="action-icon"><DataAnalysis /></el-icon>
+              <template v-if="crawlerStore.enrichmentProgress.get(row.id)">
+                AI 增强 {{ crawlerStore.enrichmentProgress.get(row.id)!.completed }}/{{ crawlerStore.enrichmentProgress.get(row.id)!.total }}
+              </template>
+              <template v-else>AI 增强</template>
             </el-button>
             
             <!-- 删除按钮 - 带确认 -->

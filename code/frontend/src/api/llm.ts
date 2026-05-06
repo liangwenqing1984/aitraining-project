@@ -61,7 +61,10 @@ export function startEnrichment(taskId: string): Promise<ApiResponse<void>> {
 }
 
 // 获取增强状态
-export function getEnrichmentStatus(taskId: string): Promise<ApiResponse<{ exists: boolean; total: number; lastEnrichedAt: string | null }>> {
+export function getEnrichmentStatus(taskId: string): Promise<ApiResponse<{
+  exists: boolean; total: number; lastEnrichedAt: string | null;
+  isRunning: boolean; runningProgress: { total: number; completed: number; failed: number; message: string } | null
+}>> {
   return api.get(`/llm/enrich/${taskId}/status`)
 }
 
