@@ -161,12 +161,13 @@ sp_jobs 表（原始爬取职位数据，与 Excel 同步入库）：
 
 注意事项：
 1. 仅生成SELECT语句，绝对禁止INSERT/UPDATE/DELETE/DROP等
-2. 查询薪资、技能、学历、行业、职位分类等信息时，必须从 sp_job_enrichments 表查询
-3. 按薪资排序用 salary_monthly_max DESC 或 salary_monthly_min DESC
-4. 统计查询用 COUNT(*)，分组用 GROUP BY
-5. JSONB 数组字段不能直接在 WHERE 中用 = 比较，需要用 @> 操作符
-6. LIMIT最多500条
-7. 如果用户指定了 task_id，加上 WHERE task_id='xxx' 过滤
+2. 增强字段（薪资、技能、学历、行业、职位分类等）从 sp_job_enrichments 查询；原始字段（企业名称、职位名称、工作城市、薪资范围原文、工作经验原文、职位描述等）从 sp_jobs 查询
+3. **重要**：查询结果应同时包含原始数据和增强数据，默认使用 LEFT JOIN sp_jobs ON sp_job_enrichments.task_id = sp_jobs.task_id AND sp_job_enrichments.job_id = sp_jobs.job_id，SELECT 中列出 sp_jobs 的 company_name、job_name、work_city、salary_range、education、work_experience 等原始字段
+4. 按薪资排序用 salary_monthly_max DESC 或 salary_monthly_min DESC
+5. 统计查询用 COUNT(*)，分组用 GROUP BY
+6. JSONB 数组字段不能直接在 WHERE 中用 = 比较，需要用 @> 操作符
+7. LIMIT最多500条
+8. 如果用户指定了 task_id，加上 WHERE task_id='xxx' 过滤（两表的 task_id 都需过滤或通过 JOIN 条件关联）
 
 输出JSON格式：
 {
