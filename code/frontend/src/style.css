@@ -210,9 +210,15 @@ html, body, #app {
 }
 
 /* 固定列表格 — 玻璃质感下透明背景导致内容穿透，强制不透明 */
+.el-table .el-table__fixed-right,
+.el-table .el-table__fixed-right .el-table__fixed-body-wrapper,
 .el-table__fixed-right td,
-.el-table__fixed-right th {
+.el-table__fixed-right th,
+.el-table__fixed-right .el-table__cell,
+.el-table__fixed-body-wrapper .el-table__cell {
   background-color: #fafafa !important;
+  --el-table-bg-color: #fafafa !important;
+  --el-table-tr-bg-color: #fafafa !important;
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
