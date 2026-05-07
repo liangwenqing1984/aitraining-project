@@ -209,26 +209,9 @@ html, body, #app {
   background: var(--glass-bg-hover) !important;
 }
 
-/* 固定列必须有不透明背景，防止水平滚动时下方内容穿透（玻璃质感下透明背景会导致重叠） */
-.el-table__fixed-right {
-  --el-table-bg-color: #f5f6fa !important;
-  --el-table-tr-bg-color: #f5f6fa !important;
-  background-color: #f5f6fa !important;
-}
-.el-table__fixed-right .el-table__fixed-body-wrapper,
-.el-table__fixed-right .el-table__fixed-body-wrapper table {
-  background-color: #f5f6fa !important;
-}
-.el-table__fixed-right td.el-table__cell,
+/* 固定列表格 — 设置不透明背景，防止玻璃质感下内容穿透 */
 .el-table__fixed-right .el-table__cell {
-  background-color: #f5f6fa !important;
-}
-/* 固定列 hover 保持与主表格一致的交互效果 */
-.el-table__fixed-right .el-table__row:hover > td.el-table__cell {
-  background: var(--glass-bg-hover) !important;
-}
-.el-table__fixed-right th.el-table__cell {
-  background-color: rgba(102, 126, 234, 0.08) !important;
+  background-color: #fafafa !important;
 }
 
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
