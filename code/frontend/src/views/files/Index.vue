@@ -281,7 +281,7 @@ function handleSizeChange(size: number) {
       <el-table
         :data="files"
         stripe
-        class="files-table"
+        class="files-table" :style="{ '--el-table-bg-color': '#fafafa', '--el-table-tr-bg-color': '#fafafa' }"
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" />
