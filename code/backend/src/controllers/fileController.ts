@@ -415,10 +415,16 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       });
     }
     
-    // 4.5 企业性质分析（优先精确匹配）
+    // 4.5 企业性质分析（兼容智联"公司性质"和51job"企业类型"）
     let natureField: string | undefined = headers.find((h: string) => h === '公司性质')
     if (!natureField) {
+      natureField = headers.find((h: string) => h === '企业类型')
+    }
+    if (!natureField) {
       natureField = headers.find((h: string) => h.includes('性质'))
+    }
+    if (!natureField) {
+      natureField = headers.find((h: string) => h.includes('企业类型'))
     }
     
     if (natureField && analysis.fieldStats[natureField]?.topValues) {

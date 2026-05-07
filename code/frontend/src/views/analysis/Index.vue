@@ -215,7 +215,7 @@ const cityDistributionData = computed(() => {
   if (!analysisResult.value?.headers) return []
   
   // 🔧 关键修复：优先精确匹配"工作城市"
-  let cityField = analysisResult.value.headers.find((h: string) => h === '工作城市')
+  let cityField = analysisResult.value.headers.find((h: string) => h === '工作城市') || analysisResult.value.headers.find((h: string) => h === '城市')
   
   // 降级模糊匹配
   if (!cityField) {
@@ -246,12 +246,12 @@ const positionDistributionData = computed(() => {
   if (!analysisResult.value?.headers) return []
   
   // 🔧 关键修复：优先精确匹配"职位名称"，避免匹配到"职位ID"
-  let jobField = analysisResult.value.headers.find((h: string) => h === '职位名称')
+  let jobField = analysisResult.value.headers.find((h: string) => h === '职位名称') || analysisResult.value.headers.find((h: string) => h === '岗位名称')
   
   // 如果没有精确匹配，再尝试模糊匹配（排除ID相关字段）
   if (!jobField) {
     jobField = analysisResult.value.headers.find((h: string) => 
-      h.includes('职位') && !h.includes('ID') && !h.includes('id')
+      (h.includes('职位') || h.includes('岗位')) && !h.includes('ID') && !h.includes('id')
     )
   }
   
