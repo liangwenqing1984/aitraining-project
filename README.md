@@ -156,8 +156,8 @@
                        │ SQL
 ┌──────────────────────▼──────────────────────────────────┐
 │           PostgreSQL (SeaboxSQL :7300)                    │
-│  tasks │ csv_files │ job_enrichments │ market_reports    │
-│  llm_config │ saved_queries                              │
+│  sp_tasks │ sp_csv_files │ sp_job_enrichments │ sp_market_reports │
+│  sp_llm_config │ sp_saved_queries │ sp_job_embeddings             │
 └──────────────────────────────────────────────────────────┘
                        │ Browser Automation
 ┌──────────────────────▼──────────────────────────────────┐
@@ -360,9 +360,9 @@ aitraining/
 
 ## 数据库表结构
 
-Schema: `liangwenqing`，共 6 张表。
+Schema: `liangwenqing`，共 7 张表（含 pgvector 向量库）。
 
-### `tasks` — 爬虫任务
+### `sp_tasks` — 爬虫任务
 
 | 核心字段 | 类型 | 说明 |
 |----------|------|------|
@@ -374,7 +374,7 @@ Schema: `liangwenqing`，共 6 张表。
 | record_count | INTEGER | 采集记录数 |
 | csv_path | TEXT | 输出 Excel 路径 |
 
-### `csv_files` — 导出文件
+### `sp_csv_files` — 导出文件
 
 | 核心字段 | 类型 | 说明 |
 |----------|------|------|
@@ -383,7 +383,7 @@ Schema: `liangwenqing`，共 6 张表。
 | filepath | TEXT | 文件路径 |
 | record_count | INTEGER | 记录数 |
 
-### `job_enrichments` — AI 增强结果
+### `sp_job_enrichments` — AI 增强结果
 
 | 核心字段 | 类型 | 说明 |
 |----------|------|------|
@@ -398,7 +398,7 @@ Schema: `liangwenqing`，共 6 张表。
 | work_mode | VARCHAR(20) | 远程/现场/混合 |
 | model_used | VARCHAR(100) | 增强所用模型 |
 
-### `market_reports` — AI 洞察报告
+### `sp_market_reports` — AI 洞察报告
 
 | 核心字段 | 类型 | 说明 |
 |----------|------|------|
@@ -408,7 +408,7 @@ Schema: `liangwenqing`，共 6 张表。
 | summary | TEXT | 200 字摘要 |
 | charts_config | JSONB | ECharts 图表配置 |
 
-### `llm_config` — AI 模型配置
+### `sp_llm_config` — AI 模型配置
 
 | 核心字段 | 类型 | 说明 |
 |----------|------|------|
@@ -417,7 +417,7 @@ Schema: `liangwenqing`，共 6 张表。
 | api_key_encrypted | TEXT | AES-256-GCM 加密 |
 | task_routing | JSONB | 任务类型路由 |
 
-### `saved_queries` — NL 查询历史
+### `sp_saved_queries` — NL 查询历史
 
 | 核心字段 | 类型 | 说明 |
 |----------|------|------|
@@ -425,6 +425,19 @@ Schema: `liangwenqing`，共 6 张表。
 | generated_sql | TEXT | AI 生成的 SQL |
 | result_summary | TEXT | LLM 总结 |
 | result_data | JSONB | 查询结果 |
+
+### `sp_job_embeddings` — RAG 职位向量库
+
+| 核心字段 | 类型 | 说明 |
+|----------|------|------|
+| task_id + job_id | UNIQUE | 任务+职位唯一约束 |
+| text_content | TEXT | 拼接后的职位全文 |
+| embedding | vector(768) | nomic-embed-text 768维向量 |
+| job_name / company_name / work_city | VARCHAR | 原始职位/企业/城市信息 |
+| key_skills | JSONB | 关键技能列表 |
+| source_metadata | JSONB | 来源元数据 |
+
+> 需要 pgvector 扩展。通过 IVFFlat 索引加速近似最近邻搜索，使用余弦距离计算相似度。
 
 ---
 

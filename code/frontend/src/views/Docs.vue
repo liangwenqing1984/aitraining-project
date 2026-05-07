@@ -658,8 +658,8 @@ const docs: Record<string, { title: string; content: string }> = {
                        │ SQL
 ┌──────────────────────▼──────────────────────────────────┐
 │           PostgreSQL (SeaboxSQL :7300)                    │
-│  tasks │ csv_files │ job_enrichments │ market_reports    │
-│  llm_config │ saved_queries                              │
+│  sp_tasks │ sp_csv_files │ sp_job_enrichments │ sp_market_reports │
+│  sp_llm_config │ sp_saved_queries │ sp_job_embeddings             │
 └──────────────────────────────────────────────────────────┘
                        │ Browser Automation
 ┌──────────────────────▼──────────────────────────────────┐
@@ -857,9 +857,9 @@ npm run dev
   // ========== 数据库 ==========
   database: {
     title: '数据库表结构',
-    content: `<p>Schema: <code>liangwenqing</code>，共 <strong>6 张表</strong>。
+    content: `<p>Schema: <code>liangwenqing</code>，共 <strong>7 张表</strong>（含 pgvector 向量库）。
 
-<h3>tasks — 爬虫任务</h3>
+<h3>sp_tasks — 爬虫任务</h3>
 <table>
   <tr><th>字段</th><th>类型</th><th>说明</th></tr>
   <tr><td>id</td><td>VARCHAR(255) PK</td><td>UUID</td></tr>
@@ -870,7 +870,7 @@ npm run dev
   <tr><td>record_count</td><td>INTEGER</td><td>采集记录数</td></tr>
 </table>
 
-<h3>csv_files — 导出文件</h3>
+<h3>sp_csv_files — 导出文件</h3>
 <table>
   <tr><td>id</td><td>VARCHAR(255) PK</td><td>UUID</td></tr>
   <tr><td>task_id</td><td>VARCHAR(255) FK</td><td>关联任务</td></tr>
@@ -878,7 +878,7 @@ npm run dev
   <tr><td>record_count</td><td>INTEGER</td><td>记录数</td></tr>
 </table>
 
-<h3>job_enrichments — AI 增强结果</h3>
+<h3>sp_job_enrichments — AI 增强结果</h3>
 <table>
   <tr><td>task_id + job_id</td><td>UNIQUE</td><td>任务+职位唯一约束</td></tr>
   <tr><td>salary_monthly_min/max</td><td>INTEGER</td><td>标准化月薪（元）</td></tr>
@@ -892,7 +892,7 @@ npm run dev
   <tr><td>model_used</td><td>VARCHAR(100)</td><td>增强所用模型</td></tr>
 </table>
 
-<h3>market_reports — AI 洞察报告</h3>
+<h3>sp_market_reports — AI 洞察报告</h3>
 <table>
   <tr><td>file_id</td><td>VARCHAR(255) FK</td><td>关联文件</td></tr>
   <tr><td>title</td><td>VARCHAR(500)</td><td>报告标题</td></tr>
@@ -901,7 +901,7 @@ npm run dev
   <tr><td>charts_config</td><td>JSONB</td><td>ECharts 图表配置</td></tr>
 </table>
 
-<h3>llm_config — AI 模型配置</h3>
+<h3>sp_llm_config — AI 模型配置</h3>
 <table>
   <tr><td>provider</td><td>VARCHAR(50)</td><td>openai/deepseek/zhipu/ollama</td></tr>
   <tr><td>model_name</td><td>VARCHAR(100)</td><td>模型名称</td></tr>
@@ -909,7 +909,7 @@ npm run dev
   <tr><td>task_routing</td><td>JSONB</td><td>任务类型路由</td></tr>
 </table>
 
-<h3>job_embeddings — RAG 职位向量库</h3>
+<h3>sp_job_embeddings — RAG 职位向量库</h3>
 <table>
   <tr><td>task_id + job_id</td><td>UNIQUE</td><td>任务+职位唯一约束（UPSERT）</td></tr>
   <tr><td>text_content</td><td>TEXT</td><td>拼接后的职位全文（用于生成 embedding）</td></tr>
@@ -930,7 +930,7 @@ npm run dev
   <li><strong>相似度转换</strong>：<code>1 - (embedding &lt;=&gt; query)</code> 得到余弦相似度</li>
 </ul>
 
-<h3>saved_queries — NL 查询历史</h3>
+<h3>sp_saved_queries — NL 查询历史</h3>
 <table>
   <tr><td>user_query</td><td>TEXT</td><td>用户自然语言</td></tr>
   <tr><td>generated_sql</td><td>TEXT</td><td>AI 生成的 SQL</td></tr>
@@ -966,15 +966,15 @@ npm run dev
   'guide-rag': {
     title: '语义搜索',
     content: `<ol>
-  <li>确保任务已完成爬取 + AI 增强（需要 <code>job_enrichments</code> 数据）</li>
+  <li>确保任务已完成爬取 + AI 增强（需要 <code>sp_job_enrichments</code> 数据）</li>
   <li>进入「语义搜索」页面</li>
   <li>在「选择要索引的任务」下拉框中选择目标任务</li>
   <li>点击「开始索引」按钮，系统自动：
     <ul>
       <li>从 Excel 读取原始职位字段（职位名称/企业/城市）</li>
-      <li>从 <code>job_enrichments</code> 读取增强字段（分类/技能/行业）</li>
+      <li>从 <code>sp_job_enrichments</code> 读取增强字段（分类/技能/行业）</li>
       <li>调用 Ollama nomic-embed-text 生成 768 维向量</li>
-      <li>存入 <code>job_embeddings</code> 表（pgvector）</li>
+      <li>存入 <code>sp_job_embeddings</code> 表（pgvector）</li>
     </ul>
   </li>
   <li>索引完成后，在搜索框输入自然语言查询</li>
