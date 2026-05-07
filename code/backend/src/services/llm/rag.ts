@@ -1,4 +1,4 @@
-import { db } from '../../config/database';
+import { db, pgvectorAvailable } from '../../config/database';
 import { generateEmbedding, buildJobText, EMBEDDING_DIM } from './embeddings';
 import { io } from '../../app';
 import crypto from 'crypto';
@@ -21,22 +21,26 @@ export interface JobVectorResult {
 }
 
 /**
- * 将 job_enrichments 中的增强数据向量化并写入 job_embeddings 表
+ * 将 sp_job_enrichments 中的增强数据向量化并写入 sp_job_embeddings 表
  */
 export async function indexJobEmbeddings(
   taskId: string,
   onProgress?: (message: string) => void
 ): Promise<{ total: number; indexed: number; skipped: number; errors: number }> {
+  if (!pgvectorAvailable) {
+    throw new Error('pgvector 扩展未安装，无法进行向量化索引。请在 PostgreSQL 服务器安装 pgvector 扩展。');
+  }
+
   const emit = (msg: string) => {
     console.log(`[RAG] ${msg}`);
     io.emit('rag:progress', { taskId, message: msg, timestamp: Date.now() });
     onProgress?.(msg);
   };
 
-  emit('正在从 job_enrichments 读取增强数据...');
+  emit('正在从 sp_job_enrichments 读取增强数据...');
 
   const rows = await db.prepare(`
-    SELECT * FROM job_enrichments WHERE task_id = $1
+    SELECT * FROM sp_job_enrichments WHERE task_id = $1
   `).all(taskId) as any[];
 
   if (!rows || rows.length === 0) {
@@ -48,7 +52,7 @@ export async function indexJobEmbeddings(
   // 从 Excel 文件读取原始职位数据 (job_name, company_name, work_city)
   const rawDataMap = new Map<string, { jobName: string; companyName: string; workCity: string }>();
   const csvFile = await db.prepare(
-    'SELECT * FROM csv_files WHERE task_id=$1 ORDER BY created_at DESC LIMIT 1'
+    'SELECT * FROM sp_csv_files WHERE task_id=$1 ORDER BY created_at DESC LIMIT 1'
   ).get(taskId) as any;
 
   if (csvFile?.filepath) {
@@ -116,7 +120,7 @@ export async function indexJobEmbeddings(
       const vectorStr = `[${embedding.join(',')}]`;
 
       await db.prepare(`
-        INSERT INTO job_embeddings
+        INSERT INTO sp_job_embeddings
         (id, job_id, task_id, text_content, embedding, job_name, job_category_l1,
          job_category_l2, company_name, company_industry, work_city,
          salary_monthly_min, salary_monthly_max, key_skills, source_metadata)
@@ -169,7 +173,7 @@ export async function indexJobEmbeddings(
     try {
       await db.prepare(`
         CREATE INDEX IF NOT EXISTS idx_job_embeddings_vector_${taskId.substring(0, 8)}
-        ON job_embeddings USING ivfflat (embedding vector_cosine_ops)
+        ON sp_job_embeddings USING ivfflat (embedding vector_cosine_ops)
         WITH (lists = 50)
       `).run();
     } catch {
@@ -204,6 +208,10 @@ export async function semanticSearch(
     minSimilarity?: number;
   } = {}
 ): Promise<JobVectorResult[]> {
+  if (!pgvectorAvailable) {
+    throw new Error('pgvector 扩展未安装，无法进行语义搜索。请在 PostgreSQL 服务器安装 pgvector 扩展。');
+  }
+
   const { limit = 10, taskId, minSimilarity = 0.3 } = options;
 
   // 生成查询 embedding
@@ -220,7 +228,7 @@ export async function semanticSearch(
              company_name, company_industry, work_city,
              salary_monthly_min, salary_monthly_max, key_skills,
              1 - (embedding <=> $1::vector) AS similarity
-      FROM job_embeddings
+      FROM sp_job_embeddings
       WHERE task_id = $2
         AND 1 - (embedding <=> $1::vector) >= $3
       ORDER BY embedding <=> $1::vector
@@ -233,7 +241,7 @@ export async function semanticSearch(
              company_name, company_industry, work_city,
              salary_monthly_min, salary_monthly_max, key_skills,
              1 - (embedding <=> $1::vector) AS similarity
-      FROM job_embeddings
+      FROM sp_job_embeddings
       WHERE 1 - (embedding <=> $1::vector) >= $2
       ORDER BY embedding <=> $1::vector
       LIMIT $3
@@ -266,14 +274,14 @@ export async function semanticSearch(
 export async function getEmbeddingStats(taskId?: string) {
   if (taskId) {
     const row = await db.prepare(
-      'SELECT COUNT(*) as cnt, MAX(created_at) as last_indexed FROM job_embeddings WHERE task_id=$1'
+      'SELECT COUNT(*) as cnt, MAX(created_at) as last_indexed FROM sp_job_embeddings WHERE task_id=$1'
     ).get(taskId) as any;
     return { taskId, count: row?.cnt || 0, lastIndexed: row?.lastIndexed || null };
   }
 
   const rows = await db.prepare(`
     SELECT task_id, COUNT(*) as cnt, MAX(created_at) as last_indexed
-    FROM job_embeddings GROUP BY task_id ORDER BY last_indexed DESC
+    FROM sp_job_embeddings GROUP BY task_id ORDER BY last_indexed DESC
   `).all() as any[];
 
   return rows.map((r: any) => ({

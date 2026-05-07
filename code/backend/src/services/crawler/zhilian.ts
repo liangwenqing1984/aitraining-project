@@ -525,11 +525,11 @@ export class ZhilianCrawler {
 
                   // 保存断点（当前组合+页码），确保重启后从此处继续
                   try {
-                    const resumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                    const resumeTask = await db.prepare('SELECT config FROM sp_tasks WHERE id = $1').get(taskId!) as any;
                     if (resumeTask) {
                       const resumeConfig = typeof resumeTask.config === 'string' ? JSON.parse(resumeTask.config) : resumeTask.config;
                       resumeConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: 0 };
-                      await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(resumeConfig), taskId!);
+                      await db.prepare('UPDATE sp_tasks SET config = $1 WHERE id = $2').run(JSON.stringify(resumeConfig), taskId!);
                       this.log('info', `[ZhilianCrawler] 💾 反爬拦截断点已保存: 组合${currentCombination}, 第${currentPage}页`);
                     }
                   } catch (saveErr: any) {
@@ -1669,11 +1669,11 @@ strategy1Stats.failedExtractions++;
               // 🔧 断点续传：每页处理完成后保存进度到DB config（仅非中止时保存）
               if (!this.checkAborted()) {
                 try {
-                  const resumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                  const resumeTask = await db.prepare('SELECT config FROM sp_tasks WHERE id = $1').get(taskId!) as any;
                   if (resumeTask) {
                     const resumeConfig = typeof resumeTask.config === 'string' ? JSON.parse(resumeTask.config) : resumeTask.config;
                     resumeConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage + 1, jobIndex: 0 };
-                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(resumeConfig), taskId!);
+                    await db.prepare('UPDATE sp_tasks SET config = $1 WHERE id = $2').run(JSON.stringify(resumeConfig), taskId!);
                   }
                 } catch (e: any) {
                   // 保存失败不影响继续爬取
@@ -1702,11 +1702,11 @@ strategy1Stats.failedExtractions++;
               if (this.checkAborted()) {
                 this.log('info', `[ZhilianCrawler] ⏹️ 检测到中止信号，正在优雅退出...`);
                 try {
-                  const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                  const abortResumeTask = await db.prepare('SELECT config FROM sp_tasks WHERE id = $1').get(taskId!) as any;
                   if (abortResumeTask) {
                     const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
                     abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: currentJobIndex };
-                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                    await db.prepare('UPDATE sp_tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
                     this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（异常路径）: 组合${currentCombination}, 第${currentPage}页, 职位${currentJobIndex + 1}`);
                   }
                 } catch (e: any) {
@@ -1840,11 +1840,11 @@ strategy1Stats.failedExtractions++;
               // 🔧 断点续传：中止时保存当前位置（不递增页码），确保恢复时从此页开始
               if (this.checkAborted()) {
                 try {
-                  const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+                  const abortResumeTask = await db.prepare('SELECT config FROM sp_tasks WHERE id = $1').get(taskId!) as any;
                   if (abortResumeTask) {
                     const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
                     abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: currentJobIndex };
-                    await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                    await db.prepare('UPDATE sp_tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
                     this.log('info', `[ZhilianCrawler] 💾 中止断点已保存: 组合${currentCombination}, 第${currentPage}页, 职位${currentJobIndex + 1}`);
                   }
                 } catch (e: any) {
@@ -1872,12 +1872,12 @@ strategy1Stats.failedExtractions++;
             // 处理在 while 循环外部（如 randomDelay 期间）被中止的场景
             // 此时 line 1711 的保存点已错过，必须在此处补存
             try {
-              const abortResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId!) as any;
+              const abortResumeTask = await db.prepare('SELECT config FROM sp_tasks WHERE id = $1').get(taskId!) as any;
               if (abortResumeTask) {
                 const abortConfig = typeof abortResumeTask.config === 'string' ? JSON.parse(abortResumeTask.config) : abortResumeTask.config;
                 if (!abortConfig._resumeState) {
                   abortConfig._resumeState = { combinationIndex: currentCombination, currentPage: currentPage, jobIndex: currentJobIndex };
-                  await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
+                  await db.prepare('UPDATE sp_tasks SET config = $1 WHERE id = $2').run(JSON.stringify(abortConfig), taskId!);
                   this.log('info', `[ZhilianCrawler] 💾 中止断点已保存（组合退出路径）: 组合${currentCombination}, 第${currentPage}页, 职位${currentJobIndex + 1}`);
                 }
               }
@@ -1905,7 +1905,7 @@ strategy1Stats.failedExtractions++;
             const progressPercent = Math.round((currentCombination / totalCombinationCount) * 99);
             try {
               await db.prepare(`
-                UPDATE tasks
+                UPDATE sp_tasks
                 SET progress = $1, current = $2, updated_at = CURRENT_TIMESTAMP
                 WHERE id = $3
               `).run(progressPercent, currentCombination, taskId);
@@ -1917,11 +1917,11 @@ strategy1Stats.failedExtractions++;
 
             // 🔧 断点续传：组合完成后保存下一个组合的起始状态
             try {
-              const comboResumeTask = await db.prepare('SELECT config FROM tasks WHERE id = $1').get(taskId) as any;
+              const comboResumeTask = await db.prepare('SELECT config FROM sp_tasks WHERE id = $1').get(taskId) as any;
               if (comboResumeTask) {
                 const comboResumeConfig = typeof comboResumeTask.config === 'string' ? JSON.parse(comboResumeTask.config) : comboResumeTask.config;
                 comboResumeConfig._resumeState = { combinationIndex: currentCombination + 1, currentPage: 1, jobIndex: 0 };
-                await db.prepare('UPDATE tasks SET config = $1 WHERE id = $2').run(JSON.stringify(comboResumeConfig), taskId);
+                await db.prepare('UPDATE sp_tasks SET config = $1 WHERE id = $2').run(JSON.stringify(comboResumeConfig), taskId);
               }
             } catch (e: any) {
               // 保存失败不影响继续爬取

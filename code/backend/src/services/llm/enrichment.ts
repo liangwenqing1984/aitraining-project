@@ -28,7 +28,7 @@ export async function startEnrichment(taskId: string): Promise<void> {
   }
 
   const csvFile = await db.prepare(
-    'SELECT * FROM csv_files WHERE task_id=$1 ORDER BY created_at DESC LIMIT 1'
+    'SELECT * FROM sp_csv_files WHERE task_id=$1 ORDER BY created_at DESC LIMIT 1'
   ).get(taskId) as any;
 
   if (!csvFile) {
@@ -86,7 +86,7 @@ export async function startEnrichment(taskId: string): Promise<void> {
 
     // 查询已增强的 job_id，跳过重复处理
     const existingRows = await db.prepare(
-      `SELECT job_id FROM job_enrichments WHERE task_id = $1`
+      `SELECT job_id FROM sp_job_enrichments WHERE task_id = $1`
     ).all(taskId) as any[];
     const enrichedIds = new Set(existingRows.map((r: any) => r.jobId));
     const rowsToProcess = rows.filter(row => {
@@ -255,9 +255,9 @@ async function saveEnrichmentResult(
 
   const id = crypto.randomUUID();
 
-  // Upsert into job_enrichments
+  // Upsert into sp_job_enrichments
   await db.prepare(`
-    INSERT INTO job_enrichments (
+    INSERT INTO sp_job_enrichments (
       id, task_id, job_id, salary_monthly_min, salary_monthly_max,
       salary_annual_estimate, job_category_l1, job_category_l2,
       company_industry, key_skills, required_skills, preferred_skills,
@@ -312,7 +312,7 @@ export async function getEnrichmentStatus(taskId: string): Promise<{
 }> {
   const result = await db.prepare(`
     SELECT COUNT(*) as total, MAX(enriched_at) as last_enriched_at
-    FROM job_enrichments WHERE task_id=$1
+    FROM sp_job_enrichments WHERE task_id=$1
   `).get(taskId) as any;
 
   return {
@@ -326,7 +326,7 @@ export async function getEnrichmentStatus(taskId: string): Promise<{
 
 export async function getEnrichmentResults(taskId: string): Promise<any[]> {
   const rows = await db.prepare(`
-    SELECT * FROM job_enrichments WHERE task_id=$1 ORDER BY enriched_at DESC
+    SELECT * FROM sp_job_enrichments WHERE task_id=$1 ORDER BY enriched_at DESC
   `).all(taskId) as any[];
 
   return rows.map((r) => ({

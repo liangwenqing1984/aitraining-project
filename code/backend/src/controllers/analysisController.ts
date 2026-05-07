@@ -9,7 +9,7 @@ export async function analyze(req: Request, res: Response) {
   try {
     const { fileId } = req.body;
 
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = ?').get(fileId) as any;
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = ?').get(fileId) as any;
     if (!file) {
       return res.status(404).json({
         success: false,
@@ -62,7 +62,7 @@ export async function analyze(req: Request, res: Response) {
 export async function getSalaryDistribution(req: Request, res: Response) {
   try {
     const { fileId } = req.params;
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = ?').get(fileId) as any;
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = ?').get(fileId) as any;
 
     if (!file) {
       return res.status(404).json({
@@ -116,7 +116,7 @@ export async function getSalaryDistribution(req: Request, res: Response) {
 export async function getCityDistribution(req: Request, res: Response) {
   try {
     const { fileId } = req.params;
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = ?').get(fileId) as any;
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = ?').get(fileId) as any;
 
     if (!file) {
       return res.status(404).json({
@@ -162,7 +162,7 @@ export async function getCityDistribution(req: Request, res: Response) {
 export async function getEducationDistribution(req: Request, res: Response) {
   try {
     const { fileId } = req.params;
-    const file = db.prepare('SELECT * FROM csv_files WHERE id = ?').get(fileId) as any;
+    const file = db.prepare('SELECT * FROM sp_csv_files WHERE id = ?').get(fileId) as any;
 
     if (!file) {
       return res.status(404).json({
@@ -205,7 +205,7 @@ export async function getEducationDistribution(req: Request, res: Response) {
 export async function getExperienceDistribution(req: Request, res: Response) {
   try {
     const { fileId } = req.params;
-    const file = db.prepare('SELECT * FROM csv_files WHERE id = ?').get(fileId) as any;
+    const file = db.prepare('SELECT * FROM sp_csv_files WHERE id = ?').get(fileId) as any;
 
     if (!file) {
       return res.status(404).json({

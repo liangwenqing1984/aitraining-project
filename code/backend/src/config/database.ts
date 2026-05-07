@@ -3,8 +3,8 @@ import path from 'path';
 
 // PostgreSQL连接配置
 const pool = new Pool({
-  host: '10.1.1.113',
-  port: 7300,
+  host: '192.168.137.183',
+  port: 5432,
   database: 'training_exercises',
   user: 'liangwenqing',
   password: 'liangwenqing',
@@ -26,20 +26,31 @@ pool.on('error', (err) => {
   console.error('[DB Pool] 连接池错误:', err.message);
 });
 
+// pgvector 扩展是否可用（由 initDatabase 检测）
+export let pgvectorAvailable = false;
+
 // 初始化数据库表
 async function initDatabase() {
   const client = await pool.connect();
-  
-  try {
-    // 先启用 pgvector 扩展（在设置 schema 之前，扩展安装在 public schema）
-    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
 
-    // 设置schema搜索路径（包含 public 以便访问 vector 类型）
-    await client.query('SET search_path TO liangwenqing, public');
-    
+  try {
+    // 先启用 pgvector 扩展（在设置 schema 之前，扩展安装在 liangwenqing schema）
+    await client.query('CREATE EXTENSION IF NOT EXISTS vector');
+    pgvectorAvailable = true;
+    console.log('[Database] ✅ pgvector 扩展已就绪');
+  } catch (e: any) {
+    pgvectorAvailable = false;
+    console.warn('[Database] ⚠️ pgvector 扩展不可用，RAG 语义搜索功能将禁用:', e.message);
+    console.warn('[Database] 安装方法: 在 PostgreSQL 服务器上执行: apt install postgresql-16-pgvector');
+  }
+
+  // 设置schema搜索路径（包含 liangwenqing 以便访问 vector 类型）
+  await client.query('SET search_path TO liangwenqing, public');
+
+  try {
     // 创建tasks表
     await client.query(`
-      CREATE TABLE IF NOT EXISTS tasks (
+      CREATE TABLE IF NOT EXISTS sp_tasks (
         id VARCHAR(255) PRIMARY KEY,
         name VARCHAR(500) NOT NULL,
         source VARCHAR(50) NOT NULL,
@@ -63,25 +74,32 @@ async function initDatabase() {
     const columnCheck = await client.query(`
       SELECT column_name FROM information_schema.columns 
       WHERE table_schema = 'liangwenqing' 
-      AND table_name = 'tasks' 
+      AND table_name = 'sp_tasks' 
       AND column_name = 'error_message'
     `);
     
     if (columnCheck.rows.length === 0) {
       console.log('[Database] 添加error_message字段到tasks表...');
-      await client.query(`
-        ALTER TABLE tasks ADD COLUMN error_message TEXT
-      `);
-      console.log('[Database] ✅ error_message字段添加成功');
+      try {
+        await client.query('ALTER TABLE sp_tasks ADD COLUMN error_message TEXT');
+        console.log('[Database] ✅ error_message字段添加成功');
+      } catch (alterErr: any) {
+        // 并发场景下列可能已被其他连接添加
+        if (alterErr.code === '42701') {
+          console.log('[Database] ℹ️ error_message字段已存在（由并行初始化创建）');
+        } else {
+          throw alterErr;
+        }
+      }
     } else {
       console.log('[Database] ✅ error_message字段已存在');
     }
 
     // 创建csv_files表
     await client.query(`
-      CREATE TABLE IF NOT EXISTS csv_files (
+      CREATE TABLE IF NOT EXISTS sp_csv_files (
         id VARCHAR(255) PRIMARY KEY,
-        task_id VARCHAR(255) REFERENCES tasks(id) ON DELETE CASCADE,
+        task_id VARCHAR(255) REFERENCES sp_tasks(id) ON DELETE CASCADE,
         filename VARCHAR(500) NOT NULL,
         filepath TEXT NOT NULL,
         file_size BIGINT NOT NULL,
@@ -91,9 +109,9 @@ async function initDatabase() {
       )
     `);
 
-    // 创建 llm_config 表
+    // 创建 sp_llm_config 表
     await client.query(`
-      CREATE TABLE IF NOT EXISTS llm_config (
+      CREATE TABLE IF NOT EXISTS sp_llm_config (
         id SERIAL PRIMARY KEY,
         provider VARCHAR(50) NOT NULL,
         model_name VARCHAR(100) NOT NULL,
@@ -106,11 +124,11 @@ async function initDatabase() {
       )
     `);
 
-    // 创建 job_enrichments 表（LLM数据增强结果）
+    // 创建 sp_job_enrichments 表（LLM数据增强结果）
     await client.query(`
-      CREATE TABLE IF NOT EXISTS job_enrichments (
+      CREATE TABLE IF NOT EXISTS sp_job_enrichments (
         id VARCHAR(255) PRIMARY KEY,
-        task_id VARCHAR(255) REFERENCES tasks(id) ON DELETE CASCADE,
+        task_id VARCHAR(255) REFERENCES sp_tasks(id) ON DELETE CASCADE,
         job_id VARCHAR(255) NOT NULL,
         salary_monthly_min INTEGER,
         salary_monthly_max INTEGER,
@@ -132,11 +150,11 @@ async function initDatabase() {
       )
     `);
 
-    // 创建 market_reports 表（LLM 市场洞察报告）
+    // 创建 sp_market_reports 表（LLM 市场洞察报告）
     await client.query(`
-      CREATE TABLE IF NOT EXISTS market_reports (
+      CREATE TABLE IF NOT EXISTS sp_market_reports (
         id VARCHAR(255) PRIMARY KEY,
-        file_id VARCHAR(255) REFERENCES csv_files(id) ON DELETE CASCADE,
+        file_id VARCHAR(255) REFERENCES sp_csv_files(id) ON DELETE CASCADE,
         task_id VARCHAR(255),
         report_type VARCHAR(50) DEFAULT 'overview',
         title VARCHAR(500),
@@ -148,9 +166,9 @@ async function initDatabase() {
       )
     `);
 
-    // 创建 saved_queries 表（自然语言查询历史）
+    // 创建 sp_saved_queries 表（自然语言查询历史）
     await client.query(`
-      CREATE TABLE IF NOT EXISTS saved_queries (
+      CREATE TABLE IF NOT EXISTS sp_saved_queries (
         id VARCHAR(255) PRIMARY KEY,
         task_id VARCHAR(255),
         user_query TEXT NOT NULL,
@@ -163,48 +181,54 @@ async function initDatabase() {
       )
     `);
 
-    // 创建 job_embeddings 表（RAG 职位向量存储，依赖 pgvector 扩展）
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS job_embeddings (
-        id VARCHAR(255) PRIMARY KEY,
-        job_id VARCHAR(255) NOT NULL,
-        task_id VARCHAR(255) REFERENCES tasks(id) ON DELETE CASCADE,
-        text_content TEXT NOT NULL,
-        embedding vector(768),
-        job_name VARCHAR(500),
-        job_category_l1 VARCHAR(100),
-        job_category_l2 VARCHAR(100),
-        company_name VARCHAR(500),
-        company_industry VARCHAR(100),
-        work_city VARCHAR(100),
-        salary_monthly_min INTEGER,
-        salary_monthly_max INTEGER,
-        key_skills JSONB DEFAULT '[]',
-        source_metadata JSONB DEFAULT '{}',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(task_id, job_id)
-      )
-    `);
+    // 创建 sp_job_embeddings 表（RAG 职位向量存储，依赖 pgvector 扩展）
+    if (pgvectorAvailable) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sp_job_embeddings (
+          id VARCHAR(255) PRIMARY KEY,
+          job_id VARCHAR(255) NOT NULL,
+          task_id VARCHAR(255) REFERENCES sp_tasks(id) ON DELETE CASCADE,
+          text_content TEXT NOT NULL,
+          embedding vector(768),
+          job_name VARCHAR(500),
+          job_category_l1 VARCHAR(100),
+          job_category_l2 VARCHAR(100),
+          company_name VARCHAR(500),
+          company_industry VARCHAR(100),
+          work_city VARCHAR(100),
+          salary_monthly_min INTEGER,
+          salary_monthly_max INTEGER,
+          key_skills JSONB DEFAULT '[]',
+          source_metadata JSONB DEFAULT '{}',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(task_id, job_id)
+        )
+      `);
+    } else {
+      console.warn('[Database] ⚠️ 跳过 sp_job_embeddings 表创建（pgvector 不可用）');
+    }
 
     // 创建索引
-    await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_task_id ON csv_files(task_id)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_source ON csv_files(source)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_llm_config_active ON llm_config(is_active)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_job_enrichments_task ON job_enrichments(task_id)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_market_reports_file ON market_reports(file_id)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_saved_queries_task ON saved_queries(task_id)');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_job_embeddings_task ON job_embeddings(task_id)');
-    // pgvector IVFFlat 索引（加速近似最近邻搜索）
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_job_embeddings_vector
-      ON job_embeddings USING ivfflat (embedding vector_cosine_ops)
-      WITH (lists = 100)
-    `).catch(() => {
-      // IVFFlat 索引在空表上创建可能失败，插入数据后重建即可
-      console.log('[Database] ⚠️ IVFFlat 索引创建跳过（可能因表为空），后续可通过 reindex 手动重建');
-    });
+    await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON sp_tasks(status)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON sp_tasks(created_at DESC)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_task_id ON sp_csv_files(task_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_source ON sp_csv_files(source)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_llm_config_active ON sp_llm_config(is_active)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_job_enrichments_task ON sp_job_enrichments(task_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_market_reports_file ON sp_market_reports(file_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_saved_queries_task ON sp_saved_queries(task_id)');
+    if (pgvectorAvailable) {
+      await client.query('CREATE INDEX IF NOT EXISTS idx_job_embeddings_task ON sp_job_embeddings(task_id)');
+      // pgvector IVFFlat 索引（加速近似最近邻搜索）
+      await client.query(`
+        CREATE INDEX IF NOT EXISTS idx_job_embeddings_vector
+        ON sp_job_embeddings USING ivfflat (embedding vector_cosine_ops)
+        WITH (lists = 100)
+      `).catch(() => {
+        // IVFFlat 索引在空表上创建可能失败，插入数据后重建即可
+        console.log('[Database] ⚠️ IVFFlat 索引创建跳过（可能因表为空），后续可通过 reindex 手动重建');
+      });
+    }
 
     console.log('✅ PostgreSQL数据库表初始化完成');
   } catch (error) {

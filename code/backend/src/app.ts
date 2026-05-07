@@ -40,7 +40,7 @@ app.use(cookieParser()); // 添加cookie-parser中间件
 app.use('/exports', express.static(path.join(__dirname, '../data/csv')));
 
 // 路由
-app.use('/api/tasks', taskRoutes);
+app.use('/api/sp_tasks', taskRoutes);
 app.use('/api/files', fileRoutes);
 app.use('/api/analysis', analysisRoutes);
 app.use('/api/auth', authRoutes);

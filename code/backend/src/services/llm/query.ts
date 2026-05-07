@@ -76,7 +76,7 @@ export async function executeNLQuery(
   const taskContext = taskId
     ? `\n当前任务ID: ${taskId}（如需按任务过滤请使用 WHERE task_id='${taskId}'）`
     : '';
-  const schema = 'job_enrichments（核心职位数据表）, tasks, csv_files';
+  const schema = 'sp_job_enrichments（核心职位数据表）, tasks, csv_files';
 
   const llmResult = await llmService.callLLM(
     NL_QUERY_SYSTEM,
@@ -159,7 +159,7 @@ export async function executeNLQuery(
   const now = new Date().toISOString();
 
   await db.prepare(`
-    INSERT INTO saved_queries (id, task_id, user_query, generated_sql, result_summary, result_data, result_count, model_used, created_at)
+    INSERT INTO sp_saved_queries (id, task_id, user_query, generated_sql, result_summary, result_data, result_count, model_used, created_at)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
   `).run(
     id, taskId || null, question, sql,
@@ -181,7 +181,7 @@ export async function executeNLQuery(
 
 export async function getQueryHistory(): Promise<QueryResult[]> {
   const rows = await db.prepare(`
-    SELECT * FROM saved_queries ORDER BY created_at DESC LIMIT 50
+    SELECT * FROM sp_saved_queries ORDER BY created_at DESC LIMIT 50
   `).all() as any[];
 
   return rows.map((r: any) => ({
@@ -197,5 +197,5 @@ export async function getQueryHistory(): Promise<QueryResult[]> {
 }
 
 export async function deleteQuery(id: string): Promise<void> {
-  await db.prepare('DELETE FROM saved_queries WHERE id=$1').run(id);
+  await db.prepare('DELETE FROM sp_saved_queries WHERE id=$1').run(id);
 }

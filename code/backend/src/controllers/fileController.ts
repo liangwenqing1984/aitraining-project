@@ -13,7 +13,7 @@ export async function getFiles(req: Request, res: Response) {
     const { source, keyword, page = 1, pageSize = 10 } = req.query;
     const offset = (Number(page) - 1) * Number(pageSize);
 
-    let sql = 'SELECT * FROM csv_files';
+    let sql = 'SELECT * FROM sp_csv_files';
     const params: any[] = [];
     let paramIndex = 1;
 
@@ -46,7 +46,7 @@ export async function getFiles(req: Request, res: Response) {
     });
 
     // 获取总数
-    let countSql = 'SELECT COUNT(*) as total FROM csv_files';
+    let countSql = 'SELECT COUNT(*) as total FROM sp_csv_files';
     const countParams: any[] = [];
     let countParamIndex = 1;
     
@@ -91,7 +91,7 @@ export async function getFiles(req: Request, res: Response) {
 export async function getFile(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = $1').get(id);
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = $1').get(id);
 
     if (!file) {
       return res.status(404).json({
@@ -117,7 +117,7 @@ export async function getFile(req: Request, res: Response) {
 export async function getFileByTaskId(req: Request, res: Response) {
   try {
     const { taskId } = req.params;
-    const file = await db.prepare('SELECT * FROM csv_files WHERE task_id = $1 ORDER BY created_at DESC LIMIT 1').get(taskId);
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE task_id = $1 ORDER BY created_at DESC LIMIT 1').get(taskId);
 
     if (!file) {
       return res.status(404).json({
@@ -145,7 +145,7 @@ export async function analyzeCsvFile(req: Request, res: Response) {
     const { id } = req.params;
     
     // 1. 获取文件信息
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = $1').get(id) as any;
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = $1').get(id) as any;
     
     if (!file) {
       return res.status(404).json({
@@ -613,7 +613,7 @@ function calculateOverallScore(analysis: any): number {
 export async function downloadFile(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = $1').get(id) as any;
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = $1').get(id) as any;
 
     if (!file) {
       return res.status(404).json({
@@ -646,7 +646,7 @@ export async function previewFile(req: Request, res: Response) {
     const { id } = req.params;
     const { rows = 100 } = req.query;
 
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = $1').get(id) as any;
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = $1').get(id) as any;
 
     if (!file) {
       return res.status(404).json({
@@ -767,13 +767,13 @@ export async function previewFile(req: Request, res: Response) {
 export async function deleteFile(req: Request, res: Response) {
   try {
     const { id } = req.params;
-    const file = await db.prepare('SELECT * FROM csv_files WHERE id = $1').get(id) as any;
+    const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = $1').get(id) as any;
 
     if (file && fs.existsSync(file.filepath)) {
       fs.unlinkSync(file.filepath);
     }
 
-    await db.prepare('DELETE FROM csv_files WHERE id = $1').run(id);
+    await db.prepare('DELETE FROM sp_csv_files WHERE id = $1').run(id);
 
     res.json({
       success: true,
@@ -794,11 +794,11 @@ export async function batchDelete(req: Request, res: Response) {
     const { ids } = req.body;
 
     for (const id of ids) {
-      const file = await db.prepare('SELECT * FROM csv_files WHERE id = $1').get(id) as any;
+      const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id = $1').get(id) as any;
       if (file && fs.existsSync(file.filepath)) {
         fs.unlinkSync(file.filepath);
       }
-      await db.prepare('DELETE FROM csv_files WHERE id = $1').run(id);
+      await db.prepare('DELETE FROM sp_csv_files WHERE id = $1').run(id);
     }
 
     res.json({

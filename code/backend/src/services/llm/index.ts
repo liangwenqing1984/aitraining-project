@@ -71,7 +71,7 @@ export class LLMService {
 
   async refreshConfigCache(): Promise<void> {
     const configs = await db.prepare(
-      'SELECT * FROM llm_config WHERE is_active = true ORDER BY id'
+      'SELECT * FROM sp_llm_config WHERE is_active = true ORDER BY id'
     ).all();
     this.configCache = configs as LLMConfig[];
     this.configCacheTime = Date.now();
@@ -159,7 +159,7 @@ export class LLMService {
     // If updating and no new key provided, preserve the existing key
     if (config.id && (!encryptedKey || encryptedKey === '***')) {
       const existing = await db.prepare(
-        'SELECT api_key_encrypted FROM llm_config WHERE id=$1'
+        'SELECT api_key_encrypted FROM sp_llm_config WHERE id=$1'
       ).get(config.id);
       if (existing && (existing as any).apiKeyEncrypted) {
         encryptedKey = (existing as any).apiKeyEncrypted;
@@ -168,7 +168,7 @@ export class LLMService {
 
     if (config.id) {
       await db.prepare(`
-        UPDATE llm_config SET provider=$1, model_name=$2, api_key_encrypted=$3,
+        UPDATE sp_llm_config SET provider=$1, model_name=$2, api_key_encrypted=$3,
         base_url=$4, is_active=$5, task_routing=$6, updated_at=CURRENT_TIMESTAMP
         WHERE id=$7
       `).run(
@@ -181,7 +181,7 @@ export class LLMService {
       );
     } else {
       const result = await db.prepare(`
-        INSERT INTO llm_config (provider, model_name, api_key_encrypted, base_url, is_active, task_routing)
+        INSERT INTO sp_llm_config (provider, model_name, api_key_encrypted, base_url, is_active, task_routing)
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
       `).run(
@@ -192,7 +192,7 @@ export class LLMService {
         JSON.stringify(config.taskRouting || []),
       );
       // Get the inserted id from the returning result
-      const inserted = await db.prepare('SELECT id FROM llm_config ORDER BY id DESC LIMIT 1').get();
+      const inserted = await db.prepare('SELECT id FROM sp_llm_config ORDER BY id DESC LIMIT 1').get();
       config.id = (inserted as any)?.id;
     }
 
@@ -201,7 +201,7 @@ export class LLMService {
   }
 
   async deleteConfig(id: number): Promise<void> {
-    await db.prepare('DELETE FROM llm_config WHERE id=$1').run(id);
+    await db.prepare('DELETE FROM sp_llm_config WHERE id=$1').run(id);
     await this.refreshConfigCache();
   }
 }

@@ -129,7 +129,7 @@ class TaskService {
 
     // 更新任务状态为running
     await db.prepare(`
-      UPDATE tasks SET status = 'running', start_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      UPDATE sp_tasks SET status = 'running', start_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `).run(taskId);
     logger.info(`[TaskService] 任务状态已更新为 running`);
@@ -140,7 +140,7 @@ class TaskService {
 
     // 读取任务当前数据（用于断点续传时保留进度）
     const existingTask = await db.prepare(
-      'SELECT csv_path, record_count, progress, current FROM tasks WHERE id = $1'
+      'SELECT csv_path, record_count, progress, current FROM sp_tasks WHERE id = $1'
     ).get(taskId) as any;
 
     let filepath: string;
@@ -166,7 +166,7 @@ class TaskService {
 
       // 更新文件路径
       await db.prepare(`
-        UPDATE tasks SET csv_path = $1 WHERE id = $2
+        UPDATE sp_tasks SET csv_path = $1 WHERE id = $2
       `).run(filepath, taskId);
       logger.info(`[TaskService] 文件路径已更新`);
     }
@@ -190,7 +190,7 @@ class TaskService {
     // 确保文件路径在DB中是最新的
     if (hasResumeState) {
       await db.prepare(`
-        UPDATE tasks SET csv_path = $1 WHERE id = $2
+        UPDATE sp_tasks SET csv_path = $1 WHERE id = $2
       `).run(filepath, taskId);
     }
 
@@ -268,7 +268,7 @@ class TaskService {
       }
 
       // 获取CSV路径和文件名
-      const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
+      const task = await db.prepare('SELECT csv_path FROM sp_tasks WHERE id = $1').get(taskId) as Task;
       const filepath = task?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
       const filename = path.basename(filepath);
 
@@ -375,7 +375,7 @@ class TaskService {
               // 爬虫每完成一个组合写入 current=已完成的组合编号
               let completedCombo = 0;
               try {
-                const taskInfo = await db.prepare('SELECT current FROM tasks WHERE id = $1').get(taskId) as any;
+                const taskInfo = await db.prepare('SELECT current FROM sp_tasks WHERE id = $1').get(taskId) as any;
                 completedCombo = taskInfo?.current || 0;
 
                 // 主进度 = 已完成组合比例（最大99%，留给任务完成时才设为100%）
@@ -438,13 +438,13 @@ class TaskService {
               // ⚠️ 多组合场景下 current 由爬虫写入（已完成组合编号），此处不覆盖
               if (isMultiCombination) {
                 await db.prepare(`
-                  UPDATE tasks
+                  UPDATE sp_tasks
                   SET progress = $1, record_count = $2, updated_at = CURRENT_TIMESTAMP
                   WHERE id = $3
                 `).run(progressPercent, totalRecords, taskId);
               } else {
                 await db.prepare(`
-                  UPDATE tasks
+                  UPDATE sp_tasks
                   SET progress = $1, current = $2, record_count = $3, updated_at = CURRENT_TIMESTAMP
                   WHERE id = $4
                 `).run(progressPercent, totalRecords, totalRecords, taskId);
@@ -484,11 +484,11 @@ class TaskService {
 
         // 🔧 修复：先将内存中准确的 record_count 同步到DB，确保断点续传读取到正确数量
         await db.prepare(`
-          UPDATE tasks SET record_count = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
+          UPDATE sp_tasks SET record_count = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2
         `).run(totalRecords, taskId);
 
         // 从DB读取当前进度（保持停止时的真实进度，不覆盖为100%）
-        const stoppedTask = await db.prepare('SELECT progress, current, record_count FROM tasks WHERE id = $1').get(taskId) as any;
+        const stoppedTask = await db.prepare('SELECT progress, current, record_count FROM sp_tasks WHERE id = $1').get(taskId) as any;
         const stoppedProgress = stoppedTask?.progress || 0;
         const stoppedCurrent = stoppedTask?.current || totalRecords;
         const stoppedRecordCount = totalRecords;  // 使用内存中准确的值
@@ -523,19 +523,19 @@ class TaskService {
         if (totalRecords > 0 && fs.existsSync(filepath)) {
           const fileSize = fs.statSync(filepath).size;
           const existingFile = await db.prepare(
-            'SELECT id FROM csv_files WHERE task_id = $1'
+            'SELECT id FROM sp_csv_files WHERE task_id = $1'
           ).get(taskId) as any;
 
           if (existingFile?.id) {
             await db.prepare(`
-              UPDATE csv_files SET file_size = $1, record_count = $2, created_at = CURRENT_TIMESTAMP
+              UPDATE sp_csv_files SET file_size = $1, record_count = $2, created_at = CURRENT_TIMESTAMP
               WHERE task_id = $3
             `).run(fileSize, totalRecords, taskId);
             taskLogger.info(`[TaskService] 📊 已停止，共采集 ${totalRecords} 条数据，文件记录已更新`);
           } else {
             const csvId = uuidv4();
             await db.prepare(`
-              INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+              INSERT INTO sp_csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
               VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
             `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
             taskLogger.info(`[TaskService] 📊 已停止，共采集 ${totalRecords} 条数据，文件记录已创建`);
@@ -557,7 +557,7 @@ class TaskService {
         taskLogger.warn(`[TaskService] ⚠️ ${failReason}`);
 
         db.prepare(`
-          UPDATE tasks
+          UPDATE sp_tasks
           SET status = 'failed', progress = 100, current = 0, record_count = 0,
               error_message = $1, end_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
           WHERE id = $2
@@ -572,7 +572,7 @@ class TaskService {
         taskLogger.info(`[TaskService] 任务完成，共采集 ${totalRecords} 条数据`);
 
         db.prepare(`
-          UPDATE tasks
+          UPDATE sp_tasks
           SET status = 'completed', progress = 100, current = $1, record_count = $2, end_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
           WHERE id = $3
         `).run(totalRecords, totalRecords, taskId);
@@ -600,20 +600,20 @@ class TaskService {
 
       // 创建/更新CSV文件记录（避免重复记录）
       const existingFile = await db.prepare(
-        'SELECT id FROM csv_files WHERE task_id = $1'
+        'SELECT id FROM sp_csv_files WHERE task_id = $1'
       ).get(taskId) as any;
 
       if (existingFile?.id) {
         const fileSize = fs.statSync(filepath).size;
         await db.prepare(`
-          UPDATE csv_files SET file_size = $1, record_count = $2, created_at = CURRENT_TIMESTAMP
+          UPDATE sp_csv_files SET file_size = $1, record_count = $2, created_at = CURRENT_TIMESTAMP
           WHERE task_id = $3
         `).run(fileSize, totalRecords, taskId);
       } else {
         const csvId = uuidv4();
         const fileSize = fs.statSync(filepath).size;
         await db.prepare(`
-          INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+          INSERT INTO sp_csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
           VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
         `).run(csvId, taskId, filename, filepath, fileSize, totalRecords, config.sites[0]);
       }
@@ -658,7 +658,7 @@ class TaskService {
           // 🔧 关键修复1：读取当前Excel/CSV文件的行数作为初始记录数
           let initialRecordCount = 0;
           try {
-            const task = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
+            const task = await db.prepare('SELECT csv_path FROM sp_tasks WHERE id = $1').get(taskId) as Task;
             const filepath = task?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
 
             if (fs.existsSync(filepath)) {
@@ -719,12 +719,12 @@ class TaskService {
 
       // 标记任务为失败（同时保存已采集的记录数，供断点续传使用）
       await db.prepare(`
-        UPDATE tasks SET status = 'failed', error_message = $1, record_count = $2, updated_at = CURRENT_TIMESTAMP
+        UPDATE sp_tasks SET status = 'failed', error_message = $1, record_count = $2, updated_at = CURRENT_TIMESTAMP
         WHERE id = $3
       `).run(error.message, totalRecords, taskId);
 
       // 🔧 关键修复：失败时也检查文件是否有数据，有数据则创建csv_files记录
-      const failedTask = await db.prepare('SELECT csv_path FROM tasks WHERE id = $1').get(taskId) as Task;
+      const failedTask = await db.prepare('SELECT csv_path FROM sp_tasks WHERE id = $1').get(taskId) as Task;
       const failFilepath = failedTask?.csvPath || path.join(csvDir, `job_data_${taskId}.csv`);
       let failRecordCount = 0;
       let failFileSize = 0;
@@ -759,25 +759,25 @@ class TaskService {
       if (hasFailedData && failFileSize > 0) {
         const failFilename = path.basename(failFilepath);
         const existingFailFile = await db.prepare(
-          'SELECT id FROM csv_files WHERE task_id = $1'
+          'SELECT id FROM sp_csv_files WHERE task_id = $1'
         ).get(taskId) as any;
 
         if (existingFailFile?.id) {
           await db.prepare(`
-            UPDATE csv_files SET file_size = $1, record_count = $2, filepath = $3, filename = $4, created_at = CURRENT_TIMESTAMP
+            UPDATE sp_csv_files SET file_size = $1, record_count = $2, filepath = $3, filename = $4, created_at = CURRENT_TIMESTAMP
             WHERE task_id = $5
           `).run(failFileSize, failRecordCount, failFilepath, failFilename, taskId);
         } else {
           const failCsvId = uuidv4();
           await db.prepare(`
-            INSERT INTO csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
+            INSERT INTO sp_csv_files (id, task_id, filename, filepath, file_size, record_count, source, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
           `).run(failCsvId, taskId, failFilename, failFilepath, failFileSize, failRecordCount, config.sites[0]);
         }
 
         // 同步更新任务的record_count
         await db.prepare(`
-          UPDATE tasks SET record_count = $1 WHERE id = $2
+          UPDATE sp_tasks SET record_count = $1 WHERE id = $2
         `).run(failRecordCount, taskId);
 
         taskLogger?.info(`[TaskService] 📊 任务失败但已保存 ${failRecordCount} 条数据到文件: ${failFilename}`);
@@ -824,13 +824,13 @@ class TaskService {
   pauseTask(taskId: string) {
     this.stopTask(taskId);
     db.prepare(`
-      UPDATE tasks SET status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = $1
+      UPDATE sp_tasks SET status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE id = $1
     `).run(taskId);
   }
 
   // 恢复任务（支持暂停、停止、失败的任务恢复）
   async resumeTask(taskId: string, config: TaskConfig) {
-    const task = await db.prepare('SELECT * FROM tasks WHERE id = $1').get(taskId) as Task;
+    const task = await db.prepare('SELECT * FROM sp_tasks WHERE id = $1').get(taskId) as Task;
     if (!task) return;
 
     // 🔧 支持暂停、停止、失败的任务断点续传

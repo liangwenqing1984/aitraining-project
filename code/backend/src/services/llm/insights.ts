@@ -51,7 +51,7 @@ function emitProgress(fileId: string, message: string) {
 
 async function buildStats(fileId: string) {
   const file = await db.prepare(
-    'SELECT * FROM csv_files WHERE id=$1'
+    'SELECT * FROM sp_csv_files WHERE id=$1'
   ).get(fileId) as any;
 
   if (!file) throw new Error('文件不存在');
@@ -61,7 +61,7 @@ async function buildStats(fileId: string) {
 
   // 总职位数
   const countResult = await db.prepare(
-    'SELECT COUNT(*) as cnt FROM job_enrichments WHERE task_id=$1'
+    'SELECT COUNT(*) as cnt FROM sp_job_enrichments WHERE task_id=$1'
   ).get(taskId) as any;
   stats.totalJobs = countResult?.cnt || 0;
 
@@ -74,7 +74,7 @@ async function buildStats(fileId: string) {
   // 薪资分布（使用月薪中位数分类）
   const salaryRows = await db.prepare(`
     SELECT salary_monthly_min, salary_monthly_max
-    FROM job_enrichments WHERE task_id=$1
+    FROM sp_job_enrichments WHERE task_id=$1
     AND salary_monthly_min IS NOT NULL
   `).all(taskId) as any[];
 
@@ -105,7 +105,7 @@ async function buildStats(fileId: string) {
   // 职位分类分布（L1 + L2）
   const catRows = await db.prepare(`
     SELECT job_category_l1, job_category_l2, COUNT(*) as cnt
-    FROM job_enrichments WHERE task_id=$1 AND job_category_l1 IS NOT NULL
+    FROM sp_job_enrichments WHERE task_id=$1 AND job_category_l1 IS NOT NULL
     GROUP BY job_category_l1, job_category_l2 ORDER BY cnt DESC
   `).all(taskId) as any[];
 
@@ -129,7 +129,7 @@ async function buildStats(fileId: string) {
   // 学历分布
   const eduRows = await db.prepare(`
     SELECT education_normalized, COUNT(*) as cnt
-    FROM job_enrichments WHERE task_id=$1 AND education_normalized IS NOT NULL
+    FROM sp_job_enrichments WHERE task_id=$1 AND education_normalized IS NOT NULL
     GROUP BY education_normalized ORDER BY cnt DESC
   `).all(taskId) as any[];
   stats.educationDistribution = eduRows.map((r: any) => ({
@@ -139,7 +139,7 @@ async function buildStats(fileId: string) {
   // 工作经验分布
   const expRows = await db.prepare(`
     SELECT experience_years_min, experience_years_max, COUNT(*) as cnt
-    FROM job_enrichments WHERE task_id=$1 AND experience_years_min IS NOT NULL
+    FROM sp_job_enrichments WHERE task_id=$1 AND experience_years_min IS NOT NULL
     GROUP BY experience_years_min, experience_years_max ORDER BY experience_years_min
   `).all(taskId) as any[];
   stats.experienceDistribution = expRows.map((r: any) => ({
@@ -152,7 +152,7 @@ async function buildStats(fileId: string) {
 
   // 热门技能
   const skillRows = await db.prepare(`
-    SELECT key_skills FROM job_enrichments WHERE task_id=$1 AND key_skills IS NOT NULL
+    SELECT key_skills FROM sp_job_enrichments WHERE task_id=$1 AND key_skills IS NOT NULL
   `).all(taskId) as any[];
 
   const skillCount: Record<string, number> = {};
@@ -179,7 +179,7 @@ async function buildStats(fileId: string) {
     SELECT company_industry, COUNT(*) as cnt,
            AVG(salary_monthly_min) as avg_salary_min,
            AVG(salary_monthly_max) as avg_salary_max
-    FROM job_enrichments WHERE task_id=$1 AND company_industry IS NOT NULL
+    FROM sp_job_enrichments WHERE task_id=$1 AND company_industry IS NOT NULL
     GROUP BY company_industry ORDER BY cnt DESC
   `).all(taskId) as any[];
   stats.industryDistribution = industryRows.map((r: any) => ({
@@ -192,7 +192,7 @@ async function buildStats(fileId: string) {
   // 工作模式分布
   const workModeRows = await db.prepare(`
     SELECT work_mode, COUNT(*) as cnt
-    FROM job_enrichments WHERE task_id=$1 AND work_mode IS NOT NULL
+    FROM sp_job_enrichments WHERE task_id=$1 AND work_mode IS NOT NULL
     GROUP BY work_mode ORDER BY cnt DESC
   `).all(taskId) as any[];
   stats.workModeDistribution = workModeRows.map((r: any) => ({
@@ -238,7 +238,7 @@ export async function generateInsights(fileId: string): Promise<MarketReport> {
   const parsed = extractJSON(rawContent);
 
   const id = crypto.randomUUID();
-  const file = await db.prepare('SELECT * FROM csv_files WHERE id=$1').get(fileId) as any;
+  const file = await db.prepare('SELECT * FROM sp_csv_files WHERE id=$1').get(fileId) as any;
   const taskId = file?.taskId || '';
   const now = new Date().toISOString();
 
@@ -254,7 +254,7 @@ export async function generateInsights(fileId: string): Promise<MarketReport> {
   });
 
   await db.prepare(`
-    INSERT INTO market_reports (id, file_id, task_id, report_type, title, content, summary, charts_config, model_used, created_at)
+    INSERT INTO sp_market_reports (id, file_id, task_id, report_type, title, content, summary, charts_config, model_used, created_at)
     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
   `).run(
     id, fileId, taskId, 'overview',
@@ -291,7 +291,7 @@ export async function generateInsights(fileId: string): Promise<MarketReport> {
 
 export async function getInsightsHistory(fileId: string): Promise<MarketReport[]> {
   const rows = await db.prepare(`
-    SELECT * FROM market_reports WHERE file_id=$1
+    SELECT * FROM sp_market_reports WHERE file_id=$1
     ORDER BY created_at DESC LIMIT 10
   `).all(fileId) as any[];
 
@@ -309,7 +309,7 @@ export async function getInsightsHistory(fileId: string): Promise<MarketReport[]
 }
 
 export async function getInsightsReport(reportId: string): Promise<MarketReport | null> {
-  const r = await db.prepare('SELECT * FROM market_reports WHERE id=$1').get(reportId) as any;
+  const r = await db.prepare('SELECT * FROM sp_market_reports WHERE id=$1').get(reportId) as any;
   if (!r) return null;
 
   return {

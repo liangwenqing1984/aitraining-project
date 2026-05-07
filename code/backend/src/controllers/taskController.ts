@@ -56,7 +56,7 @@ export async function createTask(req: Request, res: Response) {
 
     // 创建任务记录
     const stmt = db.prepare(`
-      INSERT INTO tasks (id, name, source, config, status, created_at, updated_at)
+      INSERT INTO sp_tasks (id, name, source, config, status, created_at, updated_at)
       VALUES ($1, $2, $3, $4, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
     `);
 
@@ -96,7 +96,7 @@ export async function startTask(req: Request, res: Response) {
 
     console.log('[TaskController] 启动任务, ID:', id);
 
-    const task = await db.prepare('SELECT * FROM tasks WHERE id = $1').get(id) as Task;
+    const task = await db.prepare('SELECT * FROM sp_tasks WHERE id = $1').get(id) as Task;
     if (!task) {
       console.warn('[TaskController] 任务不存在, ID:', id);
       return res.status(404).json({
@@ -138,7 +138,7 @@ export async function getTasks(req: Request, res: Response) {
     const { status, page = 1, pageSize = 10 } = req.query;
     const offset = (Number(page) - 1) * Number(pageSize);
 
-    let sql = 'SELECT * FROM tasks';
+    let sql = 'SELECT * FROM sp_tasks';
     const params: any[] = [];
     let paramIndex = 1;
 
@@ -154,12 +154,12 @@ export async function getTasks(req: Request, res: Response) {
     console.log('[TaskController] 查询任务列表 SQL:', sql);
     console.log('[TaskController] 查询参数:', params);
 
-    const tasks = await db.prepare(sql).all(...params);
+    const sp_tasks = await db.prepare(sql).all(...params);
     
-    console.log('[TaskController] 查询结果数量:', tasks?.length || 0);
+    console.log('[TaskController] 查询结果数量:', sp_tasks?.length || 0);
 
     // 获取总数
-    let countSql = 'SELECT COUNT(*) as total FROM tasks';
+    let countSql = 'SELECT COUNT(*) as total FROM sp_tasks';
     const countParams: any[] = [];
     if (status) {
       countSql += ' WHERE status = $1';
@@ -173,7 +173,7 @@ export async function getTasks(req: Request, res: Response) {
     res.json({
       success: true,
       data: {
-        list: tasks || [],
+        list: sp_tasks || [],
         total: total?.total || 0,
         page: Number(page),
         pageSize: Number(pageSize)
@@ -196,7 +196,7 @@ export async function getTask(req: Request, res: Response) {
     
     console.log('[TaskController] 查询任务详情, ID:', id);
     
-    const task = await db.prepare('SELECT * FROM tasks WHERE id = $1').get(id);
+    const task = await db.prepare('SELECT * FROM sp_tasks WHERE id = $1').get(id);
 
     if (!task) {
       console.warn('[TaskController] 任务不存在, ID:', id);
@@ -232,7 +232,7 @@ export async function stopTask(req: Request, res: Response) {
     taskService.stopTask(id);
 
     await db.prepare(`
-      UPDATE tasks SET status = 'stopped', end_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+      UPDATE sp_tasks SET status = 'stopped', end_time = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `).run(id);
 
@@ -261,7 +261,7 @@ export async function pauseTask(req: Request, res: Response) {
     taskService.pauseTask(id);
 
     await db.prepare(`
-      UPDATE tasks SET status = 'paused', updated_at = CURRENT_TIMESTAMP
+      UPDATE sp_tasks SET status = 'paused', updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `).run(id);
 
@@ -287,7 +287,7 @@ export async function resumeTask(req: Request, res: Response) {
 
     console.log('[TaskController] 恢复任务, ID:', id);
 
-    const task = await db.prepare('SELECT * FROM tasks WHERE id = $1').get(id) as Task;
+    const task = await db.prepare('SELECT * FROM sp_tasks WHERE id = $1').get(id) as Task;
     if (!task) {
       console.warn('[TaskController] 任务不存在, ID:', id);
       return res.status(404).json({
@@ -300,7 +300,7 @@ export async function resumeTask(req: Request, res: Response) {
     taskService.resumeTask(id, config);
 
     await db.prepare(`
-      UPDATE tasks SET status = 'running', updated_at = CURRENT_TIMESTAMP
+      UPDATE sp_tasks SET status = 'running', updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
     `).run(id);
 
@@ -330,7 +330,7 @@ export async function deleteTask(req: Request, res: Response) {
     taskService.stopTask(id);
 
     // 删除数据库记录
-    const result = await db.prepare('DELETE FROM tasks WHERE id = $1').run(id);
+    const result = await db.prepare('DELETE FROM sp_tasks WHERE id = $1').run(id);
     
     console.log('[TaskController] 删除结果:', result);
 
@@ -379,7 +379,7 @@ export async function updateTaskConfig(req: Request, res: Response) {
     }
     
     // 检查任务是否存在
-    const existingTask = await db.prepare('SELECT * FROM tasks WHERE id = $1').get(id) as Task;
+    const existingTask = await db.prepare('SELECT * FROM sp_tasks WHERE id = $1').get(id) as Task;
     if (!existingTask) {
       console.warn('[TaskController] 任务不存在, ID:', id);
       return res.status(404).json({
@@ -410,7 +410,7 @@ export async function updateTaskConfig(req: Request, res: Response) {
     // 更新任务配置
     const source = config.sites.length > 1 ? 'all' : config.sites[0];
     const updateStmt = db.prepare(`
-      UPDATE tasks 
+      UPDATE sp_tasks 
       SET name = $1, source = $2, config = $3, updated_at = CURRENT_TIMESTAMP
       WHERE id = $4
     `);

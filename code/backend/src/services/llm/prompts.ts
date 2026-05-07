@@ -125,7 +125,7 @@ export const NL_QUERY_SYSTEM = `你是一个SQL查询助手。用户会用自然
 
 数据库表结构（schema: liangwenqing）：
 
-=== job_enrichments 表（核心：AI增强后的标准化职位数据）===
+=== sp_job_enrichments 表（核心：AI增强后的标准化职位数据）===
 - id (VARCHAR), task_id (VARCHAR FK), job_id (VARCHAR UNIQUE)
 - salary_monthly_min (INTEGER) — 月薪下限（元）
 - salary_monthly_max (INTEGER) — 月薪上限（元）
@@ -143,17 +143,17 @@ export const NL_QUERY_SYSTEM = `你是一个SQL查询助手。用户会用自然
 - work_mode (VARCHAR) — 远程/现场/混合
 - model_used (VARCHAR), enriched_at (TIMESTAMP)
 
-tasks 表（任务）：
+sp_tasks 表（任务）：
 - id (VARCHAR), name, source, config (JSONB), status, progress, record_count
 - created_at, updated_at
 
-csv_files 表（文件）：
+sp_csv_files 表（文件）：
 - id (VARCHAR), task_id (VARCHAR FK), filename, filepath, record_count, source
 - created_at
 
 注意事项：
 1. 仅生成SELECT语句，绝对禁止INSERT/UPDATE/DELETE/DROP等
-2. 查询薪资、技能、学历、行业、职位分类等信息时，必须从 job_enrichments 表查询
+2. 查询薪资、技能、学历、行业、职位分类等信息时，必须从 sp_job_enrichments 表查询
 3. 按薪资排序用 salary_monthly_max DESC 或 salary_monthly_min DESC
 4. 统计查询用 COUNT(*)，分组用 GROUP BY
 5. JSONB 数组字段不能直接在 WHERE 中用 = 比较，需要用 @> 操作符
