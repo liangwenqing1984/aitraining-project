@@ -46,6 +46,7 @@ temp/
 # 数据库文件(如果使用本地SQLite等)
 *.db
 *.sqlite
+dump.rdb
 
 # 上传的文件和爬取的数据
 uploads/
