@@ -151,6 +151,14 @@ sp_csv_files 表（文件）：
 - id (VARCHAR), task_id (VARCHAR FK), filename, filepath, record_count, source
 - created_at
 
+sp_jobs 表（原始爬取职位数据，与 Excel 同步入库）：
+- id (VARCHAR), task_id (VARCHAR FK), job_id (VARCHAR), data_source (VARCHAR)
+- company_name (VARCHAR), job_name (VARCHAR), work_city (VARCHAR)
+- salary_range (VARCHAR), education (VARCHAR), work_experience (VARCHAR)
+- job_category (VARCHAR), raw_data (JSONB — 完整原始字段)
+- created_at (TIMESTAMP)
+- UNIQUE(task_id, job_id)，用于幂等重跑
+
 注意事项：
 1. 仅生成SELECT语句，绝对禁止INSERT/UPDATE/DELETE/DROP等
 2. 查询薪资、技能、学历、行业、职位分类等信息时，必须从 sp_job_enrichments 表查询

@@ -76,7 +76,7 @@ export async function executeNLQuery(
   const taskContext = taskId
     ? `\n当前任务ID: ${taskId}（如需按任务过滤请使用 WHERE task_id='${taskId}'）`
     : '';
-  const schema = 'sp_job_enrichments（核心职位数据表）, tasks, csv_files';
+  const schema = 'sp_job_enrichments（核心职位数据表）, sp_jobs（原始职位数据表）, sp_tasks, sp_csv_files';
 
   const llmResult = await llmService.callLLM(
     NL_QUERY_SYSTEM,

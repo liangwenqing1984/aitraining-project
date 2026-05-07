@@ -2,7 +2,6 @@ import { db } from '../../config/database';
 import { llmService } from './index';
 import { ENRICHMENT_SYSTEM, ENRICHMENT_USER } from './prompts';
 import { io } from '../../app';
-import ExcelJS from 'exceljs';
 import crypto from 'crypto';
 
 const BATCH_SIZE = 10;
@@ -27,20 +26,9 @@ export async function startEnrichment(taskId: string): Promise<void> {
     throw new Error('该任务的数据增强已在运行中');
   }
 
-  const csvFile = await db.prepare(
-    'SELECT * FROM sp_csv_files WHERE task_id=$1 ORDER BY created_at DESC LIMIT 1'
-  ).get(taskId) as any;
-
-  if (!csvFile) {
-    throw new Error('未找到任务的导出文件');
-  }
-
   runningEnrichments.set(taskId, true);
-  const total = csvFile.recordCount || 0;
-  let completed = 0;
-  let failed = 0;
 
-  const emitProgress = (message: string) => {
+  const emitProgress = (message: string, total: number) => {
     const progress: EnrichmentProgress = {
       taskId,
       status: 'running',
@@ -54,35 +42,68 @@ export async function startEnrichment(taskId: string): Promise<void> {
     console.log(`[Enrichment] ${taskId}: ${message} (${completed}/${total})`);
   };
 
+  let completed = 0;
+  let failed = 0;
+  let total = 0;
+
   try {
-    emitProgress('开始读取数据文件...');
+    emitProgress('开始从 sp_jobs 读取原始职位数据...', 0);
 
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(csvFile.filepath);
-    const worksheet = workbook.worksheets[0];
+    const jobRows = await db.prepare(
+      'SELECT * FROM sp_jobs WHERE task_id = ?'
+    ).all(taskId) as any[];
 
-    if (!worksheet) {
-      throw new Error('Excel 文件中没有工作表');
+    if (!jobRows || jobRows.length === 0) {
+      throw new Error('sp_jobs 中没有该任务的原始数据，请先执行数据采集');
     }
 
+    total = jobRows.length;
+
+    // 将 sp_jobs 行转换为 Excel 风格的 {中文表头: 值} 格式，保持 enrichSingleJob 兼容
     const rows: Record<string, string>[] = [];
-    const headers: string[] = [];
-
-    worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) {
-        row.eachCell((cell) => headers.push(String(cell.value || '')));
-        return;
+    for (const jr of jobRows) {
+      const raw: Record<string, any> = {};
+      // 解析 raw_data JSONB（存储完整的 JobData 英文字段）
+      if (typeof jr.rawData === 'object') {
+        Object.assign(raw, jr.rawData);
+      } else if (typeof jr.rawData === 'string') {
+        try { Object.assign(raw, JSON.parse(jr.rawData)); } catch {}
       }
-      const rowData: Record<string, string> = {};
-      row.eachCell((cell, colNumber) => {
-        rowData[headers[colNumber - 1] || `col_${colNumber}`] = String(cell.value || '');
-      });
-      // 生成稳定 jobId：有职位ID用职位ID，否则用行号（Excel行顺序稳定）
-      rowData['_jobId'] = rowData['职位ID'] || `row_${rows.length}`;
-      rows.push(rowData);
-    });
 
-    emitProgress(`数据读取完成，共 ${rows.length} 条记录`);
+      // 用 sp_jobs 顶层字段兜底覆盖（数据库值优先于 raw_data）
+      raw['companyName'] = jr.companyName || jr.company_name || raw['companyName'] || '';
+      raw['jobName'] = jr.jobName || jr.job_name || raw['jobName'] || '';
+      raw['jobCategory'] = jr.jobCategory || jr.job_category || raw['jobCategory'] || '';
+      raw['salaryRange'] = jr.salaryRange || jr.salary_range || raw['salaryRange'] || '';
+      raw['workCity'] = jr.workCity || jr.work_city || raw['workCity'] || '';
+      raw['workExperience'] = jr.workExperience || jr.work_experience || raw['workExperience'] || '';
+      raw['education'] = jr.education || raw['education'] || '';
+
+      const jid = jr.jobId || jr.job_id || raw['jobId'] || '';
+
+      // 构建中文表头行（保持 enrichSingleJob 兼容性）
+      const rowData: Record<string, string> = {
+        '企业名称': raw['companyName'] || '',
+        '职位名称': raw['jobName'] || '',
+        '职位分类': raw['jobCategory'] || '',
+        '薪资范围': raw['salaryRange'] || '',
+        '工作城市': raw['workCity'] || '',
+        '工作经验': raw['workExperience'] || '',
+        '学历': raw['education'] || '',
+        '公司性质': raw['companyNature'] || '',
+        '公司规模': raw['companyScale'] || '',
+        '经营范围': raw['businessScope'] || '',
+        '职位标签': raw['jobTags'] || '',
+        '工作性质': raw['workType'] || '',
+        '工作地址': raw['workAddress'] || '',
+        '职位描述': raw['jobDescription'] || '',
+        '职位ID': jid,
+        '_jobId': jid || `row_${rows.length}`,
+      };
+      rows.push(rowData);
+    }
+
+    emitProgress(`数据读取完成，共 ${rows.length} 条记录`, total);
 
     // 查询已增强的 job_id，跳过重复处理
     const existingRows = await db.prepare(
@@ -95,9 +116,9 @@ export async function startEnrichment(taskId: string): Promise<void> {
     const skipped = rows.length - rowsToProcess.length;
     completed = skipped;  // 已增强的记录也算入完成数
     if (skipped > 0) {
-      emitProgress(`跳过已增强 ${skipped} 条，待处理 ${rowsToProcess.length} 条，开始 AI 增强...`);
+      emitProgress(`跳过已增强 ${skipped} 条，待处理 ${rowsToProcess.length} 条，开始 AI 增强...`, total);
     } else {
-      emitProgress(`共 ${rowsToProcess.length} 条记录，开始 AI 增强...`);
+      emitProgress(`共 ${rowsToProcess.length} 条记录，开始 AI 增强...`, total);
     }
 
     // Process in batches
@@ -116,7 +137,7 @@ export async function startEnrichment(taskId: string): Promise<void> {
         }
       }
 
-      emitProgress(`处理中... (第 ${Math.min(i + BATCH_SIZE, rowsToProcess.length)}/${rowsToProcess.length} 条)`);
+      emitProgress(`处理中... (第 ${Math.min(i + BATCH_SIZE, rowsToProcess.length)}/${rowsToProcess.length} 条)`, total);
 
       // Delay between batches to avoid rate limiting
       if (i + BATCH_SIZE < rowsToProcess.length) {

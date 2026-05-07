@@ -2,7 +2,6 @@ import { db, pgvectorAvailable } from '../../config/database';
 import { generateEmbedding, buildJobText, EMBEDDING_DIM } from './embeddings';
 import { io } from '../../app';
 import crypto from 'crypto';
-import ExcelJS from 'exceljs';
 
 export interface JobVectorResult {
   id: string;
@@ -49,43 +48,25 @@ export async function indexJobEmbeddings(
 
   emit(`找到 ${rows.length} 条增强数据，开始向量化...`);
 
-  // 从 Excel 文件读取原始职位数据 (job_name, company_name, work_city)
+  // 从 sp_jobs 表读取原始职位数据 (job_name, company_name, work_city)
   const rawDataMap = new Map<string, { jobName: string; companyName: string; workCity: string }>();
-  const csvFile = await db.prepare(
-    'SELECT * FROM sp_csv_files WHERE task_id=$1 ORDER BY created_at DESC LIMIT 1'
-  ).get(taskId) as any;
-
-  if (csvFile?.filepath) {
-    try {
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.readFile(csvFile.filepath);
-      const worksheet = workbook.worksheets[0];
-
-      if (worksheet) {
-        const headers: string[] = [];
-        worksheet.eachRow((row, rowNumber) => {
-          if (rowNumber === 1) {
-            row.eachCell((cell) => headers.push(String(cell.value || '')));
-            return;
-          }
-          const rowData: Record<string, string> = {};
-          row.eachCell((cell, colNumber) => {
-            rowData[headers[colNumber - 1] || `col_${colNumber}`] = String(cell.value || '');
-          });
-          const jid = rowData['职位ID'] || '';
-          if (jid) {
-            rawDataMap.set(jid, {
-              jobName: rowData['职位名称'] || '',
-              companyName: rowData['企业名称'] || '',
-              workCity: rowData['工作城市'] || '',
-            });
-          }
+  try {
+    const jobRows = await db.prepare(
+      'SELECT job_id, job_name, company_name, work_city FROM sp_jobs WHERE task_id = $1'
+    ).all(taskId) as any[];
+    for (const r of jobRows) {
+      const jid = r.jobId || r.job_id;
+      if (jid) {
+        rawDataMap.set(jid, {
+          jobName: r.jobName || r.job_name || '',
+          companyName: r.companyName || r.company_name || '',
+          workCity: r.workCity || r.work_city || '',
         });
       }
-      emit(`从 Excel 读取到 ${rawDataMap.size} 条原始职位数据`);
-    } catch (e: any) {
-      console.error('[RAG] 读取 Excel 文件失败:', e.message);
     }
+    emit(`从 sp_jobs 读取到 ${rawDataMap.size} 条原始职位数据`);
+  } catch (e: any) {
+    console.error('[RAG] 读取 sp_jobs 失败:', e.message);
   }
 
   let indexed = 0;
