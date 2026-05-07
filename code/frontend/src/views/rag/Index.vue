@@ -37,6 +37,11 @@
               <el-slider v-model="searchLimit" :min="5" :max="50" :step="5" show-stops size="small" style="width: 140px" />
               <span class="option-value">{{ searchLimit }}</span>
             </div>
+            <div class="option-row">
+              <span class="option-label">相似度 ≥</span>
+              <el-slider v-model="minSimilarity" :min="0.3" :max="0.9" :step="0.05" show-stops size="small" style="width: 140px" />
+              <span class="option-value">{{ (minSimilarity * 100).toFixed(0) }}%</span>
+            </div>
           </div>
           <el-button type="primary" :loading="searching" @click="doSearch" style="width: 100%; margin-top: 12px">
             搜索相似职位
@@ -131,7 +136,7 @@
             <div class="card-header">
               <span class="card-title">{{ item.jobName || '未知职位' }}</span>
               <el-tag
-                :type="item.similarity > 0.7 ? 'success' : item.similarity > 0.5 ? 'warning' : 'info'"
+                :type="item.similarity > 0.8 ? 'success' : item.similarity > 0.6 ? 'warning' : 'info'"
                 size="small"
               >
                 匹配度 {{ (item.similarity * 100).toFixed(0) }}%
@@ -174,6 +179,7 @@ import { taskApi } from '@/api/task'
 const queryText = ref('')
 const searching = ref(false)
 const searchLimit = ref(10)
+const minSimilarity = ref(0.5)
 const searchTaskId = ref('')
 const searchResult = ref<{ query: string; results: RAGSearchResult[]; count: number } | null>(null)
 const searchTime = ref(0)
@@ -240,7 +246,7 @@ async function doSearch() {
     const res: any = await ragSearch(q, {
       limit: searchLimit.value,
       taskId: searchTaskId.value || undefined,
-      minSimilarity: 0.3,
+      minSimilarity: minSimilarity.value,
     })
     if (res.success) {
       searchResult.value = res.data

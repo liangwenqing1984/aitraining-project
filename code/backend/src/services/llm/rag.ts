@@ -194,6 +194,64 @@ export async function indexJobEmbeddings(
 }
 
 /**
+ * 短查询扩展：当查询过短（≤10字）时，嵌入信息量不足导致准确率下降。
+ * 通过常用技术术语映射表 + 招聘领域上下文包装，提升 embedding 质量。
+ */
+const QUERY_EXPANSION_MAP: Record<string, string> = {
+  'ui': 'UI设计师 用户界面设计 交互设计 视觉设计 Figma Sketch',
+  'ux': 'UX设计师 用户体验设计 交互设计 用户研究 可用性测试',
+  'java': 'Java开发 后端开发 Spring SpringBoot 微服务 JVM',
+  'python': 'Python开发 后端开发 数据分析 机器学习 Django Flask',
+  'go': 'Golang开发 后端开发 云原生 微服务 高并发',
+  'c++': 'C++开发 系统开发 嵌入式 游戏开发 高性能计算',
+  '前端': '前端开发 Vue React TypeScript Web开发 JavaScript HTML CSS',
+  '后端': '后端开发 Java Python Go 微服务 API开发 数据库',
+  '测试': '软件测试 自动化测试 性能测试 测试开发 QA Selenium',
+  '运维': '运维开发 DevOps SRE Linux Docker Kubernetes CI/CD',
+  '产品': '产品经理 产品设计 需求分析 用户研究 B端C端',
+  '数据': '数据分析 数据开发 数据仓库 ETL SQL Python',
+  '算法': '算法工程师 机器学习 深度学习 NLP CV 推荐系统',
+  '架构': '架构师 系统设计 技术选型 高可用 分布式 微服务',
+  '安全': '信息安全 网络安全 渗透测试 安全开发 数据安全',
+  'ios': 'iOS开发 Swift Objective-C 移动开发 Apple',
+  'android': 'Android开发 Kotlin Java 移动开发',
+  'php': 'PHP开发 Laravel 后端开发 Web开发',
+  'net': '.NET开发 C# ASP.NET 后端开发',
+  'node': 'Node.js开发 后端开发 JavaScript 全栈开发',
+  'react': 'React开发 前端开发 TypeScript Web开发 组件化',
+  'vue': 'Vue开发 前端开发 TypeScript Web开发 组件化',
+  'flutter': 'Flutter开发 移动开发 Dart 跨平台',
+  'dba': '数据库管理员 DBA MySQL PostgreSQL Oracle 数据库运维',
+  'devops': 'DevOps工程师 CI/CD Kubernetes Docker 自动化运维',
+  'ai': '人工智能 AI工程师 机器学习 深度学习 NLP 大模型 算法',
+  'gpt': '大模型开发 LLM AI工程师 NLP 深度学习',
+  'llm': '大模型开发 LLM AI工程师 NLP 深度学习 RAG',
+  'sre': 'SRE工程师 站点可靠性 运维开发 Kubernetes 监控告警',
+  '嵌入式': '嵌入式开发 C语言 单片机 RTOS Linux驱动 ARM',
+  '区块链': '区块链开发 Solidity Web3 智能合约 去中心化',
+  'sap': 'SAP顾问 SAP开发 SAP实施 ERP FICO模块',
+  'erp': 'ERP实施 ERP开发 企业信息化 SAP 金蝶 用友',
+  'hr': 'HR 人力资源 招聘 薪酬绩效 员工关系 HRBP',
+};
+
+function expandQuery(query: string): string {
+  const trimmed = query.trim().toLowerCase();
+
+  // 精确匹配常用术语
+  if (QUERY_EXPANSION_MAP[trimmed]) {
+    return `${query} (${QUERY_EXPANSION_MAP[trimmed]})`;
+  }
+
+  // 中文或英文短查询（≤10字）：加招聘领域上下文
+  if (trimmed.length <= 10) {
+    return `${query} 招聘 职位`;
+  }
+
+  // 较长查询保持原样
+  return query;
+}
+
+/**
  * 语义相似搜索
  * @param queryText 自然语言查询文本
  * @param limit 返回结果数量
@@ -212,10 +270,16 @@ export async function semanticSearch(
     throw new Error('pgvector 扩展未安装，无法进行语义搜索。请在 PostgreSQL 服务器安装 pgvector 扩展。');
   }
 
-  const { limit = 10, taskId, minSimilarity = 0.3 } = options;
+  const { limit = 10, taskId, minSimilarity = 0.5 } = options;
+
+  // 短查询扩展：提升 embedding 信息量
+  const expandedQuery = expandQuery(queryText);
+  if (expandedQuery !== queryText) {
+    console.log(`[RAG] 查询扩展: "${queryText}" → "${expandedQuery}"`);
+  }
 
   // 生成查询 embedding
-  const { embedding } = await generateEmbedding(queryText);
+  const { embedding } = await generateEmbedding(expandedQuery);
   const vectorStr = `[${embedding.join(',')}]`;
 
   // 余弦相似度搜索 (<=> 是余弦距离，1 - 距离 = 相似度)
