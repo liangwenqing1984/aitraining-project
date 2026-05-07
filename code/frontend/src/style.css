@@ -209,6 +209,18 @@ html, body, #app {
   background: var(--glass-bg-hover) !important;
 }
 
+/* 固定列必须有不透明背景，防止水平滚动时下方内容穿透（玻璃质感下透明背景会导致重叠） */
+.el-table__fixed-right {
+  background: inherit;
+  background-color: #f5f6fa !important;
+}
+.el-table__fixed-right .el-table__fixed-body-wrapper {
+  background-color: #f5f6fa !important;
+}
+.el-table__fixed-right .el-table__fixed-header-wrapper thead th {
+  background-color: rgba(102, 126, 234, 0.08) !important;
+}
+
 .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
   background: rgba(102, 126, 234, 0.02);
 }
