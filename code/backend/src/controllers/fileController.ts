@@ -308,8 +308,8 @@ export async function analyzeCsvFile(req: Request, res: Response) {
       }
       
       // 分类字段频率分布（城市、职位、公司性质等）
-      // 🔧 优化：提高阈值到200，确保企业性质、公司规模等字段能生成topValues
-      if (uniqueValues.size <= 200 && uniqueValues.size > 1) {
+      // 🔧 上限1000(覆盖职位名称等高频次字段)、下限>0(覆盖单城市搜索等单值字段)
+      if (uniqueValues.size <= 1000 && uniqueValues.size > 0) {
         const frequency: any = {};
         values.forEach(v => {
           frequency[v] = (frequency[v] || 0) + 1;
@@ -325,7 +325,7 @@ export async function analyzeCsvFile(req: Request, res: Response) {
           count,
           percentage: ((count as number) / values.length * 100).toFixed(1)
         }));
-      } else if (uniqueValues.size > 200) {
+      } else if (uniqueValues.size > 1000) {
         console.warn(`[FileController] 字段 "${header}" 唯一值过多(${uniqueValues.size})，跳过topValues生成`);
       }
     });

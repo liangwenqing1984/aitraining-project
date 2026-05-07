@@ -372,6 +372,68 @@ const companyScaleData = computed(() => {
   }))
 })
 
+// 计算属性：诊断信息（动态生成缺失原因）
+const diagnosticMessages = computed(() => {
+  const msgs: Array<{ id: string; icon: string; title: string; reason: string }> = []
+  const headers = analysisResult.value?.headers || []
+  const fieldStats = analysisResult.value?.fieldStats || {}
+
+  function getFieldReason(label: string, exactFields: string[], fuzzyKeyword: string): string {
+    const exactMatch = exactFields.find(f => headers.includes(f))
+    if (exactMatch) {
+      const stats = fieldStats[exactMatch]
+      if (!stats?.topValues) {
+        if (stats?.uniqueCount === 1) return `"${exactMatch}"字段仅有1个唯一值(数据过于集中)`
+        if (stats && (stats.uniqueCount || 0) > 1000) return `"${exactMatch}"字段唯一值过多(${stats.uniqueCount}个)无法统计`
+        return `"${exactMatch}"字段的topValues未生成`
+      }
+    }
+    const fuzzyMatch = headers.find(h => h.includes(fuzzyKeyword))
+    if (fuzzyMatch) {
+      const stats = fieldStats[fuzzyMatch]
+      if (!stats?.topValues) {
+        if (stats?.uniqueCount === 1) return `"${fuzzyMatch}"字段仅有1个唯一值`
+        if (stats && (stats.uniqueCount || 0) > 1000) return `"${fuzzyMatch}"字段唯一值过多(${stats.uniqueCount}个)无法统计`
+        return `"${fuzzyMatch}"字段数据不足`
+      }
+    }
+    return `CSV中找不到"${label}"相关字段`
+  }
+
+  if (!salaryDistributionData.value.length) {
+    msgs.push({ id: 'salary', icon: '💰', title: '薪资分布', reason: '缺少"薪资范围"字段或数据无法解析' })
+  }
+  if (!cityDistributionData.value.length) {
+    msgs.push({ id: 'city', icon: '🌆', title: '城市分布', reason: getFieldReason('工作城市', ['工作城市', '城市'], '城市') })
+  }
+  if (!positionDistributionData.value.length) {
+    msgs.push({ id: 'position', icon: '💼', title: '职位分布', reason: getFieldReason('职位名称', ['职位名称', '岗位名称'], '职位') })
+  }
+  if (!experienceDistributionData.value.length) {
+    msgs.push({ id: 'experience', icon: '📊', title: '经验分布', reason: getFieldReason('工作经验', ['工作经验'], '经验') })
+  }
+  if (!educationDistributionData.value.length) {
+    msgs.push({ id: 'education', icon: '🎓', title: '学历分布', reason: getFieldReason('学历', ['学历'], '学历') })
+  }
+  if (!companyNatureData.value.length) {
+    const natureField = headers.find(h => h === '公司性质' || h === '企业类型' || h.includes('性质') || h.includes('企业类型'))
+    if (natureField) {
+      const stats = fieldStats[natureField]
+      if (!stats?.topValues) {
+        const nonEmpty = stats ? stats.uniqueCount : 0
+        if (nonEmpty <= 1) msgs.push({ id: 'companyNature', icon: '🏢', title: '企业性质', reason: `"${natureField}"字段值几乎全部为空(仅${nonEmpty}个有值)` })
+        else msgs.push({ id: 'companyNature', icon: '🏢', title: '企业性质', reason: `"${natureField}"字段数据不足` })
+      }
+    } else {
+      msgs.push({ id: 'companyNature', icon: '🏢', title: '企业性质', reason: 'CSV中找不到"公司性质"或"企业类型"字段' })
+    }
+  }
+  if (!companyScaleData.value.length) {
+    msgs.push({ id: 'companyScale', icon: '📈', title: '公司规模', reason: getFieldReason('公司规模', ['公司规模'], '规模') })
+  }
+  return msgs
+})
+
 // 计算属性：所有有数据的图表列表（用于动态布局）
 const availableCharts = computed(() => {
   const chartsList: Array<{ id: string; title: string; hasData: boolean }> = [
@@ -1120,26 +1182,8 @@ onUnmounted(() => {
                 <p><strong>当前显示的图表：</strong>{{ availableCharts.length }} / 7</p>
                 <p><strong>未显示的图表及原因：</strong></p>
                 <ul class="diagnosis-list">
-                  <li v-if="!salaryDistributionData.length">
-                    💰 <strong>薪资分布</strong>：CSV中缺少"薪资范围"字段或数据无法解析
-                  </li>
-                  <li v-if="!cityDistributionData.length">
-                    🌆 <strong>城市分布</strong>：CSV中缺少"工作城市"字段
-                  </li>
-                  <li v-if="!positionDistributionData.length">
-                    💼 <strong>职位分布</strong>：CSV中缺少"职位名称"字段
-                  </li>
-                  <li v-if="!experienceDistributionData.length">
-                    📊 <strong>经验分布</strong>：CSV中缺少"工作经验"字段
-                  </li>
-                  <li v-if="!educationDistributionData.length">
-                    🎓 <strong>学历分布</strong>：CSV中缺少"学历"字段
-                  </li>
-                  <li v-if="!companyNatureData.length">
-                    🏢 <strong>企业性质</strong>：后端未生成企业性质分析数据
-                  </li>
-                  <li v-if="!companyScaleData.length">
-                    📈 <strong>公司规模</strong>：后端未生成公司规模分析数据
+                  <li v-for="dm in diagnosticMessages" :key="dm.id">
+                    {{ dm.icon }} <strong>{{ dm.title }}</strong>：{{ dm.reason }}
                   </li>
                 </ul>
                 <p class="diagnosis-tip">
