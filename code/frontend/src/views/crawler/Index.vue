@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, onUnmounted, nextTick, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { fileApi } from '@/api/file'
@@ -12,9 +12,46 @@ import StatCard from '@/components/StatCard.vue'
 const router = useRouter()
 const crawlerStore = useCrawlerStore()
 
+// 固定列背景不透明修复 — MutationObserver 监听 DOM 变化，用 JS 直接设 style
+let tableObserver: MutationObserver | null = null
+
+function forceFixedColumnBg() {
+  const containers = document.querySelectorAll('.task-table .el-table__fixed-right, .task-table.el-table .el-table__fixed-right')
+  containers.forEach(container => {
+    const el = container as HTMLElement
+    el.style.setProperty('background', '#fafafa', 'important')
+    el.style.setProperty('background-color', '#fafafa', 'important')
+  })
+  const cells = document.querySelectorAll(
+    '.task-table .el-table__fixed-right td, .task-table .el-table__fixed-right th,' +
+    '.task-table .el-table__fixed-right .el-table__cell,' +
+    '.task-table .el-table__fixed-body-wrapper,' +
+    '.task-table.el-table .el-table__fixed-right td,' +
+    '.task-table.el-table .el-table__fixed-right th'
+  )
+  cells.forEach(cell => {
+    const el = cell as HTMLElement
+    el.style.setProperty('background', '#fafafa', 'important')
+    el.style.setProperty('background-color', '#fafafa', 'important')
+  })
+}
+
+function startTableObserver() {
+  const tableEl = document.querySelector('.task-table')
+  if (tableEl) {
+    tableObserver = new MutationObserver(() => forceFixedColumnBg())
+    tableObserver.observe(tableEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] })
+  }
+}
+
 onMounted(() => {
   crawlerStore.connectSocket()
   crawlerStore.loadTasks()
+  nextTick(() => { forceFixedColumnBg(); startTableObserver() })
+})
+
+onUnmounted(() => {
+  tableObserver?.disconnect()
 })
 
 function goToCreate() {
