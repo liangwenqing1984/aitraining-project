@@ -264,7 +264,6 @@ const getCurrentPageTitle = () => {
   box-shadow: var(--shadow-md);
   border-right: 1px solid var(--glass-border);
   position: relative;
-  z-index: var(--z-sidebar);
 }
 
 /* 侧边栏顶部微弱渐变叠加层 */

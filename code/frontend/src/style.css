@@ -209,8 +209,9 @@ html, body, #app {
   background: var(--glass-bg-hover) !important;
 }
 
-/* 固定列表格 — 设置不透明背景，防止玻璃质感下内容穿透 */
-.el-table__fixed-right .el-table__cell {
+/* 固定列表格 — 玻璃质感下透明背景导致内容穿透，强制不透明 */
+.el-table__fixed-right td,
+.el-table__fixed-right th {
   background-color: #fafafa !important;
 }
 

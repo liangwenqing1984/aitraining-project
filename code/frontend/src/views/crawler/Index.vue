@@ -721,11 +721,4 @@ async function handleResumeTask(row: any) {
   margin-top: 0;
 }
 
-/* 修复玻璃质感下固定列透明导致内容穿透重叠 */
-:deep(.el-table__fixed-right) {
-  background: #fafafa !important;
-}
-:deep(.el-table__fixed-right .el-table__cell) {
-  background-color: #fafafa !important;
-}
 </style>
