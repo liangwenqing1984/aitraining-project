@@ -333,7 +333,7 @@ async function handleResumeTask(row: any) {
         <el-button type="primary" @click="goToCreate">创建第一个任务</el-button>
       </el-empty>
 
-      <el-table v-else :data="crawlerStore.tasks" stripe>
+      <el-table v-else :data="crawlerStore.tasks" stripe class="task-table">
         <el-table-column prop="name" label="任务名称" min-width="150" />
         <el-table-column prop="source" label="数据来源" width="120">
           <template #default="{ row }">
@@ -721,4 +721,18 @@ async function handleResumeTask(row: any) {
   margin-top: 0;
 }
 
+</style>
+
+<!-- 非 scoped：强制覆盖 Element Plus 固定列透明背景 -->
+<style>
+.task-table {
+  --el-table-bg-color: #fafafa !important;
+  --el-table-tr-bg-color: #fafafa !important;
+}
+.task-table .el-table__fixed-right,
+.task-table .el-table__fixed-right td,
+.task-table .el-table__fixed-right th,
+.task-table .el-table__fixed-body-wrapper {
+  background-color: #fafafa !important;
+}
 </style>
