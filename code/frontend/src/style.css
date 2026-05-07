@@ -216,7 +216,7 @@ html, body, #app {
 .el-table__fixed-right th,
 .el-table__fixed-right .el-table__cell,
 .el-table__fixed-body-wrapper .el-table__cell {
-  background-color: #fafafa !important;
+  background: #fafafa !important;
   --el-table-bg-color: #fafafa !important;
   --el-table-tr-bg-color: #fafafa !important;
 }

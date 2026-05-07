@@ -336,8 +336,10 @@ function handleSizeChange(size: number) {
       v-model="previewVisible"
       title="文件预览"
       width="85%"
+      class="preview-dialog"
       :before-close="() => previewVisible = false"
       :close-on-click-modal="true"
+      :append-to-body="true"
     >
       <div class="preview-info" v-if="previewFile">
         <el-descriptions :column="3" border size="small">
@@ -409,10 +411,7 @@ function handleSizeChange(size: number) {
   padding: 40px 0;
 }
 
-/* 预览弹窗内表格横向滚动 */
-:deep(.el-dialog__body) {
-  overflow-x: auto;
-}
+/* 预览弹窗 body 横向滚动 — el-dialog teleport 到 body，由下方非 scoped 块处理 */
 
 /* 美化表格行悬停效果 */
 :deep(.el-table__row:hover) {
@@ -446,11 +445,27 @@ function handleSizeChange(size: number) {
 }
 .files-table .el-table__fixed-right,
 .files-table .el-table__fixed-right td,
-.files-table .el-table__fixed-right th {
-  background-color: #fafafa !important;
+.files-table .el-table__fixed-right th,
+.files-table .el-table__fixed-right .el-table__cell,
+.files-table .el-table__fixed-body-wrapper,
+.files-table .el-table__fixed-body-wrapper .el-table__cell {
+  background: #fafafa !important;
+  --el-table-bg-color: #fafafa !important;
+  --el-table-tr-bg-color: #fafafa !important;
 }
 /* 预览表格也确保不透明 */
 .preview-table {
   --el-table-bg-color: #fafafa !important;
+}
+.preview-table .el-table__fixed-right,
+.preview-table .el-table__fixed-right td,
+.preview-table .el-table__fixed-right th,
+.preview-table .el-table__fixed-body-wrapper {
+  background: #fafafa !important;
+}
+
+/* 预览弹窗 — el-dialog teleport 到 body 后 scoped 样式无法穿透 */
+.preview-dialog .el-dialog__body {
+  overflow-x: auto;
 }
 </style>

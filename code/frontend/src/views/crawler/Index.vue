@@ -732,7 +732,11 @@ async function handleResumeTask(row: any) {
 .task-table .el-table__fixed-right,
 .task-table .el-table__fixed-right td,
 .task-table .el-table__fixed-right th,
-.task-table .el-table__fixed-body-wrapper {
-  background-color: #fafafa !important;
+.task-table .el-table__fixed-body-wrapper,
+.task-table .el-table__fixed-right .el-table__cell,
+.task-table .el-table__fixed-body-wrapper .el-table__cell {
+  background: #fafafa !important;
+  --el-table-bg-color: #fafafa !important;
+  --el-table-tr-bg-color: #fafafa !important;
 }
 </style>
