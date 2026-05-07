@@ -79,7 +79,7 @@
                     v-for="col in getTableColumns(msg.data)"
                     :key="col"
                     :prop="col"
-                    :label="col"
+                    :label="getColumnLabel(col)"
                     min-width="120"
                     show-overflow-tooltip
                   />
@@ -163,16 +163,57 @@ function formatTime(ts: string) {
   return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+// 英文字段名 → 中文表头映射
+const columnLabelMap: Record<string, string> = {
+  // sp_jobs 原始字段
+  company_name: '企业名称',
+  job_name: '职位名称',
+  work_city: '工作城市',
+  salary_range: '薪资范围',
+  education: '学历',
+  work_experience: '工作经验',
+  job_category: '职位分类',
+  data_source: '数据来源',
+  // sp_job_enrichments 增强字段
+  salary_monthly_min: '月薪下限',
+  salary_monthly_max: '月薪上限',
+  salary_annual_estimate: '预估年薪',
+  job_category_l1: '职位大类',
+  job_category_l2: '职位小类',
+  company_industry: '公司行业',
+  key_skills: '核心技能',
+  required_skills: '必备技能',
+  preferred_skills: '加分技能',
+  education_normalized: '学历(标准)',
+  experience_years_min: '经验年限(低)',
+  experience_years_max: '经验年限(高)',
+  benefits: '福利待遇',
+  work_mode: '工作模式',
+  // raw_data JSONB 中可能被提取的字段
+  enterprise_name: '企业名称',
+  recruitment_count: '招聘人数',
+  job_description: '职位描述',
+  job_tags: '职位标签',
+  work_address: '工作地址',
+  update_date: '更新日期',
+  company_nature: '公司性质',
+  company_size: '公司规模',
+  business_scope: '经营范围',
+  job_type: '工作性质',
+}
+
+function getColumnLabel(col: string): string {
+  return columnLabelMap[col] || col
+}
+
 function getTableColumns(data: any[]) {
   if (!data || data.length === 0) return []
   const cols = new Set<string>()
-  // Collect top 6 columns
+  // 收集所有列（不再限制6列）
   for (const row of data) {
     for (const key of Object.keys(row)) {
       cols.add(key)
-      if (cols.size >= 6) break
     }
-    if (cols.size >= 6) break
   }
   return [...cols]
 }
