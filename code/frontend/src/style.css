@@ -209,14 +209,15 @@ html, body, #app {
   background: var(--glass-bg-hover) !important;
 }
 
-/* 固定列表格 — 玻璃质感下透明背景导致内容穿透，强制不透明 */
-.el-table .el-table__fixed-right,
-.el-table .el-table__fixed-right .el-table__fixed-body-wrapper,
-.el-table__fixed-right td,
-.el-table__fixed-right th,
-.el-table__fixed-right .el-table__cell,
-.el-table__fixed-body-wrapper .el-table__cell {
+/* 固定列表格 — 玻璃质感下透明背景导致内容穿透，强制不透明（body 前缀+双写确保最高优先级） */
+body .el-table .el-table__fixed-right,
+body .el-table .el-table__fixed-right .el-table__fixed-body-wrapper,
+body .el-table__fixed-right td,
+body .el-table__fixed-right th,
+body .el-table__fixed-right .el-table__cell,
+body .el-table__fixed-body-wrapper .el-table__cell {
   background: #fafafa !important;
+  background-color: #fafafa !important;
   --el-table-bg-color: #fafafa !important;
   --el-table-tr-bg-color: #fafafa !important;
 }

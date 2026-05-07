@@ -454,7 +454,7 @@ async function handleResumeTask(row: any) {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="420" fixed="right">
+        <el-table-column label="操作" width="420" fixed="right" cell-class-name="ops-cell" :cell-style="{ background: '#fafafa' }" :header-cell-style="{ background: '#fafafa' }">
           <template #default="{ row }">
             <div class="action-buttons">
             <!-- 任务控制按钮 -->
@@ -691,7 +691,7 @@ async function handleResumeTask(row: any) {
 /* 操作按钮自动换行 */
 .action-buttons {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 2px;
 }
@@ -723,19 +723,21 @@ async function handleResumeTask(row: any) {
 
 </style>
 
-<!-- 非 scoped：强制覆盖 Element Plus 固定列透明背景 -->
+<!-- 非 scoped：强制覆盖 Element Plus 固定列透明背景（body 前缀提高特异性） -->
 <style>
 .task-table {
   --el-table-bg-color: #fafafa !important;
   --el-table-tr-bg-color: #fafafa !important;
 }
-.task-table .el-table__fixed-right,
-.task-table .el-table__fixed-right td,
-.task-table .el-table__fixed-right th,
-.task-table .el-table__fixed-body-wrapper,
-.task-table .el-table__fixed-right .el-table__cell,
-.task-table .el-table__fixed-body-wrapper .el-table__cell {
+body .task-table .el-table__fixed-right,
+body .task-table .el-table__fixed-right td,
+body .task-table .el-table__fixed-right th,
+body .task-table .el-table__fixed-body-wrapper,
+body .task-table .el-table__fixed-right .el-table__cell,
+body .task-table .el-table__fixed-body-wrapper .el-table__cell,
+body .task-table .ops-cell {
   background: #fafafa !important;
+  background-color: #fafafa !important;
   --el-table-bg-color: #fafafa !important;
   --el-table-tr-bg-color: #fafafa !important;
 }
