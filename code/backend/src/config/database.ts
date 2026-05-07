@@ -3,8 +3,8 @@ import path from 'path';
 
 // PostgreSQL连接配置
 const pool = new Pool({
-  host: '192.168.137.183',
-  port: 5432,
+  host: '10.1.1.113',
+  port: 7300,
   database: 'training_exercises',
   user: 'liangwenqing',
   password: 'liangwenqing',
