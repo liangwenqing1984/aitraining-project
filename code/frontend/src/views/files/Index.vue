@@ -281,6 +281,7 @@ function handleSizeChange(size: number) {
       <el-table
         :data="files"
         stripe
+        class="files-table"
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="55" />
@@ -334,8 +335,9 @@ function handleSizeChange(size: number) {
     <el-dialog
       v-model="previewVisible"
       title="文件预览"
-      width="90%"
+      width="85%"
       :before-close="() => previewVisible = false"
+      :close-on-click-modal="true"
     >
       <div class="preview-info" v-if="previewFile">
         <el-descriptions :column="3" border size="small">
@@ -350,6 +352,7 @@ function handleSizeChange(size: number) {
         :data="previewData"
         stripe
         border
+        class="preview-table"
         style="width: 100%; margin-top: var(--spacing-md)"
         max-height="500"
         :cell-style="{ fontSize: 'var(--font-size-sm)' }"
@@ -406,6 +409,11 @@ function handleSizeChange(size: number) {
   padding: 40px 0;
 }
 
+/* 预览弹窗内表格横向滚动 */
+:deep(.el-dialog__body) {
+  overflow-x: auto;
+}
+
 /* 美化表格行悬停效果 */
 :deep(.el-table__row:hover) {
   background-color: var(--color-bg-hover) !important;
@@ -427,5 +435,22 @@ function handleSizeChange(size: number) {
 .action-icon {
   margin-right: 3px;
   font-size: 14px;
+}
+</style>
+
+<!-- 非 scoped：文件页表格固定列不透明 -->
+<style>
+.files-table {
+  --el-table-bg-color: #fafafa !important;
+  --el-table-tr-bg-color: #fafafa !important;
+}
+.files-table .el-table__fixed-right,
+.files-table .el-table__fixed-right td,
+.files-table .el-table__fixed-right th {
+  background-color: #fafafa !important;
+}
+/* 预览表格也确保不透明 */
+.preview-table {
+  --el-table-bg-color: #fafafa !important;
 }
 </style>
