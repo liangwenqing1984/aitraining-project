@@ -2061,7 +2061,7 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
       workType: pos.emplType || '',
       recruitmentCount: pos.recruitNumber ? `${pos.recruitNumber}人` : '',
       address: pos.workAddress || '',
-      companyNature: comp?.financingStageName || '',
+      companyNature: '',  // 企业性质由列表页 .joblist-box__item-tag 提取，API 无对应字段（financingStageName 是融资阶段非企业性质）
       companyScale: comp?.companySize || '',
       businessScope: comp?.industryNameLevel || '',
       updateDateText: pos.positionPublishTime || '',
@@ -2483,7 +2483,11 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
           const companyText = (companyDescEl.textContent || '').trim();
           const parts = companyText.split('·').map(p => p.trim());
           if (parts.length >= 2) {
-            result.companyNature = parts[0];
+            // parts[0] 可能是融资阶段（未融资/A轮/B轮...）或企业性质（民营/国企/外企...）
+            // 融资阶段不应作为企业性质，仅保留真正的企业性质关键词
+            const financingKeywords = ['未融资', 'A轮', 'B轮', 'C轮', 'D轮', '天使轮', 'Pre-A', 'Pre-IPO', '已上市', '不需要融资', '种子轮', '战略投资', 'IPO上市', '新三板'];
+            const isFinancing = financingKeywords.some(kw => parts[0].includes(kw));
+            result.companyNature = isFinancing ? '' : parts[0];
             result.companyScale = parts[1];
             if (parts.length >= 3) {
               result.businessScope = parts.slice(2).join(', ');
@@ -2854,17 +2858,19 @@ if (combosSinceRestart > 0 && combosSinceRestart % COMBINATIONS_PER_BROWSER === 
         const companyDescEl = document.querySelector('.company-info__desc, [class*="company-desc"]');
         if (companyDescEl) {
           const companyText = (companyDescEl.textContent || '').trim();
-          // 解析公司性质和规模：未融资 · 500-999人 · 计算机软件
           const parts = companyText.split('·').map(p => p.trim());
           if (parts.length >= 2) {
-            result.companyNature = parts[0]; // 融资状态/公司性质
-            result.companyScale = parts[1];  // 公司规模
+            // parts[0] 可能是融资阶段或企业性质，仅保留真正的企业性质
+            const financingKeywords = ['未融资', 'A轮', 'B轮', 'C轮', 'D轮', '天使轮', 'Pre-A', 'Pre-IPO', '已上市', '不需要融资', '种子轮', '战略投资', 'IPO上市', '新三板'];
+            const isFinancing = financingKeywords.some(kw => parts[0].includes(kw));
+            result.companyNature = isFinancing ? '' : parts[0];
+            result.companyScale = parts[1];
             if (parts.length >= 3) {
-              result.businessScope = parts.slice(2).join(', '); // 经营范围
+              result.businessScope = parts.slice(2).join(', ');
             }
           }
         }
-        
+
         // ✅ 岗位更新日期 - 从 summary-planes__time 中提取
         const updateEl = document.querySelector('.summary-planes__time, [class*="update-time"]');
         if (updateEl) {
