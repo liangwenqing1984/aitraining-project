@@ -161,13 +161,17 @@ sp_jobs 表（原始爬取职位数据，与 Excel 同步入库）：
 
 注意事项：
 1. 仅生成SELECT语句，绝对禁止INSERT/UPDATE/DELETE/DROP等
-2. 增强字段（薪资、技能、学历、行业、职位分类等）从 sp_job_enrichments 查询；原始字段（企业名称、职位名称、工作城市、薪资范围原文、工作经验原文、职位描述等）从 sp_jobs 查询
-3. **重要**：查询结果应同时包含原始数据和增强数据，默认使用 LEFT JOIN sp_jobs ON sp_job_enrichments.task_id = sp_jobs.task_id AND sp_job_enrichments.job_id = sp_jobs.job_id，SELECT 中列出 sp_jobs 的 company_name、job_name、work_city、salary_range、education、work_experience 等原始字段
-4. 按薪资排序用 salary_monthly_max DESC 或 salary_monthly_min DESC
-5. 统计查询用 COUNT(*)，分组用 GROUP BY
-6. JSONB 数组字段不能直接在 WHERE 中用 = 比较，需要用 @> 操作符
-7. LIMIT最多500条
-8. 如果用户指定了 task_id，加上 WHERE task_id='xxx' 过滤（两表的 task_id 都需过滤或通过 JOIN 条件关联）
+2. **极其重要 — 必须返回全部字段**：
+   - 必须用: FROM sp_job_enrichments e LEFT JOIN sp_jobs j ON e.task_id = j.task_id AND e.job_id = j.job_id
+   - SELECT 必须包含 sp_jobs 全部字段: j.company_name, j.job_name, j.work_city, j.salary_range, j.education, j.work_experience, j.job_category, j.data_source
+   - SELECT 必须包含 sp_job_enrichments 全部字段: e.salary_monthly_min, e.salary_monthly_max, e.salary_annual_estimate, e.job_category_l1, e.job_category_l2, e.company_industry, e.key_skills, e.required_skills, e.preferred_skills, e.education_normalized, e.experience_years_min, e.experience_years_max, e.benefits, e.work_mode
+   - 禁止使用 SELECT * — 必须显式列出上述全部字段
+   - 除非用户明确要求只查询特定字段，否则始终返回上述全部字段
+3. 按薪资排序用 e.salary_monthly_max DESC 或 e.salary_monthly_min DESC
+4. 统计查询用 COUNT(*)，分组用 GROUP BY — 统计查询也尽量保留上述字段
+5. JSONB 数组字段不能直接在 WHERE 中用 = 比较，需要用 @> 操作符
+6. LIMIT最多500条
+7. 如果用户指定了 task_id，加上 WHERE e.task_id='xxx' 过滤
 
 输出JSON格式：
 {
