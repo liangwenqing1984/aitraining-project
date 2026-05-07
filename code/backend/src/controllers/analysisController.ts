@@ -15,14 +15,17 @@ async function getJobDataByFileId(fileId: string): Promise<{ taskId: string; row
 }
 
 // 从 sp_jobs raw_data JSONB 提取英文字段或使用顶层列
+// sp_jobs 列名是 snake_case（raw_data, work_city, company_name 等）
+// raw_data JSONB 内存储的是爬虫输出的 camelCase 键名（workCity, companyName 等）
 function getField(row: any, topLevelKey: string, rawDataKey: string): string {
-  // 先查顶层列
+  // 先查顶层列（snake_case）
   const topVal = row[topLevelKey];
   if (topVal && String(topVal).trim()) return String(topVal);
-  // 再查 raw_data
+  // 再查 raw_data（注意：sp_jobs 列名是 raw_data 不是 rawData）
   try {
-    const raw = typeof row.rawData === 'object' ? row.rawData :
-      (typeof row.rawData === 'string' ? JSON.parse(row.rawData || '{}') : {});
+    const rawData = row.raw_data || row.rawData;
+    const raw = typeof rawData === 'object' ? rawData :
+      (typeof rawData === 'string' ? JSON.parse(rawData || '{}') : {});
     const rawVal = raw[rawDataKey];
     if (rawVal && String(rawVal).trim()) return String(rawVal);
   } catch {}
