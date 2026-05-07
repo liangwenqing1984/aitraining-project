@@ -449,7 +449,7 @@ async function handleResumeTask(row: any) {
             {{ row.recordCount || 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="180">
+        <el-table-column label="创建时间" width="165">
           <template #default="{ row }">
             {{ formatDateTime(row.createdAt) }}
           </template>
@@ -688,13 +688,12 @@ async function handleResumeTask(row: any) {
   background: #9ca3af;
 }
 
-/* 操作按钮一行显示 */
+/* 操作按钮自动换行 */
 .action-buttons {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 2px;
-  white-space: nowrap;
 }
 
 /* 操作图标样式 */
