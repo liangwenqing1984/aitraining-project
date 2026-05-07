@@ -454,7 +454,7 @@ async function handleResumeTask(row: any) {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="420">
+        <el-table-column label="操作" width="420" fixed="right">
           <template #default="{ row }">
             <div class="action-buttons">
             <!-- 任务控制按钮 -->
@@ -719,5 +719,13 @@ async function handleResumeTask(row: any) {
 /* 任务列表卡片 */
 .task-list-card {
   margin-top: 0;
+}
+
+/* 修复玻璃质感下固定列透明导致内容穿透重叠 */
+:deep(.el-table__fixed-right) {
+  background: #fafafa !important;
+}
+:deep(.el-table__fixed-right .el-table__cell) {
+  background-color: #fafafa !important;
 }
 </style>
