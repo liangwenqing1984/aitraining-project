@@ -91,10 +91,17 @@ echo.
 
 timeout /t 3 /nobreak >nul
 
-echo [6/6] Starting frontend service...
+echo [5.5/6] Clearing frontend Vite cache...
 cd /d D:\AICODEING\aitraining\code\frontend
-start "Frontend Server" cmd /k "echo Frontend starting... & npm run dev"
-echo [OK] Frontend service started
+if exist node_modules\.vite (
+    echo   Removing Vite deps cache...
+    rmdir /s /q node_modules\.vite 2>nul
+)
+echo [OK] Frontend cache cleaned
+
+echo [6/6] Starting frontend service...
+start "Frontend Server" cmd /k "echo Frontend starting... & npm run dev -- --force"
+echo [OK] Frontend service started (--force to skip stale cache)
 echo.
 
 echo ========================================
