@@ -167,6 +167,26 @@ async function initDatabase() {
     `);
 
     // 创建 sp_saved_queries 表（自然语言查询历史）
+    // 创建 sp_jobs 表（原始职位数据，与 Excel 同步入库）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_jobs (
+        id VARCHAR(255) PRIMARY KEY,
+        task_id VARCHAR(255) REFERENCES sp_tasks(id) ON DELETE CASCADE,
+        job_id VARCHAR(255) NOT NULL,
+        data_source VARCHAR(50) NOT NULL,
+        company_name VARCHAR(500),
+        job_name VARCHAR(500),
+        work_city VARCHAR(100),
+        salary_range VARCHAR(100),
+        education VARCHAR(50),
+        work_experience VARCHAR(100),
+        job_category VARCHAR(200),
+        raw_data JSONB NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(task_id, job_id)
+      )
+    `);
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS sp_saved_queries (
         id VARCHAR(255) PRIMARY KEY,
@@ -213,6 +233,8 @@ async function initDatabase() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON sp_tasks(created_at DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_task_id ON sp_csv_files(task_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_csv_files_source ON sp_csv_files(source)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_jobs_task_id ON sp_jobs(task_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_jobs_data_source ON sp_jobs(data_source)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_llm_config_active ON sp_llm_config(is_active)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_job_enrichments_task ON sp_job_enrichments(task_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_market_reports_file ON sp_market_reports(file_id)');

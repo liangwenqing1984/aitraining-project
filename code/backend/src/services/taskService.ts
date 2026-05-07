@@ -1046,6 +1046,31 @@ class TaskService {
       // 保存工作簿
       await workbook.xlsx.writeFile(filepath);
 
+      // 同时写入数据库（原始职位数据持久化）
+      try {
+        await db.prepare(`
+          INSERT INTO sp_jobs (id, task_id, job_id, data_source, company_name, job_name,
+            work_city, salary_range, education, work_experience, job_category, raw_data)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+          ON CONFLICT (task_id, job_id) DO NOTHING
+        `).run(
+          uuidv4(),
+          taskId,
+          job.jobId,
+          job.dataSource || '',
+          job.companyName || '',
+          job.jobName || '',
+          job.workCity || '',
+          job.salaryRange || '',
+          job.education || '',
+          job.workExperience || '',
+          job.jobCategory || '',
+          JSON.stringify(job)
+        );
+      } catch (dbErr: any) {
+        console.error(`[TaskService] DB写入失败 (jobId=${job.jobId}):`, dbErr.message);
+      }
+
       // 🔧 去重：记录已写入的jobId
       if (!this.writtenJobIds.has(taskId)) {
         this.writtenJobIds.set(taskId, new Set());
