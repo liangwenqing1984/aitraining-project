@@ -118,7 +118,7 @@ const docs: Record<string, { title: string; content: string }> = {
 <h3>版本信息</h3>
 <table>
   <tr><td><strong>当前版本</strong></td><td>2.0.0</td></tr>
-  <tr><td><strong>分支</strong></td><td>with-ai</td></tr>
+  <tr><td><strong>分支</strong></td><td>with_ip_proxy_pool</td></tr>
   <tr><td><strong>Node.js</strong></td><td>v24.14.0+</td></tr>
   <tr><td><strong>PostgreSQL</strong></td><td>SeaboxSQL 7300</td></tr>
 </table>`
