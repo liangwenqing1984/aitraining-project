@@ -40,7 +40,10 @@ const isSubPage = computed(() => {
   return route.path.startsWith('/crawler/') && route.path !== '/crawler'
 })
 
-const menuItems = [
+interface MenuItem {
+  path?: string; title: string; icon: any; children?: { path: string; title: string }[]
+}
+const menuItems: MenuItem[] = [
   { path: '/home', title: '首页', icon: HomeFilled },
   { path: '/crawler', title: '数据采集', icon: Monitor },
   { path: '/files', title: '数据管理', icon: Files },
@@ -48,17 +51,23 @@ const menuItems = [
   { path: '/query', title: '智能查询', icon: TrendCharts },
   { path: '/rag', title: '语义搜索', icon: Search },
   { path: '/settings/llm', title: '模型配置', icon: Setting },
+  {
+    title: '系统管理', icon: Setting,
+    children: [
+      { path: '/system/users', title: '用户管理' },
+      { path: '/system/roles', title: '角色管理' },
+      { path: '/system/permissions', title: '权限管理' },
+      { path: '/system/menus', title: '菜单管理' },
+    ]
+  },
   { path: '/docs', title: '文档', icon: Document },
   { path: '/about', title: '关于', icon: InfoFilled }
 ]
 
 const activeMenu = computed(() => {
-  // 确保返回正确的激活菜单项
   const currentPath = route.path
-  // 对于子路由，返回父路由路径
-  if (currentPath.startsWith('/crawler/')) {
-    return '/crawler'
-  }
+  if (currentPath.startsWith('/crawler/')) return '/crawler'
+  if (currentPath.startsWith('/system/')) return currentPath
   return currentPath
 })
 
@@ -187,19 +196,38 @@ const getCurrentPageTitle = () => {
           class="sidebar-menu"
           @select="handleMenuSelect"
         >
-          <el-menu-item 
-            v-for="item in menuItems" 
-            :key="item.path" 
-            :index="item.path"
-            class="menu-item-custom"
-          >
-            <div class="menu-item-content">
-              <el-icon class="menu-icon"><component :is="item.icon" /></el-icon>
-              <transition name="fade-slide">
-                <span v-show="!isCollapse" class="menu-title">{{ item.title }}</span>
-              </transition>
-            </div>
-          </el-menu-item>
+          <template v-for="item in menuItems" :key="item.title">
+            <el-sub-menu v-if="item.children" :index="item.title" class="sub-menu-custom">
+              <template #title>
+                <div class="menu-item-content">
+                  <el-icon class="menu-icon"><component :is="item.icon" /></el-icon>
+                  <transition name="fade-slide">
+                    <span v-show="!isCollapse">{{ item.title }}</span>
+                  </transition>
+                </div>
+              </template>
+              <el-menu-item
+                v-for="child in item.children"
+                :key="child.path"
+                :index="child.path"
+                class="menu-item-custom sub-item"
+              >
+                <span>{{ child.title }}</span>
+              </el-menu-item>
+            </el-sub-menu>
+            <el-menu-item
+              v-else
+              :index="item.path"
+              class="menu-item-custom"
+            >
+              <div class="menu-item-content">
+                <el-icon class="menu-icon"><component :is="item.icon" /></el-icon>
+                <transition name="fade-slide">
+                  <span v-show="!isCollapse" class="menu-title">{{ item.title }}</span>
+                </transition>
+              </div>
+            </el-menu-item>
+          </template>
         </el-menu>
       </div>
     </el-aside>
@@ -428,6 +456,60 @@ const getCurrentPageTitle = () => {
   font-size: 14px;
   white-space: nowrap;
   flex: 1;
+}
+
+/* 子菜单样式 */
+:deep(.sub-menu-custom) {
+  margin: 2px 12px;
+}
+
+:deep(.sub-menu-custom .el-sub-menu__title) {
+  height: 48px;
+  line-height: 48px;
+  border-radius: 8px;
+  padding: 0 16px !important;
+  color: #4b5563;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+:deep(.sub-menu-custom .el-sub-menu__title:hover) {
+  background: var(--glass-bg-hover) !important;
+  border-color: rgba(102, 126, 234, 0.15);
+  box-shadow: var(--shadow-xs);
+}
+
+:deep(.sub-menu-custom.is-opened .el-sub-menu__title) {
+  color: #667eea;
+  font-weight: 600;
+}
+
+:deep(.sub-menu-custom .el-menu) {
+  background: transparent !important;
+  padding: 0;
+}
+
+:deep(.sub-item) {
+  height: 40px;
+  line-height: 40px;
+  margin: 2px 12px 2px 24px;
+  padding: 0 16px !important;
+  font-size: 13px;
+  color: #6b7280;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+:deep(.sub-item:hover) {
+  background: var(--glass-bg-hover) !important;
+  color: #667eea;
+}
+
+:deep(.sub-item.is-active) {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%) !important;
+  color: #667eea;
+  font-weight: 600;
 }
 
 /* 折叠状态优化 */

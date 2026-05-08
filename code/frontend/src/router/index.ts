@@ -137,6 +137,30 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '模型配置', icon: 'Setting' }
       },
       {
+        path: 'system/users',
+        name: 'SystemUsers',
+        component: () => import('@/views/system/Users.vue'),
+        meta: { title: '用户管理', parent: '系统管理' }
+      },
+      {
+        path: 'system/roles',
+        name: 'SystemRoles',
+        component: () => import('@/views/system/Roles.vue'),
+        meta: { title: '角色管理', parent: '系统管理' }
+      },
+      {
+        path: 'system/permissions',
+        name: 'SystemPermissions',
+        component: () => import('@/views/system/Permissions.vue'),
+        meta: { title: '权限管理', parent: '系统管理' }
+      },
+      {
+        path: 'system/menus',
+        name: 'SystemMenus',
+        component: () => import('@/views/system/Menus.vue'),
+        meta: { title: '菜单管理', parent: '系统管理' }
+      },
+      {
         path: 'about',
         name: 'About',
         component: () => import('@/views/About.vue'),
