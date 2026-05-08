@@ -61,13 +61,13 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'Layout',
     component: () => import('@/layouts/MainLayout.vue'),
-    redirect: '/crawler',  // 🔧 默认重定向到数据采集页面
+    redirect: '/home',
     meta: { requiresAuth: true },
     children: [
       {
         path: 'home',
         name: 'Home',
-        component: () => import('@/views/crawler/Index.vue'),  // 🔧 首页指向数据采集页面
+        component: () => import('@/views/Home.vue'),
         meta: { title: '首页', icon: 'HomeFilled' }
       },
       {
