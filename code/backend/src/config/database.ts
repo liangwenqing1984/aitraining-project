@@ -1,5 +1,16 @@
-import { Pool } from 'pg';
+import { Pool, types } from 'pg';
 import path from 'path';
+
+// 重写 pg TIMESTAMP 解析器：返回纯字符串，避免 Date 对象序列化时附加时区
+// PostgreSQL 返回格式 "2026-05-08 11:12:54.095"，去掉毫秒以保持简洁
+types.setTypeParser(1114, (value: string) => {
+  // TIMESTAMP (OID 1114) — 截掉 .123 毫秒部分，格式: "2026-05-08 11:12:54"
+  return value.replace(/\.\d+$/, '');
+});
+types.setTypeParser(1184, (value: string) => {
+  // TIMESTAMPTZ (OID 1184) — 同样处理，去掉 +08 时区后缀和毫秒
+  return value.replace(/\.\d+.*$/, '');
+});
 
 // PostgreSQL连接配置
 const pool = new Pool({
