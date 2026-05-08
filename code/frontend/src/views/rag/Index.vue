@@ -73,6 +73,7 @@
               size="small"
               style="width: 100%"
               :loading="loadingTasks"
+              @change="onIndexTaskChange"
             >
               <el-option
                 v-for="t in taskOptions"
@@ -81,13 +82,25 @@
                 :value="t.taskId"
               />
             </el-select>
+            <el-alert
+              v-if="indexTaskId && enrichmentChecked && !hasEnrichment"
+              title="该任务尚未进行AI数据增强"
+              type="warning"
+              :closable="false"
+              show-icon
+              style="margin-top: 8px"
+            >
+              <template #default>
+                请先在任务列表对该任务执行<strong>"AI增强"</strong>，完成后再进行向量化索引。
+              </template>
+            </el-alert>
             <el-button
               type="warning"
               size="small"
               :loading="indexing"
               @click="doIndex"
               style="width: 100%; margin-top: 8px"
-              :disabled="!indexTaskId"
+              :disabled="!indexTaskId || (enrichmentChecked && !hasEnrichment)"
             >
               开始向量化索引
             </el-button>
@@ -170,10 +183,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Loading } from '@element-plus/icons-vue'
-import { ragSearch, startRAGIndex, getRAGStats, type RAGSearchResult } from '@/api/llm'
+import { ragSearch, startRAGIndex, getRAGStats, getEnrichmentStatus, type RAGSearchResult } from '@/api/llm'
 import { taskApi } from '@/api/task'
 
 const queryText = ref('')
@@ -193,6 +206,10 @@ const statsList = ref<any[]>([])
 const statsLoading = ref(false)
 
 const taskOptions = ref<{ taskId: string; count: number; label?: string }[]>([])
+
+const enrichmentChecked = ref(false)
+const hasEnrichment = ref(false)
+const checkingEnrichment = ref(false)
 
 const exampleQueries = [
   '高薪Java后端开发，需要微服务经验',
@@ -259,6 +276,28 @@ async function doSearch() {
   } finally {
     searching.value = false
   }
+}
+
+async function onIndexTaskChange(taskId: string) {
+  if (!taskId) {
+    enrichmentChecked.value = false
+    hasEnrichment.value = false
+    return
+  }
+  checkingEnrichment.value = true
+  enrichmentChecked.value = false
+  try {
+    const res: any = await getEnrichmentStatus(taskId)
+    if (res.success && res.data) {
+      hasEnrichment.value = res.data.exists && (res.data.total || 0) > 0
+    } else {
+      hasEnrichment.value = false
+    }
+  } catch {
+    hasEnrichment.value = false
+  }
+  enrichmentChecked.value = true
+  checkingEnrichment.value = false
 }
 
 async function doIndex() {

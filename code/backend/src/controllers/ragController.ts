@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
+import { db } from '../config/database';
 import { indexJobEmbeddings, semanticSearch, getEmbeddingStats } from '../services/llm/rag';
 
 /**
  * POST /api/rag/index/:taskId
- * 启动职位向量化索引
+ * 启动职位向量化索引（异步执行，返回前检查增强数据是否存在）
  */
 export async function indexTask(req: Request, res: Response) {
   try {
@@ -12,8 +13,21 @@ export async function indexTask(req: Request, res: Response) {
       return res.status(400).json({ success: false, error: '缺少 taskId 参数' });
     }
 
+    // 同步检查：增强数据是否存在
+    const enrichRow = await db.prepare(
+      'SELECT COUNT(*) as cnt FROM sp_job_enrichments WHERE task_id = $1'
+    ).get(taskId) as any;
+    const enrichCount = enrichRow?.cnt || 0;
+
+    if (enrichCount === 0) {
+      return res.status(400).json({
+        success: false,
+        error: '该任务尚未进行AI数据增强，无法向量化索引。请先在任务列表点击"AI增强"完成数据增强后再试。',
+      });
+    }
+
     // 异步执行，立即返回
-    res.json({ success: true, data: { taskId, status: 'started', message: '向量化索引已启动' } });
+    res.json({ success: true, data: { taskId, status: 'started', message: `向量化索引已启动（${enrichCount}条增强数据）` } });
 
     // 后台异步索引
     indexJobEmbeddings(taskId).catch(e => {
