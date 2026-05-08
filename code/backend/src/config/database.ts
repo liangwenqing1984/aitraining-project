@@ -228,6 +228,93 @@ async function initDatabase() {
       console.warn('[Database] ⚠️ 跳过 sp_job_embeddings 表创建（pgvector 不可用）');
     }
 
+    // ==================== 系统管理 RBAC 表 ====================
+
+    // 用户表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_users (
+        id SERIAL PRIMARY KEY,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        password_hash VARCHAR(255),
+        real_name VARCHAR(100) NOT NULL,
+        email VARCHAR(200),
+        phone VARCHAR(50),
+        oauth2_user_id VARCHAR(255),
+        status BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 角色表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_roles (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        code VARCHAR(100) NOT NULL UNIQUE,
+        description VARCHAR(500),
+        status BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 权限表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_permissions (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        code VARCHAR(100) NOT NULL UNIQUE,
+        resource VARCHAR(100) NOT NULL,
+        action VARCHAR(100) NOT NULL,
+        description VARCHAR(500),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 菜单表（自引用树形结构）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_menus (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        path VARCHAR(255),
+        icon VARCHAR(100),
+        parent_id INT REFERENCES sp_menus(id) ON DELETE SET NULL,
+        sort_order INT DEFAULT 0,
+        component VARCHAR(255),
+        hidden BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 用户-角色关联表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_user_roles (
+        user_id INT REFERENCES sp_users(id) ON DELETE CASCADE,
+        role_id INT REFERENCES sp_roles(id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, role_id)
+      )
+    `);
+
+    // 角色-权限关联表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_role_permissions (
+        role_id INT REFERENCES sp_roles(id) ON DELETE CASCADE,
+        permission_id INT REFERENCES sp_permissions(id) ON DELETE CASCADE,
+        PRIMARY KEY (role_id, permission_id)
+      )
+    `);
+
+    // 角色-菜单关联表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_role_menus (
+        role_id INT REFERENCES sp_roles(id) ON DELETE CASCADE,
+        menu_id INT REFERENCES sp_menus(id) ON DELETE CASCADE,
+        PRIMARY KEY (role_id, menu_id)
+      )
+    `);
+
     // 创建索引
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON sp_tasks(status)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON sp_tasks(created_at DESC)');
@@ -239,6 +326,13 @@ async function initDatabase() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_job_enrichments_task ON sp_job_enrichments(task_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_market_reports_file ON sp_market_reports(file_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_saved_queries_task ON sp_saved_queries(task_id)');
+    // RBAC 索引
+    await client.query('CREATE INDEX IF NOT EXISTS idx_users_username ON sp_users(username)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_users_status ON sp_users(status)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_roles_code ON sp_roles(code)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_permissions_code ON sp_permissions(code)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_menus_parent_id ON sp_menus(parent_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_menus_sort_order ON sp_menus(sort_order)');
     if (pgvectorAvailable) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_job_embeddings_task ON sp_job_embeddings(task_id)');
       // pgvector IVFFlat 索引（加速近似最近邻搜索）

@@ -189,6 +189,59 @@ export interface AntiCrawlResult {
   reason: string;
 }
 
+// ==================== 系统管理 RBAC 类型 ====================
+
+export interface SystemUser {
+  id?: number;
+  username: string;
+  password?: string;
+  realName: string;
+  email?: string;
+  phone?: string;
+  oauth2UserId?: string;
+  status: boolean;
+  roleIds?: number[];
+  roles?: SystemRole[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SystemRole {
+  id?: number;
+  name: string;
+  code: string;
+  description?: string;
+  status: boolean;
+  permissionIds?: number[];
+  menuIds?: number[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SystemPermission {
+  id?: number;
+  name: string;
+  code: string;
+  resource: string;
+  action: string;
+  description?: string;
+  createdAt?: string;
+}
+
+export interface SystemMenu {
+  id?: number;
+  name: string;
+  path?: string;
+  icon?: string;
+  parentId?: number | null;
+  sortOrder: number;
+  component?: string;
+  hidden: boolean;
+  children?: SystemMenu[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // API响应
 export interface ApiResponse<T = any> {
   success: boolean;
