@@ -17,7 +17,47 @@ export async function runSeed(): Promise<void> {
   console.log('[Seed] 首次启动，初始化种子数据...');
 
   try {
-    // Step 1: 创建菜单
+    // Step 1: 创建权限
+    const permissions = [
+      { name: '查看用户', code: 'user:view', resource: 'user', action: 'view', description: '查看用户列表和详情' },
+      { name: '创建用户', code: 'user:create', resource: 'user', action: 'create', description: '创建新用户' },
+      { name: '编辑用户', code: 'user:edit', resource: 'user', action: 'edit', description: '编辑用户信息' },
+      { name: '删除用户', code: 'user:delete', resource: 'user', action: 'delete', description: '删除用户' },
+      { name: '查看角色', code: 'role:view', resource: 'role', action: 'view', description: '查看角色列表和详情' },
+      { name: '创建角色', code: 'role:create', resource: 'role', action: 'create', description: '创建新角色' },
+      { name: '编辑角色', code: 'role:edit', resource: 'role', action: 'edit', description: '编辑角色信息' },
+      { name: '删除角色', code: 'role:delete', resource: 'role', action: 'delete', description: '删除角色' },
+      { name: '查看权限', code: 'permission:view', resource: 'permission', action: 'view', description: '查看权限列表' },
+      { name: '创建权限', code: 'permission:create', resource: 'permission', action: 'create', description: '创建新权限' },
+      { name: '编辑权限', code: 'permission:edit', resource: 'permission', action: 'edit', description: '编辑权限' },
+      { name: '删除权限', code: 'permission:delete', resource: 'permission', action: 'delete', description: '删除权限' },
+      { name: '查看菜单', code: 'menu:view', resource: 'menu', action: 'view', description: '查看菜单结构' },
+      { name: '创建菜单', code: 'menu:create', resource: 'menu', action: 'create', description: '创建新菜单' },
+      { name: '编辑菜单', code: 'menu:edit', resource: 'menu', action: 'edit', description: '编辑菜单' },
+      { name: '删除菜单', code: 'menu:delete', resource: 'menu', action: 'delete', description: '删除菜单' },
+      { name: '查看任务', code: 'task:view', resource: 'task', action: 'view', description: '查看采集任务' },
+      { name: '创建任务', code: 'task:create', resource: 'task', action: 'create', description: '创建采集任务' },
+      { name: '编辑任务', code: 'task:edit', resource: 'task', action: 'edit', description: '编辑采集任务' },
+      { name: '删除任务', code: 'task:delete', resource: 'task', action: 'delete', description: '删除采集任务' },
+      { name: '查看文件', code: 'file:view', resource: 'file', action: 'view', description: '查看文件列表' },
+      { name: '上传文件', code: 'file:upload', resource: 'file', action: 'upload', description: '上传文件' },
+      { name: '删除文件', code: 'file:delete', resource: 'file', action: 'delete', description: '删除文件' },
+      { name: '查看分析', code: 'analysis:view', resource: 'analysis', action: 'view', description: '查看分析结果' },
+      { name: '执行分析', code: 'analysis:execute', resource: 'analysis', action: 'execute', description: '执行分析任务' },
+      { name: '查看LLM配置', code: 'llm:view', resource: 'llm', action: 'view', description: '查看模型配置' },
+      { name: '编辑LLM配置', code: 'llm:edit', resource: 'llm', action: 'edit', description: '修改模型配置' },
+      { name: '使用RAG', code: 'rag:use', resource: 'rag', action: 'use', description: '使用语义搜索' },
+      { name: '管理RAG', code: 'rag:manage', resource: 'rag', action: 'manage', description: '管理知识库' },
+    ];
+
+    const permissionIds: number[] = [];
+    for (const p of permissions) {
+      const perm = await permissionService.createPermission(p as any);
+      permissionIds.push(perm.id!);
+      console.log(`[Seed] 权限: ${p.name} (id=${perm.id})`);
+    }
+
+    // Step 2: 创建菜单
     const menus = [
       { name: '首页', path: '/home', icon: 'HomeFilled', sortOrder: 1 },
       { name: '数据采集', path: '/crawler', icon: 'Monitor', sortOrder: 2 },
@@ -79,11 +119,11 @@ export async function runSeed(): Promise<void> {
 
     const adminRole = await roleService.createRole({
       name: '系统管理员', code: 'admin', description: '系统最高权限角色，拥有所有菜单和功能访问权限',
-      status: true, menuIds: allMenuIds,
+      status: true, permissionIds, menuIds: allMenuIds,
     } as any);
     console.log(`[Seed] 角色: ${adminRole.name} (id=${adminRole.id})`);
 
-    // Step 4: 创建管理员用户
+    // Step 5: 创建管理员用户
     const adminUser = await userService.createUser({
       username: 'admin',
       password: 'Admin@admin123',
