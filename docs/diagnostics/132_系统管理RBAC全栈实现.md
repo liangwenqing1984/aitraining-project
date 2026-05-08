@@ -1,7 +1,7 @@
 # 系统管理 RBAC 全栈实现
 
 > 实施日期：2026-05-08
-> commit: `18ede29`
+> 最新 commit: `d80adc2`
 
 ## 一、背景
 
@@ -165,10 +165,112 @@ routes/systemRoutes.ts        ← 统一路由注册（/api/users, /api/roles, /
 | UI 组件 | Element Plus (el-table, el-dialog, el-form, el-tree, el-tree-select 等) |
 | HTTP 客户端 | Axios（自动 token 注入 + 刷新） |
 
-## 六、后续扩展建议
+## 六、种子数据（seedService.ts）
 
-1. **种子数据**：首次部署时预置 admin 角色 + 基础权限 + 现有侧边栏菜单项
-2. **权限校验中间件**：创建 `middleware/rbac.ts`，在路由层根据用户角色+权限拦截请求
-3. **前端路由守卫增强**：根据用户菜单权限动态生成路由和侧边栏
-4. **OAuth2 用户同步**：当 OAuth2 登录用户不存在时自动插入 `sp_users` 记录（`oauth2_user_id` 关联）
-5. **操作日志**：记录用户的创建/编辑/删除操作到 `sp_audit_logs` 表
+首次启动时自动初始化系统数据，通过检查 `sp_menus` 表是否为空来判断是否已初始化。
+
+### 6.1 初始化流程
+
+```
+Step 1: 创建权限（29条，9个资源模块）
+Step 2: 创建菜单（10个顶级 + 4个系统管理子菜单 + 文档 + 关于 = 16条）
+Step 3: 创建管理员角色（关联全部权限 + 全部菜单）
+Step 4: 创建管理员用户（admin / Admin@admin123，分配管理员角色）
+```
+
+### 6.2 权限清单（29条）
+
+| 资源模块 | 权限 | 条数 |
+|---------|------|------|
+| user | view / create / edit / delete | 4 |
+| role | view / create / edit / delete | 4 |
+| permission | view / create / edit / delete | 4 |
+| menu | view / create / edit / delete | 4 |
+| task | view / create / edit / delete | 4 |
+| file | view / upload / delete | 3 |
+| analysis | view / execute | 2 |
+| llm | view / edit | 2 |
+| rag | use / manage | 2 |
+
+### 6.3 菜单清单（16条）
+
+**顶级菜单**（10条）：
+首页、数据采集、数据管理、智能分析、智能查询、语义搜索、模型配置、系统管理（父级）、文档、关于
+
+**系统管理子菜单**（4条，parentId 指向系统管理）：
+用户管理、角色管理、权限管理、菜单管理
+
+### 6.4 管理员默认账号
+
+| 字段 | 值 |
+|------|-----|
+| 用户名 | `admin` |
+| 密码 | `Admin@admin123` |
+| 角色 | 系统管理员（admin） |
+| 登录方式 | 本地登录（账号密码） |
+
+## 七、本地登录实现
+
+### 7.1 后端
+
+`authController.localLogin()` 对接 PostgreSQL `sp_users` 表：
+
+1. 接收 `{ username, password }`
+2. 通过 `userService.listUsers()` 查找用户（keyword 匹配）
+3. 验证账号状态（status = true）
+4. 从 `sp_users.password_hash` 获取 bcrypt 哈希
+5. `userService.verifyPassword()` 比对密码
+6. 返回用户信息（username, name, email, phone, role, roles, roleIds, loginType）
+
+路由：`POST /api/auth/local-login`（在 `authRoutes.ts` 中注册）
+
+### 7.2 前端
+
+`Login.vue` 修改：
+- **移除**硬编码的 `MOCK_USERS` 数组（admin/user/test 三个预设账号）
+- **移除** `await new Promise(resolve => setTimeout(resolve, 800))` 模拟延迟
+- **替换为**真实 API 调用：`fetch('/api/auth/local-login', { method: 'POST', body: JSON.stringify({...}) })`
+- 登录成功后存储完整用户信息到 localStorage（username, name, role, roles, roleIds, email, phone, loginTime, loginType）
+
+## 八、后续扩展建议
+
+1. **权限校验中间件**：创建 `middleware/rbac.ts`，在路由层根据用户角色+权限拦截请求
+2. **前端路由守卫增强**：根据用户菜单权限动态生成路由和侧边栏
+3. **OAuth2 用户同步**：当 OAuth2 登录用户不存在时自动插入 `sp_users` 记录（`oauth2_user_id` 关联）
+4. **操作日志**：记录用户的创建/编辑/删除操作到 `sp_audit_logs` 表
+
+## 九、变更文件总览
+
+| 文件 | 变更类型 | 说明 |
+|------|---------|------|
+| `code/backend/src/config/database.ts` | 修改 | 新增 7 张 RBAC 表 + 索引 |
+| `code/backend/src/types/index.ts` | 修改 | 新增 User/Role/Permission/Menu 类型 |
+| `code/backend/src/services/userService.ts` | 新增 | 用户 CRUD + bcryptjs 密码哈希 |
+| `code/backend/src/services/roleService.ts` | 新增 | 角色 CRUD + 权限/菜单关联 |
+| `code/backend/src/services/permissionService.ts` | 新增 | 权限 CRUD + 按 resource 分组 |
+| `code/backend/src/services/menuService.ts` | 新增 | 菜单 CRUD + 树形构建 + 循环检测 |
+| `code/backend/src/services/seedService.ts` | 新增 | 首次启动种子数据自动初始化 |
+| `code/backend/src/controllers/userController.ts` | 新增 | 用户 API Handler（6个端点） |
+| `code/backend/src/controllers/roleController.ts` | 新增 | 角色 API Handler（6个端点） |
+| `code/backend/src/controllers/permissionController.ts` | 新增 | 权限 API Handler（6个端点） |
+| `code/backend/src/controllers/menuController.ts` | 新增 | 菜单 API Handler（6个端点） |
+| `code/backend/src/controllers/authController.ts` | 修改 | 新增 localLogin 本地登录 |
+| `code/backend/src/routes/systemRoutes.ts` | 新增 | 统一注册 21 个 RBAC 端点 |
+| `code/backend/src/routes/authRoutes.ts` | 修改 | 新增 /local-login 路由 |
+| `code/backend/src/app.ts` | 修改 | 注册 systemRoutes |
+| `code/backend/src/index.ts` | 修改 | 启动时调用 runSeed() |
+| `code/frontend/src/api/system.ts` | 新增 | 前端 API 封装（所有接口函数） |
+| `code/frontend/src/views/system/Users.vue` | 重写 | 完整 CRUD 用户管理页 |
+| `code/frontend/src/views/system/Roles.vue` | 重写 | 完整 CRUD 角色管理页（含权限/菜单分配） |
+| `code/frontend/src/views/system/Permissions.vue` | 重写 | 完整 CRUD 权限管理页 |
+| `code/frontend/src/views/system/Menus.vue` | 重写 | 树形 CRUD 菜单管理页 |
+| `code/frontend/src/views/Login.vue` | 修改 | 移除 MOCK_USERS，对接真实登录 API |
+
+## 十、提交历史
+
+| commit | 说明 |
+|--------|------|
+| `b6ce404` | 侧边栏增加系统管理子菜单 |
+| `18ede29` | 系统管理 RBAC 全栈实现 — 用户/角色/权限/菜单 完整 CRUD |
+| `0df411e` | 种子数据自动初始化 + 本地登录对接真实 API |
+| `d80adc2` | 种子数据补充权限记录 — 29条权限 + 管理员角色关联 |
