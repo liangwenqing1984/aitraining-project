@@ -13,9 +13,10 @@ const pool = new Pool({
   connectionTimeoutMillis: 5000, // 🔧 增加连接超时时间，从2秒提升到5秒
 });
 
-// 🔧 添加连接池监控日志
-pool.on('connect', () => {
-  console.log(`[DB Pool] 新连接建立，当前活跃连接数: ${pool.totalCount - pool.idleCount}/${20}`);
+// 🔧 添加连接池监控日志 + 北京时区设置
+pool.on('connect', (client) => {
+  client.query("SET timezone = 'Asia/Shanghai'").catch(err => console.error('[DB Pool] 设置时区失败:', err.message));
+  console.log(`[DB Pool] 新连接建立，当前活跃连接数: ${pool.totalCount - pool.idleCount}/50`);
 });
 
 pool.on('remove', () => {
@@ -46,6 +47,8 @@ async function initDatabase() {
 
   // 设置schema搜索路径（包含 liangwenqing 以便访问 vector 类型）
   await client.query('SET search_path TO liangwenqing, public');
+  // 设置北京时区，所有 CURRENT_TIMESTAMP / NOW() 返回北京时间，不带时区后缀
+  await client.query("SET timezone = 'Asia/Shanghai'");
 
   try {
     // 创建tasks表
