@@ -19,8 +19,8 @@ function forceFixedColumnBg() {
   const containers = document.querySelectorAll('.task-table .el-table__fixed-right, .task-table.el-table .el-table__fixed-right')
   containers.forEach(container => {
     const el = container as HTMLElement
-    el.style.setProperty('background', '#fafafa', 'important')
-    el.style.setProperty('background-color', '#fafafa', 'important')
+    el.style.setProperty('background', 'rgba(250, 250, 250, 0.45)', 'important')
+    el.style.setProperty('background-color', 'rgba(250, 250, 250, 0.45)', 'important')
   })
   const cells = document.querySelectorAll(
     '.task-table .el-table__fixed-right td, .task-table .el-table__fixed-right th,' +
@@ -31,8 +31,8 @@ function forceFixedColumnBg() {
   )
   cells.forEach(cell => {
     const el = cell as HTMLElement
-    el.style.setProperty('background', '#fafafa', 'important')
-    el.style.setProperty('background-color', '#fafafa', 'important')
+    el.style.setProperty('background', 'rgba(250, 250, 250, 0.45)', 'important')
+    el.style.setProperty('background-color', 'rgba(250, 250, 250, 0.45)', 'important')
   })
 }
 
@@ -370,7 +370,7 @@ async function handleResumeTask(row: any) {
         <el-button type="primary" @click="goToCreate">创建第一个任务</el-button>
       </el-empty>
 
-      <el-table v-else :data="crawlerStore.tasks" stripe class="task-table" :style="{ '--el-table-bg-color': '#fafafa', '--el-table-tr-bg-color': '#fafafa' }">
+      <el-table v-else :data="crawlerStore.tasks" stripe class="task-table" :style="{ '--el-table-bg-color': 'rgba(250, 250, 250, 0.45)', '--el-table-tr-bg-color': 'rgba(250, 250, 250, 0.45)' }">
         <el-table-column prop="name" label="任务名称" min-width="150" />
         <el-table-column prop="source" label="数据来源" width="120">
           <template #default="{ row }">
@@ -491,7 +491,7 @@ async function handleResumeTask(row: any) {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="420" fixed="right" cell-class-name="ops-cell" :cell-style="{ background: '#fafafa' }" :header-cell-style="{ background: '#fafafa' }">
+        <el-table-column label="操作" width="420" fixed="right" cell-class-name="ops-cell" :cell-style="{ background: 'rgba(250, 250, 250, 0.45)' }" :header-cell-style="{ background: 'rgba(250, 250, 250, 0.45)' }">
           <template #default="{ row }">
             <div class="action-buttons">
             <!-- 任务控制按钮 -->
@@ -763,8 +763,8 @@ async function handleResumeTask(row: any) {
 <!-- 非 scoped：强制覆盖 Element Plus 固定列透明背景（body 前缀提高特异性） -->
 <style>
 .task-table {
-  --el-table-bg-color: #fafafa !important;
-  --el-table-tr-bg-color: #fafafa !important;
+  --el-table-bg-color: rgba(250, 250, 250, 0.45) !important;
+  --el-table-tr-bg-color: rgba(250, 250, 250, 0.45) !important;
 }
 body .task-table .el-table__fixed-right,
 body .task-table .el-table__fixed-right td,
@@ -773,9 +773,9 @@ body .task-table .el-table__fixed-body-wrapper,
 body .task-table .el-table__fixed-right .el-table__cell,
 body .task-table .el-table__fixed-body-wrapper .el-table__cell,
 body .task-table .ops-cell {
-  background: #fafafa !important;
-  background-color: #fafafa !important;
-  --el-table-bg-color: #fafafa !important;
-  --el-table-tr-bg-color: #fafafa !important;
+  background: rgba(250, 250, 250, 0.45) !important;
+  background-color: rgba(250, 250, 250, 0.45) !important;
+  --el-table-bg-color: rgba(250, 250, 250, 0.45) !important;
+  --el-table-tr-bg-color: rgba(250, 250, 250, 0.45) !important;
 }
 </style>
