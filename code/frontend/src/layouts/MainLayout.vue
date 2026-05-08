@@ -159,7 +159,20 @@ const getCurrentPageTitle = () => {
     <el-aside :width="isCollapse ? '70px' : '240px'" class="sidebar">
       <div class="logo">
         <div class="logo-icon">
-          <img src="@/assets/vue.svg" alt="Logo" class="logo-img" />
+          <svg viewBox="0 0 48 48" class="logo-svg" xmlns="http://www.w3.org/2000/svg">
+            <!-- 外环 -->
+            <circle cx="24" cy="24" r="22" fill="none" stroke="#C4152D" stroke-width="2.5"/>
+            <!-- 天安门简化 -->
+            <rect x="16" y="26" width="16" height="5" fill="#C4152D" rx="1"/>
+            <rect x="12" y="20" width="5" height="10" fill="#C4152D" rx="1"/>
+            <rect x="31" y="20" width="5" height="10" fill="#C4152D" rx="1"/>
+            <rect x="19" y="18" width="10" height="5" fill="#C4152D" rx="1"/>
+            <!-- 五角星 -->
+            <polygon points="24,7 26.5,14.5 34,14.5 28,19 30.5,26.5 24,22 17.5,26.5 20,19 14,14.5 21.5,14.5" fill="#FFD700"/>
+            <!-- 底部绶带 -->
+            <rect x="10" y="31" width="28" height="4" fill="#C4152D" rx="2"/>
+            <rect x="14" y="35" width="20" height="3" fill="#C4152D" rx="1.5"/>
+          </svg>
         </div>
         <transition name="fade-slide">
           <span v-show="!isCollapse" class="logo-text">高质量人才数据集</span>
@@ -292,24 +305,23 @@ const getCurrentPageTitle = () => {
 .logo-icon {
   width: 40px;
   height: 40px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 10px;
+  background: #fff;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+  box-shadow: 0 2px 8px rgba(196, 21, 45, 0.2);
   transition: transform 0.3s ease;
 }
 
 .logo:hover .logo-icon {
-  transform: rotate(5deg) scale(1.05);
+  transform: scale(1.08);
 }
 
-.logo-img {
-  width: 24px;
-  height: 24px;
-  filter: brightness(0) invert(1);
+.logo-svg {
+  width: 36px;
+  height: 36px;
 }
 
 .logo-text {
