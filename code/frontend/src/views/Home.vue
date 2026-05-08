@@ -31,7 +31,7 @@ const highlights = [
   },
   {
     icon: Connection, color: '#00b8ba', bg: '#e8fffe',
-    title: 'IP 代理池', desc: '集成 jhao104/proxy_pool，隧道代理自动切换，健康检查保障可用率'
+    title: 'IP 代理池', desc: '集成 jhao104/proxy_pool HTTP 正向代理，失效自动切换，健康检查保障可用率'
   },
 ]
 
