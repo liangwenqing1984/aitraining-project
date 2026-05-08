@@ -14,6 +14,9 @@ import {
   Expand,
   ArrowDown,
   User,
+  UserFilled,
+  Lock,
+  Menu,
   SwitchButton,
   TrendCharts,
   Files,
@@ -41,7 +44,7 @@ const isSubPage = computed(() => {
 })
 
 interface MenuItem {
-  path?: string; title: string; icon: any; children?: { path: string; title: string }[]
+  path?: string; title: string; icon: any; children?: { path: string; title: string; icon?: any }[]
 }
 const menuItems: MenuItem[] = [
   { path: '/home', title: '首页', icon: HomeFilled },
@@ -50,14 +53,14 @@ const menuItems: MenuItem[] = [
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
   { path: '/query', title: '智能查询', icon: TrendCharts },
   { path: '/rag', title: '语义搜索', icon: Search },
-  { path: '/settings/llm', title: '模型配置', icon: Setting },
   {
     title: '系统管理', icon: Setting,
     children: [
-      { path: '/system/users', title: '用户管理' },
-      { path: '/system/roles', title: '角色管理' },
-      { path: '/system/permissions', title: '权限管理' },
-      { path: '/system/menus', title: '菜单管理' },
+      { path: '/system/users', title: '用户管理', icon: User },
+      { path: '/system/roles', title: '角色管理', icon: UserFilled },
+      { path: '/system/permissions', title: '权限管理', icon: Lock },
+      { path: '/system/menus', title: '菜单管理', icon: Menu },
+      { path: '/settings/llm', title: '模型配置', icon: Setting },
     ]
   },
   { path: '/docs', title: '文档', icon: Document },
@@ -212,7 +215,10 @@ const getCurrentPageTitle = () => {
                 :index="child.path"
                 class="menu-item-custom sub-item"
               >
-                <span>{{ child.title }}</span>
+                <div class="sub-item-content">
+                  <el-icon v-if="child.icon" class="sub-icon"><component :is="child.icon" /></el-icon>
+                  <span>{{ child.title }}</span>
+                </div>
               </el-menu-item>
             </el-sub-menu>
             <el-menu-item
@@ -510,6 +516,22 @@ const getCurrentPageTitle = () => {
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%) !important;
   color: #667eea;
   font-weight: 600;
+}
+
+.sub-item-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+  color: #9ca3af;
+}
+
+:deep(.sub-item.is-active) .sub-icon {
+  color: #667eea;
 }
 
 /* 折叠状态优化 */

@@ -65,7 +65,6 @@ export async function runSeed(): Promise<void> {
       { name: '智能分析', path: '/analysis', icon: 'TrendCharts', sortOrder: 4 },
       { name: '智能查询', path: '/query', icon: 'TrendCharts', sortOrder: 5 },
       { name: '语义搜索', path: '/rag', icon: 'Search', sortOrder: 6 },
-      { name: '模型配置', path: '/settings/llm', icon: 'Setting', sortOrder: 7 },
     ];
 
     const menuIds: Record<string, number> = {};
@@ -80,20 +79,21 @@ export async function runSeed(): Promise<void> {
 
     // Step 2: 创建系统管理父菜单 + 子菜单
     const sysMenu = await menuService.createMenu({
-      name: '系统管理', icon: 'Setting', sortOrder: 8, hidden: false,
+      name: '系统管理', icon: 'Setting', sortOrder: 7, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 系统管理 (id=${sysMenu.id})`);
 
     const sysChildren = [
-      { name: '用户管理', path: '/system/users', sortOrder: 1 },
-      { name: '角色管理', path: '/system/roles', sortOrder: 2 },
-      { name: '权限管理', path: '/system/permissions', sortOrder: 3 },
-      { name: '菜单管理', path: '/system/menus', sortOrder: 4 },
+      { name: '用户管理', path: '/system/users', icon: 'User', sortOrder: 1 },
+      { name: '角色管理', path: '/system/roles', icon: 'UserFilled', sortOrder: 2 },
+      { name: '权限管理', path: '/system/permissions', icon: 'Lock', sortOrder: 3 },
+      { name: '菜单管理', path: '/system/menus', icon: 'Menu', sortOrder: 4 },
+      { name: '模型配置', path: '/settings/llm', icon: 'Setting', sortOrder: 5 },
     ];
     const sysChildIds: number[] = [];
     for (const child of sysChildren) {
       const m = await menuService.createMenu({
-        name: child.name, path: child.path, parentId: sysMenu.id,
+        name: child.name, path: child.path, icon: child.icon, parentId: sysMenu.id,
         sortOrder: child.sortOrder, hidden: false,
       } as any);
       sysChildIds.push(m.id!);
@@ -102,10 +102,10 @@ export async function runSeed(): Promise<void> {
 
     // 剩余独立菜单
     await menuService.createMenu({
-      name: '文档', path: '/docs', icon: 'Document', sortOrder: 9, hidden: false,
+      name: '文档', path: '/docs', icon: 'Document', sortOrder: 8, hidden: false,
     } as any);
     await menuService.createMenu({
-      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 10, hidden: false,
+      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 9, hidden: false,
     } as any);
 
     // Step 3: 创建管理员角色
