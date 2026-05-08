@@ -499,7 +499,7 @@ const getCurrentPageTitle = () => {
 :deep(.sub-item) {
   height: 40px;
   line-height: 40px;
-  margin: 2px 12px 2px 24px;
+  margin: 2px 12px;
   padding: 0 16px !important;
   font-size: 13px;
   color: #6b7280;
