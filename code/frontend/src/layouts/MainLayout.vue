@@ -234,7 +234,7 @@ const getCurrentPageTitle = () => {
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="user-info">
               <el-avatar :size="36" :src="userInfo.avatar" class="user-avatar">
-                {{ userInfo.name?.charAt(0) }}
+                <el-icon :size="20"><User /></el-icon>
               </el-avatar>
               <div class="user-details">
                 <span class="user-name">{{ userInfo.name }}</span>
