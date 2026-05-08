@@ -41,6 +41,11 @@ export function deleteLLMConfig(id: number): Promise<ApiResponse<void>> {
   return api.delete(`/llm/config/${id}`)
 }
 
+// 获取指定提供商的可用模型列表（Ollama 返回本地部署的模型）
+export function fetchProviderModels(provider: string): Promise<ApiResponse<string[]>> {
+  return api.get(`/llm/models/${provider}`)
+}
+
 // 健康检查
 export function checkLLMHealth(provider: string): Promise<ApiResponse<HealthCheckResult>> {
   return api.get('/llm/health', { params: { provider } })

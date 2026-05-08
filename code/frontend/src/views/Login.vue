@@ -459,7 +459,7 @@ if (rememberedUsername) { loginForm.username = rememberedUsername; rememberMe.va
 }
 
 .login-card {
-  width: 400px;
+  width: 680px;
   background: rgba(255,255,255,0.95);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -467,7 +467,7 @@ if (rememberedUsername) { loginForm.username = rememberedUsername; rememberMe.va
   box-shadow:
     0 20px 60px rgba(0,0,0,0.15),
     0 0 0 1px rgba(255,255,255,0.5) inset;
-  padding: 40px 40px 32px;
+  padding: 44px 44px 36px;
 }
 
 /* 品牌区 */
@@ -718,7 +718,7 @@ if (rememberedUsername) { loginForm.username = rememberedUsername; rememberMe.va
   }
   .login-card {
     width: 92vw;
-    padding: 32px 24px 24px;
+    padding: 36px 28px 28px;
   }
 }
 
@@ -727,7 +727,7 @@ if (rememberedUsername) { loginForm.username = rememberedUsername; rememberMe.va
     grid-template-columns: 1fr;
   }
   .login-card {
-    padding: 28px 20px 20px;
+    padding: 28px 22px 22px;
   }
   .card-title {
     font-size: 20px;

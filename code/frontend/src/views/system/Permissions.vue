@@ -24,7 +24,7 @@
         <el-table-column prop="code" label="编码" width="180" show-overflow-tooltip />
         <el-table-column prop="resource" label="资源" width="120">
           <template #default="{ row }">
-            <el-tag size="small">{{ row.resource }}</el-tag>
+            <el-tag size="small" :type="getResourceTagType(row.resource)">{{ row.resource }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="action" label="操作" width="100">
@@ -58,48 +58,121 @@
       />
     </el-card>
 
+    <!-- 新增/编辑对话框 -->
     <el-dialog
       v-model="dialogVisible"
       :title="editingId ? '编辑权限' : '新增权限'"
-      width="520px"
+      width="680px"
       destroy-on-close
+      class="form-dialog"
     >
-      <el-form :model="form" label-width="100px" label-position="left">
-        <el-form-item label="权限名称" required>
-          <el-input v-model="form.name" placeholder="如: 查看用户" />
-        </el-form-item>
-        <el-form-item label="编码" required>
-          <el-input v-model="form.code" placeholder="如: user:view" />
-        </el-form-item>
-        <el-form-item label="资源" required>
-          <el-select v-model="form.resource" placeholder="选择资源" style="width: 100%" filterable allow-create>
-            <el-option label="用户 (user)" value="user" />
-            <el-option label="角色 (role)" value="role" />
-            <el-option label="权限 (permission)" value="permission" />
-            <el-option label="菜单 (menu)" value="menu" />
-            <el-option label="任务 (task)" value="task" />
-            <el-option label="文件 (file)" value="file" />
-            <el-option label="分析 (analysis)" value="analysis" />
-            <el-option label="LLM (llm)" value="llm" />
-            <el-option label="RAG (rag)" value="rag" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="操作" required>
-          <el-select v-model="form.action" placeholder="选择操作" style="width: 100%" filterable allow-create>
-            <el-option label="查看 (view)" value="view" />
-            <el-option label="创建 (create)" value="create" />
-            <el-option label="编辑 (edit)" value="edit" />
-            <el-option label="删除 (delete)" value="delete" />
-            <el-option label="管理 (manage)" value="manage" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="2" placeholder="请输入描述" />
-        </el-form-item>
+      <template #header>
+        <div class="dialog-header">
+          <span class="dialog-header-icon">
+            <el-icon :size="18"><Key /></el-icon>
+          </span>
+          <span>{{ editingId ? '编辑权限' : '新增权限' }}</span>
+        </div>
+      </template>
+
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-width="90px"
+        label-position="left"
+        class="edit-form"
+      >
+        <!-- 基本信息 -->
+        <div class="form-section">
+          <div class="form-section-title">
+            <span class="section-icon"><el-icon><InfoFilled /></el-icon></span>
+            <span>基本信息</span>
+          </div>
+
+          <el-form-item label="权限名称" prop="name">
+            <el-input v-model="form.name" placeholder="如: 查看用户" :prefix-icon="User" />
+          </el-form-item>
+
+          <el-form-item label="编码" prop="code">
+            <el-input v-model="form.code" placeholder="如: user:view" :prefix-icon="Lock" />
+            <div class="field-hint">格式建议：&lt;资源&gt;:&lt;操作&gt;，如 user:create、file:delete</div>
+          </el-form-item>
+
+          <el-form-item label="描述" prop="description">
+            <el-input
+              v-model="form.description"
+              type="textarea"
+              :rows="2"
+              placeholder="请输入权限描述（选填）"
+            />
+          </el-form-item>
+        </div>
+
+        <el-divider margin="20px 0" />
+
+        <!-- 资源与操作 -->
+        <div class="form-section">
+          <div class="form-section-title">
+            <span class="section-icon"><el-icon><Setting /></el-icon></span>
+            <span>资源与操作</span>
+          </div>
+
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="资源" prop="resource">
+                <el-select
+                  v-model="form.resource"
+                  placeholder="选择资源"
+                  style="width: 100%"
+                  filterable
+                  allow-create
+                >
+                  <el-option
+                    v-for="opt in resourceOptions"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="操作" prop="action">
+                <el-select
+                  v-model="form.action"
+                  placeholder="选择操作"
+                  style="width: 100%"
+                  filterable
+                  allow-create
+                >
+                  <el-option
+                    v-for="opt in actionOptions"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <!-- 预览 -->
+          <div class="code-preview" v-if="form.resource && form.action">
+            <span class="preview-label">权限编码预览</span>
+            <code class="preview-code">{{ form.resource }}:{{ form.action }}</code>
+          </div>
+        </div>
       </el-form>
+
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave" :loading="saving">保存</el-button>
+        <div class="dialog-footer">
+          <el-button @click="dialogVisible = false" :disabled="saving" size="default">取消</el-button>
+          <el-button type="primary" size="default" @click="handleSave" :loading="saving">
+            <el-icon v-if="!saving"><Check /></el-icon>
+            <span>{{ saving ? '保存中...' : (editingId ? '保存修改' : '创建权限') }}</span>
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -108,7 +181,11 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules } from 'element-plus'
+import {
+  Plus, Edit, Delete, Key, InfoFilled, Setting,
+  User, Lock, Check,
+} from '@element-plus/icons-vue'
 import {
   getPermissions, createPermission, updatePermission, deletePermission,
   type SystemPermission
@@ -123,9 +200,60 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const searchForm = reactive({ keyword: '' })
+const formRef = ref<FormInstance>()
 
 const defaultForm = { name: '', code: '', resource: '', action: '', description: '' }
 const form = reactive<typeof defaultForm>({ ...defaultForm })
+
+const resourceOptions = [
+  { label: '用户 (user)', value: 'user' },
+  { label: '角色 (role)', value: 'role' },
+  { label: '权限 (permission)', value: 'permission' },
+  { label: '菜单 (menu)', value: 'menu' },
+  { label: '任务 (task)', value: 'task' },
+  { label: '文件 (file)', value: 'file' },
+  { label: '分析 (analysis)', value: 'analysis' },
+  { label: 'LLM (llm)', value: 'llm' },
+  { label: 'RAG (rag)', value: 'rag' },
+]
+
+const actionOptions = [
+  { label: '查看 (view)', value: 'view' },
+  { label: '创建 (create)', value: 'create' },
+  { label: '编辑 (edit)', value: 'edit' },
+  { label: '删除 (delete)', value: 'delete' },
+  { label: '管理 (manage)', value: 'manage' },
+  { label: '上传 (upload)', value: 'upload' },
+  { label: '执行 (execute)', value: 'execute' },
+  { label: '使用 (use)', value: 'use' },
+]
+
+const rules: FormRules = {
+  name: [
+    { required: true, message: '请输入权限名称', trigger: 'blur' },
+    { min: 2, max: 30, message: '权限名称长度 2-30 个字符', trigger: 'blur' },
+  ],
+  code: [
+    { required: true, message: '请输入权限编码', trigger: 'blur' },
+    { min: 3, max: 30, message: '编码长度 3-30 个字符', trigger: 'blur' },
+    { pattern: /^[a-zA-Z][a-zA-Z0-9_:]*$/, message: '编码必须以字母开头，格式: resource:action', trigger: 'blur' },
+  ],
+  resource: [
+    { required: true, message: '请选择或输入资源名称', trigger: 'change' },
+  ],
+  action: [
+    { required: true, message: '请选择或输入操作类型', trigger: 'change' },
+  ],
+}
+
+const resourceTypeMap: Record<string, string> = {
+  user: 'primary', role: 'success', permission: 'warning', menu: 'danger',
+  task: '', file: 'info', analysis: '', llm: 'success', rag: 'warning',
+}
+
+function getResourceTagType(resource: string): string {
+  return resourceTypeMap[resource] || 'info'
+}
 
 async function loadPermissions() {
   loading.value = true
@@ -142,6 +270,7 @@ function handleReset() { searchForm.keyword = ''; currentPage.value = 1; loadPer
 function showAddDialog() {
   editingId.value = null
   Object.assign(form, { ...defaultForm })
+  formRef.value?.resetFields()
   dialogVisible.value = true
 }
 
@@ -151,32 +280,37 @@ function editPermission(row: SystemPermission) {
     name: row.name, code: row.code, resource: row.resource, action: row.action,
     description: row.description || '',
   })
+  formRef.value?.resetFields()
   dialogVisible.value = true
 }
 
 async function handleSave() {
-  if (!form.name || !form.code || !form.resource || !form.action) {
-    ElMessage.warning('请填写必填项'); return
-  }
-
-  saving.value = true
-  try {
-    const payload = { ...form }
-    const res: any = editingId.value
-      ? await updatePermission(editingId.value, payload)
-      : await createPermission(payload)
-    if (res.success) {
-      ElMessage.success(editingId.value ? '权限更新成功' : '权限创建成功')
-      dialogVisible.value = false
-      loadPermissions()
-    }
-  } catch { /* ignore */ }
-  finally { saving.value = false }
+  if (!formRef.value) return
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    saving.value = true
+    try {
+      const payload = { ...form }
+      const res: any = editingId.value
+        ? await updatePermission(editingId.value, payload)
+        : await createPermission(payload)
+      if (res.success) {
+        ElMessage.success(editingId.value ? '权限信息已更新' : '权限创建成功')
+        dialogVisible.value = false
+        loadPermissions()
+      }
+    } catch { /* ignore */ }
+    finally { saving.value = false }
+  })
 }
 
 async function handleDelete(row: SystemPermission) {
   try {
-    await ElMessageBox.confirm(`确定要删除权限 "${row.name}" 吗？`, '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' })
+    await ElMessageBox.confirm(
+      `确定要删除权限 "${row.name}" 吗？删除后不可恢复，关联角色的该权限将同步移除。`,
+      '确认删除',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    )
     const res: any = await deletePermission(row.id!)
     if (res.success) { ElMessage.success('权限已删除'); loadPermissions() }
   } catch { /* cancelled */ }
@@ -189,4 +323,158 @@ onMounted(() => { loadPermissions() })
 .system-page { padding: 0; }
 .search-card { margin-bottom: 16px; }
 .action-bar { margin-bottom: 16px; }
+</style>
+
+<style>
+/* 复用全局对话框样式 */
+.form-dialog {
+  --dialog-radius: 12px;
+}
+
+.form-dialog .el-dialog {
+  border-radius: var(--dialog-radius);
+  overflow: hidden;
+}
+
+.form-dialog .el-dialog__header {
+  padding: 20px 24px 0;
+  border-bottom: none;
+}
+
+.form-dialog .el-dialog__body {
+  padding: 16px 24px 8px;
+}
+
+.form-dialog .el-dialog__footer {
+  padding: 12px 24px 20px;
+}
+
+/* 对话框头部 */
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.dialog-header-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667eea;
+}
+
+/* 表单分区标题 */
+.form-section {
+  margin-bottom: 4px;
+}
+
+.form-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #667eea;
+  margin-bottom: 16px;
+  padding-left: 2px;
+}
+
+.section-icon {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+}
+
+/* 字段提示 */
+.field-hint {
+  display: block;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* 表单项调整 */
+.edit-form .el-form-item {
+  margin-bottom: 18px;
+}
+
+.edit-form .el-form-item__label {
+  color: #4b5563;
+  font-weight: 500;
+}
+
+.edit-form .el-input__wrapper,
+.edit-form .el-select__wrapper {
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #e5e7eb inset;
+  transition: all 0.2s;
+}
+
+.edit-form .el-input__wrapper:hover,
+.edit-form .el-select__wrapper:hover {
+  box-shadow: 0 0 0 1px #d1d5db inset;
+}
+
+.edit-form .el-input.is-focus .el-input__wrapper,
+.edit-form .el-select.is-focus .el-select__wrapper {
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.3) inset;
+}
+
+/* 编码预览 */
+.code-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.04) 0%, rgba(118, 75, 162, 0.04) 100%);
+  border-radius: 8px;
+  border: 1px solid rgba(102, 126, 234, 0.12);
+  margin-top: 2px;
+}
+
+.preview-label {
+  font-size: 12px;
+  color: #909399;
+  flex-shrink: 0;
+}
+
+.preview-code {
+  font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 13px;
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.06);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+/* 对话框底部 */
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.dialog-footer .el-button {
+  border-radius: 8px;
+  padding: 9px 20px;
+  font-weight: 500;
+}
+
+.dialog-footer .el-button--primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
+}
+
+.dialog-footer .el-button--primary:hover {
+  box-shadow: 0 4px 14px rgba(102, 126, 234, 0.35);
+}
 </style>

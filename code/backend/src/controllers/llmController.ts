@@ -63,6 +63,49 @@ export async function deleteConfig(req: Request, res: Response) {
   }
 }
 
+// 获取指定提供商的可用模型列表（用于前端下拉选项）
+export async function listProviderModels(req: Request, res: Response) {
+  try {
+    const provider = req.params.provider as LLMProvider;
+    if (!provider || !['openai', 'anthropic', 'ollama', 'deepseek', 'zhipu', 'qwen', 'baidu', 'bytedance', 'moonshot'].includes(provider)) {
+      return res.status(400).json({
+        success: false,
+        error: '请指定有效的 provider'
+      } as ApiResponse);
+    }
+
+    // 本地模型：直接从 Ollama API 获取
+    if (provider === 'ollama') {
+      const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+      try {
+        const response = await fetch(`${baseUrl}/api/tags`, {
+          signal: AbortSignal.timeout(5000),
+        });
+        if (response.ok) {
+          const data: any = await response.json();
+          const models: string[] = (data.models || []).map((m: any) => m.name);
+          return res.json({ success: true, data: models } as ApiResponse);
+        }
+      } catch (e: any) {
+        console.error('[LLMController] 获取 Ollama 模型列表失败:', e.message);
+        return res.json({ success: true, data: [] } as ApiResponse);
+      }
+    }
+
+    // 云端模型：尝试调用 /v1/models 端点（需要已配置 API Key）
+    try {
+      const result = await llmService.healthCheck(provider);
+      return res.json({ success: true, data: result.models } as ApiResponse);
+    } catch (e: any) {
+      console.error(`[LLMController] 获取 ${provider} 模型列表失败:`, e.message);
+      return res.json({ success: true, data: [] } as ApiResponse);
+    }
+  } catch (error: any) {
+    console.error('[LLMController] 获取模型列表失败:', error.message);
+    return res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
 // 健康检查
 export async function healthCheck(req: Request, res: Response) {
   try {

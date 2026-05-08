@@ -11,6 +11,9 @@ router.delete('/config/:id', llmController.deleteConfig);
 // 健康检查
 router.get('/health', llmController.healthCheck);
 
+// 获取提供商可用模型列表
+router.get('/models/:provider', llmController.listProviderModels);
+
 // 测试调用
 router.post('/test', llmController.testCall);
 
