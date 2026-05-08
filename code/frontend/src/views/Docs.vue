@@ -43,7 +43,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   InfoFilled, Monitor, DataAnalysis, TrendCharts,
   Setting, Document, Folder, Connection, ChatDotRound,
@@ -62,6 +63,9 @@ const menuGroups = [
       { id: 'feat-insights', label: 'AI 市场洞察' },
       { id: 'feat-query', label: '自然语言查询' },
       { id: 'feat-anticrawl', label: 'AI 反爬对抗' },
+      { id: 'feat-llm-routing', label: 'LLM 任务路由' },
+      { id: 'feat-embedding', label: '文本向量化' },
+      { id: 'feat-proxy', label: 'IP 代理池' },
     ]
   },
   { id: 'tech-stack', label: '技术栈', icon: Setting },
@@ -343,7 +347,156 @@ const docs: Record<string, { title: string; content: string }> = {
   <li><strong>崩溃恢复</strong>：捕获 <code>Connection closed</code>/<code>Target closed</code>/<code>detached Frame</code>，抛 <code>{ shouldRestart: true }</code> 携带断点坐标，外层指数退避重试</li>
   <li><strong>断点续传</strong>：配置存 JSONB（组合索引 + 页码 + 职位索引），崩溃后精确恢复，jobId 去重保证幂等</li>
   <li><strong>最大 10 次重启</strong>：防止无限重启递归爆炸</li>
-</ul>`
+</ul>
+
+<h3>智联招聘爬取流程</h3>
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│                        任务初始化                                  │
+│  解析配置: 关键词[] × 城市[] → 总组合数 = keywords × cities        │
+│  初始化代理池 → getCount() → getProxy() → checkHealth(zhaopin)    │
+│  启动浏览器: 21 项 Chrome flags + 独立 userDataDir + 随机视口      │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                   遍历关键词 × 城市组合                             │
+│  for keyword in keywords:                                        │
+│    for city in cities:                                           │
+│      ├─ 断点续传: 跳过已完成组合 / 恢复中断页码                     │
+│      ├─ 构建搜索 URL: ?jl=城市代码&kw=关键词&p=页码                 │
+│      └─ page.goto(searchUrl, waitUntil: "networkidle2")          │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                      搜索列表页处理                                │
+│  ┌─ 等待 DOM: waitForSelector('.joblist-box__item')              │
+│  ├─ 渐进式懒加载滚动: 8 次 × 800ms 模拟人工浏览                    │
+│  ├─ 提取职位卡片: $$eval → { jobId, jobName, company, salary... } │
+│  ├─ 智能去重: Set(jobId) 过滤已抓取记录                           │
+│  ├─ 企业筛选: 公司名匹配 companyMatchMap（可选）                    │
+│  └─ 提取详情 URL: 拼接 fe-api.zhaopin.com 直连 API 路径            │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                    详情页抓取 (axios 直连)                         │
+│  ┌─ 优先: axios GET fe-api.zhaopin.com/c/i/jobs/position-detail  │
+│  │   (API 直连对 WAF 更宽松，绕开 HTML 页面反爬)                   │
+│  ├─ 携带: Referer + Origin 头伪装来源                             │
+│  ├─ 失败 → 代理重试 (带代理的 axios)                               │
+│  ├─ 还是失败 → 浏览器渲染 (page.goto + waitForSelector)            │
+│  └─ 解析: cheerio 提取完整职位信息                                 │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                    数据保存 & 翻页                                 │
+│  ├─ 去重入库: INSERT INTO sp_jobs ON CONFLICT DO NOTHING         │
+│  ├─ 企业匹配: 根据 companyMatchSet 标记 targetCompany              │
+│  ├─ 判断翻页: hasNextPage? → currentPage++ → 循环                  │
+│  │   └─ 连续 N 页无匹配 → 提前终止 (智能判定)                      │
+│  └─ 更新进度: WebSocket 推送 task:progress + task:log             │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                     异常恢复 & 继续                                │
+│  ├─ WAF 检测: body 为空 / 标题 "Security Verification"             │
+│  │   → 删除代理 → 降级串行 + 5-10s 大延迟                          │
+│  ├─ 浏览器崩溃: ERR_TUNNEL_CONNECTION_FAILED                      │
+│  │   → 删除代理 → 取新代理 → 重启浏览器 (携带断点坐标)              │
+│  └─ 主动重启: 每 5 个组合后主动重启浏览器刷新指纹                   │
+└──────────────────────────────────────────────────────────────────┘</code></pre>
+
+<h3>前程无忧 (51job) 爬取流程</h3>
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│                        任务初始化                                  │
+│  解析配置: 关键词[] × 城市[] → 总组合数                             │
+│  初始化代理池 (仅用于 axios 回退路径，浏览器走直连)                  │
+│  puppeteer-extra + StealthPlugin: 隐藏自动化特征                   │
+│  启动浏览器: 独立 userDataDir + 每页独立指纹 + UA 轮换              │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                    会话初始化 (Cookie 建立)                        │
+│  访问 www.51job.com 首页                                          │
+│  ├─ 停留 3-7s + 滚动 200-700px + 等待 1.5-3.5s                    │
+│  └─ 建立合法 Cookie → 降低后续 WAF 触发概率                        │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                   遍历关键词 × 城市组合                             │
+│  for keyword: for city:                                           │
+│    ├─ 构建搜索 URL: we.51job.com/api/job/search-pc?               │
+│    │   keyword=XX&city=XX&page=1&reportType=1&pageSize=50          │
+│    ├─ page.goto(searchUrl, waitUntil: "networkidle2")             │
+│    └─ 关键参数: reportType=1 (业务参数绕过 WAF)                    │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                  搜索页处理 (双重数据源)                            │
+│                                                                   │
+│  ┌─── 数据源 1: XHR 拦截 (主力) ───┐                               │
+│  │ page.on("response") 监听网络     │                              │
+│  │ ├─ 拦截 search-pc API JSON      │                              │
+│  │ ├─ .text() 避免 CDP 竞争         │                              │
+│  │ └─ JSON.parse() 提取 job list   │                              │
+│  └─────────────────────────────────┘                              │
+│                    ↓ (XHR 失败时降级)                              │
+│  ┌─── 数据源 2: DOM 解析 (备用) ───┐                               │
+│  │ page.$$eval 提取卡片元素         │                              │
+│  │ ├─ cheerio 解析职位 HTML         │                              │
+│  │ ├─ 硬编码 17 个选择器遍历        │                              │
+│  │ └─ AI 选择器推荐 (都失败时)       │                              │
+│  └─────────────────────────────────┘                              │
+│                    ↓                                               │
+│  诊断计数器: XHR 拦截数/成功数/失败数 + API 响应结构              │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                    WAF 检测 (双重防线)                             │
+│  ┌─ 第一道: 硬编码签名检测 (零延迟)                                │
+│  │   ├─ HTML &lt; 1000B → 疑似 WAF                                 │
+│  │   ├─ 标题 "滑动验证页面" → Geetest CAPTCHA                     │
+│  │   ├─ cf-app-waf.cfc.aliyuncs.com → Aliyun JS 挑战             │
+│  │   └─ "访问太频繁" / "请输入验证码" → 频率限制                   │
+│  └─ 第一道未命中 →                                                 │
+│  ┌─ 第二道: AI 页面分类 (语义理解)                                  │
+│  │   ├─ 截取 HTML 前 3000 字符 → LLM classifyPage                 │
+│  │   └─ 返回: { pageType, confidence, indicators, reason }       │
+│  └─ WAF 命中 → 三级恢复策略:                                       │
+│      1. page.reload() → 等 10s                                    │
+│      2. 原 URL 重导航 → 等 45-90s                                  │
+│      3. 去 reportType → 首页搜索回退                               │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                    详情页抓取 (浏览器渲染)                          │
+│  互斥锁序列化: pageCreateMutex → 防止 CDP 竞争崩溃                 │
+│  ├─ newPage() + goto(51job详情URL)                                │
+│  ├─ WAF_DETECTED? → 3-5s 延迟 → 重试 (最多 3 次)                  │
+│  ├─ 等待关键元素: .job-detail / .jtag / .cn / .bmsg               │
+│  ├─ cheerio 解析: 提取 17 个字段                                   │
+│  │   ├─ 薪资/经验/学历/标签/福利/工作地点                           │
+│  │   └─ 公司信息: 行业/性质/规模                                    │
+│  ├─ 保存 HTML 快照: 用于诊断提取问题                                │
+│  └─ page.close() 释放资源                                         │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                    数据保存 & 翻页                                 │
+│  ├─ 去重入库: INSERT INTO sp_jobs ON CONFLICT DO NOTHING         │
+│  ├─ 详情页失败: 使用搜索页列表数据兜底                              │
+│  ├─ 翻页判断: 检查下一页按钮 → page++ → 循环                       │
+│  ├─ 关闭搜索页: 释放浏览器资源 (防并发崩溃)                        │
+│  └─ 进度推送: WebSocket task:progress + task:log                  │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│                     异常恢复 & 继续                                │
+│  ├─ 浏览器崩溃: 捕获 Connection closed / Target closed            │
+│  │   → 指数退避 30s × 2^n → 重启 (最大 10 次)                     │
+│  ├─ WAF 封锁: 零产出 + WAF 检测 → 触发 BROWSER_RESTART             │
+│  ├─ 详情页重试: 单页最多 3 次 → 失败使用列表数据                   │
+│  ├─ 并发控制: 详情页最高 5 并发 (Promise.allSettled)               │
+│  └─ 批次间隔: 2-4s + 0.8-2s 错峰避免同时冲击服务器                │
+└──────────────────────────────────────────────────────────────────┘</code></pre>`
   },
   'feat-enrich': {
     title: 'AI 数据增强',
@@ -590,6 +743,639 @@ const docs: Record<string, { title: string; content: string }> = {
   <tr><td>应对</td><td>固定降级串行</td><td>LLM 根据分类+重试次数动态决策</td></tr>
   <tr><td>扩展性</td><td>新平台需手写规则</td><td>AI 自动适应反爬变化</td></tr>
 </table>`
+  },
+  'feat-llm-routing': {
+    title: 'LLM 任务路由',
+    content: `<p>系统支持同时配置<strong>多个 AI 模型</strong>，不同任务类型自动选择对应模型执行。核心机制：每个 LLM 配置维护一个 <code>task_routing</code> JSONB 数组，声明该模型可处理哪些任务类型。</p>
+
+<h3>四种任务类型</h3>
+<table>
+  <tr><th>任务类型</th><th>标识</th><th>说明</th><th>推荐模型</th></tr>
+  <tr><td>数据增强</td><td><code>enrichment</code></td><td>逐条标准化职位数据（薪资/分类/技能）</td><td>Ollama qwen3:14b / DeepSeek</td></tr>
+  <tr><td>智能洞察</td><td><code>insights</code></td><td>聚合统计 + 生成 Markdown 分析报告</td><td>DeepSeek / GPT-4o</td></tr>
+  <tr><td>NL 查询</td><td><code>query</code></td><td>自然语言 → SQL 转换</td><td>DeepSeek / 智谱 GLM</td></tr>
+  <tr><td>反爬检测</td><td><code>anti-crawl</code></td><td>页面类型分类 + 选择器推荐</td><td>Ollama qwen3:4b</td></tr>
+</table>
+
+<h3>路由选择逻辑</h3>
+<p>当系统需要调用 LLM 时，通过 <code>getConfigForTask(taskType)</code> 方法获取对应配置：</p>
+
+<ol>
+  <li><strong>刷新缓存</strong>：调用 <code>refreshConfigCache()</code> 从 <code>sp_llm_config</code> 表重新加载所有 active 配置</li>
+  <li><strong>精确匹配</strong>：遍历所有配置，检查 <code>task_routing</code> JSONB 数组是否包含当前 <code>taskType</code></li>
+  <li><strong>返回首个匹配</strong>：第一个匹配到的配置即为选中模型</li>
+  <li><strong>兜底策略</strong>：若无匹配，返回第一个 active 配置（保证系统始终有可用模型）</li>
+</ol>
+
+<pre><code>// 核心代码（llm/index.ts）
+async getConfigForTask(taskType: string): Promise&lt;LLMConfig | null&gt; {
+  await this.refreshConfigCache();  // 60s 缓存自动刷新
+  for (const config of this.configs) {
+    if (config.isActive && config.taskRouting?.includes(taskType)) {
+      return config;  // 返回首个匹配
+    }
+  }
+  return this.configs[0] || null;  // 兜底
+}</code></pre>
+
+<h3>60 秒缓存机制</h3>
+<ul>
+  <li>配置列表缓存在 <code>this.configs</code> 内存数组中</li>
+  <li>每次 <code>getConfigForTask()</code> 调用检查缓存时间戳，超过 60 秒自动刷新</li>
+  <li>目的：减少数据库查询频率（单次任务可能触发数十次 LLM 调用）</li>
+  <li>手动调用 <code>refreshConfigCache(true)</code> 可强制刷新</li>
+</ul>
+
+<h3>路由示例</h3>
+<p>假设系统配置了两个模型：</p>
+<table>
+  <tr><th>模型</th><th>task_routing</th></tr>
+  <tr><td>DeepSeek v4-pro</td><td>["enrichment", "insights", "query"]</td></tr>
+  <tr><td>Ollama qwen3:4b</td><td>["anti-crawl"]</td></tr>
+</table>
+
+<p>当爬虫触发反爬检测时，<code>getConfigForTask("anti-crawl")</code> 会匹配到 Ollama qwen3:4b（低延迟本地推理）；<br>
+当用户发起 NL 查询时，<code>getConfigForTask("query")</code> 会匹配到 DeepSeek v4-pro（强 SQL 生成能力）。</p>
+
+<h3>完整调用链</h3>
+<pre><code>用户操作 / 爬虫事件
+        ↓
+任务类型确定 (enrichment|insights|query|anti-crawl)
+        ↓
+llmService.getConfigForTask(taskType)
+        ↓
+  ┌─ refreshConfigCache() → 检查 60s 缓存
+  │   └─ 过期 → 查询 sp_llm_config WHERE is_active = true
+  │   └─ 未过期 → 使用内存缓存
+  ├─ 遍历 configs，匹配 taskRouting JSONB 数组
+  ├─ 匹配命中 → 返回对应 API Key + Base URL
+  └─ 无匹配 → 兜底返回首个 active 配置
+        ↓
+初始化 Provider (CloudProvider / LocalProvider)
+        ↓
+调用 LLM API → 返回结果</code></pre>
+
+<h3>API Key 加密存储</h3>
+<ul>
+  <li>所有 API Key 使用 <strong>AES-256-GCM</strong> 加密后存入 <code>api_key_encrypted</code> 字段</li>
+  <li>格式检测：系统自动识别明文/密文（<code>isEncrypted()</code> 正则校验 Base64:Base64 格式）</li>
+  <li>存量明文 Key 在首次使用时自动升级为密文</li>
+  <li>加密密钥从环境变量 <code>ENCRYPTION_KEY</code> 读取，无则使用内置默认密钥</li>
+</ul>`
+  },
+  'feat-embedding': {
+    title: '文本向量化',
+    content: `<p>系统通过 <strong>Ollama 本地 Embedding 模型 + pgvector 向量数据库</strong> 实现职位数据的语义搜索。核心流程：将每条职位拼接为自然语言文本 → 生成 768 维向量 → 存入 pgvector → 余弦相似度搜索。</p>
+
+<h3>完整流水线</h3>
+<pre><code>sp_job_enrichments (AI 增强后的结构化数据)
+        ↓
+buildJobText() → 拼接为自然语言段落
+        ↓
+Ollama nomic-embed-text → 768 维浮点向量
+        ↓
+pgvector vector(768) → INSERT ON CONFLICT UPSERT
+        ↓
+IVFFlat 索引 (100 lists, vector_cosine_ops)
+        ↓
+semanticSearch() → 余弦相似度排序</code></pre>
+
+<h3>一、文本拼接 (buildJobText)</h3>
+<p>将职位相关字段拼接为自然语言段落，作为 Embedding 模型的输入：</p>
+
+<pre><code>// embeddings.ts
+function buildJobText(job: JobRecord): string {
+  const parts: string[] = [];
+  if (job.jobName) parts.push(\`职位名称: \${job.jobName}\`);
+  if (job.companyName) parts.push(\`公司: \${job.companyName}\`);
+  if (job.workCity) parts.push(\`城市: \${job.workCity}\`);
+  if (job.jobCategoryL1) parts.push(\`分类: \${job.jobCategoryL1} &gt; \${job.jobCategoryL2}\`);
+  if (job.companyIndustry) parts.push(\`行业: \${job.companyIndustry}\`);
+  if (job.keySkills?.length) parts.push(\`技能: \${job.keySkills.join(', ')}\`);
+  if (job.educationNormalized) parts.push(\`学历: \${job.educationNormalized}\`);
+  if (job.salaryMonthlyMin) parts.push(\`薪资: \${job.salaryMonthlyMin}-\${job.salaryMonthlyMax}元/月\`);
+  return parts.join('；');
+}</code></pre>
+
+<p>拼接示例输出：<br>
+<code>"职位名称：Java高级开发工程师；公司：某科技有限公司；城市：北京；分类：技术 &gt; 后端开发；行业：互联网；技能：Java, Spring, MySQL, Redis；学历：本科；薪资：15000-25000元/月"</code></p>
+
+<h3>二、Embedding 生成</h3>
+
+<h4>模型信息</h4>
+<table>
+  <tr><th>属性</th><th>值</th></tr>
+  <tr><td>模型</td><td><code>nomic-embed-text</code> (Ollama 内置)</td></tr>
+  <tr><td>向量维度</td><td><strong>768 维</strong></td></tr>
+  <tr><td>API 端点</td><td><code>POST /api/embeddings</code></td></tr>
+  <tr><td>批量间隔</td><td>100ms（逐条生成）</td></tr>
+  <tr><td>索引间隔</td><td>200ms（批量索引）</td></tr>
+  <tr><td>输入</td><td>拼接后的自然语言文本</td></tr>
+  <tr><td>输出</td><td><code>number[]</code> 768 维浮点数组</td></tr>
+</table>
+
+<h4>调用流程</h4>
+<ol>
+  <li>构造请求体：<code>{ model: "nomic-embed-text", prompt: textContent }</code></li>
+  <li>发送 POST 到 Ollama API（默认 <code>http://localhost:11434</code>）</li>
+  <li>解析响应中的 <code>embedding</code> 数组（768 个 float32）</li>
+  <li>验证维度：数组长度必须等于 768，否则抛出异常</li>
+  <li>格式化为 pgvector 兼容字符串：<code>[0.12, -0.34, ...]</code></li>
+</ol>
+
+<h4>批量生成优化</h4>
+<ul>
+  <li><strong>100ms 间隔</strong>：<code>generateEmbeddings()</code> 逐条请求间 sleep 100ms，避免 Ollama 过载</li>
+  <li><strong>并发保护</strong>：单条失败不中断批次，记录错误后继续下一条</li>
+  <li><strong>进度推送</strong>：通过 WebSocket <code>rag:index-progress</code> 事件实时推送索引进度</li>
+</ul>
+
+<h3>三、pgvector 存储与索引</h3>
+
+<h4>表结构 (sp_job_embeddings)</h4>
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td><code>id</code></td><td>VARCHAR(255) PK</td><td>UUID</td></tr>
+  <tr><td><code>job_id</code></td><td>VARCHAR(255)</td><td>职位 ID</td></tr>
+  <tr><td><code>task_id</code></td><td>VARCHAR(255) FK</td><td>关联任务</td></tr>
+  <tr><td><code>text_content</code></td><td>TEXT</td><td>拼接后的原文（调试/审计用）</td></tr>
+  <tr><td><code>embedding</code></td><td><strong>vector(768)</strong></td><td>768 维向量</td></tr>
+  <tr><td><code>job_name</code>/<code>company_name</code>/…</td><td>冗余字段</td><td>搜索返回时避免 JOIN</td></tr>
+</table>
+<table>
+  <tr><th>唯一约束</th><td><code>UNIQUE(task_id, job_id)</code></td><td>幂等 UPSERT 基础</td></tr>
+</table>
+
+<h4>IVFFlat 索引</h4>
+<pre><code>CREATE INDEX IF NOT EXISTS idx_job_embeddings_embedding
+  ON sp_job_embeddings
+  USING ivfflat (embedding vector_cosine_ops)
+  WITH (lists = 100);</code></pre>
+
+<ul>
+  <li><strong>IVFFlat</strong>：将 768 维空间划分为 100 个聚类列表（lists），查询时只扫描最相关的几个列表</li>
+  <li><strong>近似搜索</strong>：比全量 KNN 快 10-100 倍，适合万级以上数据</li>
+  <li><strong>余弦距离</strong>：<code>vector_cosine_ops</code> 操作符类，<code>&lt;=&gt;</code> 运算符计算余弦距离 = 1 - cos(θ)</li>
+  <li><strong>幂等 UPSERT</strong>：<code>ON CONFLICT (task_id, job_id) DO UPDATE</code>，重复索引自动覆盖旧值</li>
+</ul>
+
+<h3>四、语义搜索</h3>
+
+<h4>搜索 SQL</h4>
+<pre><code>SELECT
+  job_id, job_name, company_name, work_city,
+  salary_monthly_min, salary_monthly_max,
+  job_category_l1, job_category_l2,
+  company_industry, key_skills,
+  1 - (embedding &lt;=&gt; $1::vector) AS similarity
+FROM sp_job_embeddings
+WHERE task_id = $2
+  AND 1 - (embedding &lt;=&gt; $1::vector) &gt;= $3
+ORDER BY similarity DESC
+LIMIT $4;</code></pre>
+
+<ul>
+  <li><strong>余弦距离 → 相似度</strong>：<code>1 - (embedding &lt;=&gt; query_vector)</code>，值域 0~1，越大越相似</li>
+  <li><strong>阈值过滤</strong>：默认 <code>minSimilarity = 0.3</code>，过滤低相关性结果</li>
+  <li><strong>范围限定</strong>：可选按 <code>task_id</code> 限定搜索范围</li>
+</ul>
+
+<h3>五、查询扩展 (Query Expansion)</h3>
+<p>针对用户输入过短（≤10 字符）导致的语义稀疏问题，系统内置 <strong>30+ 术语映射表</strong> 自动扩展查询：</p>
+
+<h4>触发条件</h4>
+<ul>
+  <li>用户输入 ≤ 10 个字符（去除空格后）</li>
+  <li>例如："Java"（4 字符）、"前端"（2 字符）、"产品经理"（4 字符）</li>
+</ul>
+
+<h4>扩展逻辑</h4>
+<ol>
+  <li>遍历映射表（30+ 条），查找用户输入中是否包含已知术语</li>
+  <li>匹配到术语后，将对应描述文本追加到查询后面</li>
+  <li>形成完整查询：<code>"Java Java开发工程师 后端开发 Spring框架 微服务架构"</code></li>
+</ol>
+
+<h4>术语映射示例</h4>
+<table>
+  <tr><th>用户输入</th><th>扩展后</th></tr>
+  <tr><td>Java</td><td>Java Java开发工程师 后端开发 Spring框架 微服务架构</td></tr>
+  <tr><td>前端</td><td>前端 前端开发工程师 Web前端 Vue React 网页开发</td></tr>
+  <tr><td>Python</td><td>Python Python开发工程师 数据分析 机器学习 AI开发 Django</td></tr>
+  <tr><td>产品经理</td><td>产品经理 产品设计 需求分析 项目管理 用户体验</td></tr>
+</table>
+
+<h4>扩展效果</h4>
+<ul>
+  <li>短查询的语义向量从稀疏变为丰富，搜索命中率显著提升</li>
+  <li>扩展文本包含领域上下文（技能、职责、框架），使向量更精准</li>
+  <li>非短查询（> 10 字符）不做扩展，保持用户原始语义</li>
+</ul>
+
+<h3>六、关键技术细节</h3>
+
+<h4>为什么选择 nomic-embed-text？</h4>
+<ul>
+  <li>Ollama 官方推荐的中英文混合 Embedding 模型</li>
+  <li>768 维在精度和存储之间取得平衡（每向量 ~3KB）</li>
+  <li>本地推理，数据不出服务器，无需外部 API 费用</li>
+  <li>单条推理延迟 ~50-200ms（视硬件而定）</li>
+</ul>
+
+<h4>为什么使用 IVFFlat 而非 HNSW？</h4>
+<ul>
+  <li>pgvector 的 IVFFlat 基于 PostgreSQL 原生索引引擎，稳定性好</li>
+  <li>100 个列表在万级数据下提供足够的搜索精度（召回率 > 95%）</li>
+  <li>索引构建速度快，适合数据频繁更新的场景</li>
+</ul>
+
+<h4>混合数据源设计</h4>
+<ul>
+  <li>向量嵌入同时包含 <strong>原始字段</strong>（职位名、公司名、城市）和 <strong>AI 增强字段</strong>（分类、技能、行业、学历）</li>
+  <li>增强字段使语义搜索不仅能匹配职位名称，还能理解行业背景和技能要求</li>
+  <li>例如搜索"金融行业的数据分析师"能匹配到：职位名=数据分析、行业=金融、技能=Python/SQL</li>
+</ul>
+
+<h4>依赖要求</h4>
+<ul>
+  <li>需要 PostgreSQL 安装 <strong>pgvector</strong> 扩展：<code>CREATE EXTENSION IF NOT EXISTS vector;</code></li>
+  <li>需要 Ollama 运行 <strong>nomic-embed-text</strong> 模型（768 维）</li>
+  <li>如果 pgvector 不可用，向量表创建会被跳过，RAG 语义搜索功能禁用</li>
+  <li>首次索引会自动检查并尝试拉取 embedding 模型</li>
+</ul>`
+  },
+  'feat-proxy': {
+    title: 'IP 代理池',
+    content: `<p>系统集成第三方 <strong>HTTP 正向代理池</strong>（jhao104/proxy_pool），为爬虫提供动态 IP 轮换能力，绕过目标网站的反爬 IP 封锁。</p>
+
+<h3>架构概览</h3>
+<pre><code>┌─────────────────────────────────────────────────────┐
+│                  proxy_pool (外部服务 :5010)           │
+│  GET /get/  → 随机获取代理                            │
+│  GET /pop/  → 获取并删除代理                           │
+│  GET /delete/?proxy=xx → 删除指定代理                  │
+│  GET /count  → 代理池数量                              │
+│  GET /all/   → 全部代理列表                            │
+└────────────────────┬────────────────────────────────┘
+                     │ HTTP API
+┌────────────────────▼────────────────────────────────┐
+│              ProxyPool 类 (proxyPool.ts)              │
+│  getProxy / popProxy / deleteProxy / checkHealth     │
+│  formatProxyArg / getProxyArgs / isAvailable         │
+└────────┬───────────────────────┬────────────────────┘
+         │                       │
+         ▼                       ▼
+┌─────────────────┐   ┌─────────────────────────────┐
+│  Zhilian Crawler │   │   51job Crawler              │
+│  浏览器级代理      │   │   axios 回退路径代理          │
+│  --proxy-server   │   │  (浏览器走直连)               │
+└─────────────────┘   └─────────────────────────────┘</code></pre>
+
+<h3>一、ProxyPool 类核心设计</h3>
+
+<h4>构造函数与配置</h4>
+<pre><code>constructor(poolUrl: string = 'http://127.0.0.1:5010')</code></pre>
+<ul>
+  <li><strong>默认地址</strong>：<code>http://127.0.0.1:5010</code>（proxy_pool 服务默认端口）</li>
+  <li><strong>连续失败保护</strong>：<code>maxConsecutiveFailures = 5</code>，连续 5 次失败后自动停止返回代理</li>
+  <li><strong>请求超时</strong>：<code>requestTimeout = 5000ms</code></li>
+</ul>
+
+<h4>API 方法一览</h4>
+<table>
+  <tr><th>方法</th><th>说明</th><th>代理池 API</th></tr>
+  <tr><td><code>getProxy(type?)</code></td><td>随机获取一个代理（不删除）</td><td><code>GET /get/</code></td></tr>
+  <tr><td><code>popProxy(type?)</code></td><td>获取代理并从池中删除</td><td><code>GET /pop/</code></td></tr>
+  <tr><td><code>deleteProxy(proxy)</code></td><td>删除指定代理</td><td><code>GET /delete/?proxy=</code></td></tr>
+  <tr><td><code>getCount()</code></td><td>获取代理池当前数量</td><td><code>GET /count</code></td></tr>
+  <tr><td><code>getAllProxies(type?)</code></td><td>获取全部代理列表</td><td><code>GET /all/</code></td></tr>
+  <tr><td><code>checkHealth(proxy, testUrl)</code></td><td>验证代理可用性（核心方法）</td><td>直连目标站</td></tr>
+</table>
+
+<h3>二、代理健康检查 (checkHealth)</h3>
+<p>获取代理后必须通过可用性验证，这是<strong>保证代理质量的核心机制</strong>：</p>
+
+<pre><code>async checkHealth(proxy: string, testUrl: string): Promise&lt;boolean&gt; {
+  const [host, port] = proxy.split(':');
+  const resp = await axios.get(testUrl, {
+    proxy: { host, port: parseInt(port), protocol: 'http' },
+    timeout: 8000,                    // 8 秒超时
+    maxRedirects: 0,                  // 不跟随重定向（3xx = 隧道失败）
+    validateStatus: s => s >= 200 && s < 300,  // 仅 2xx 视为可用
+  });
+  return resp.status >= 200 && resp.status < 300;
+}</code></pre>
+
+<h4>验证策略</h4>
+<table>
+  <tr><th>策略</th><th>说明</th></tr>
+  <tr><td>目标站验证</td><td>各爬虫传入各自的目标站 URL（智联用 zhaopin.com，51job 用 51job.com）</td></tr>
+  <tr><td>仅 2xx 通过</td><td>3xx（重定向到登录/验证页）、4xx（禁止访问）、5xx（服务端错误）均视为不可用</td></tr>
+  <tr><td>禁止重定向</td><td><code>maxRedirects: 0</code>，代理返回 3xx 说明隧道建立失败或目标站拒绝</td></tr>
+  <tr><td>8 秒超时</td><td>超时/连接拒绝/DNS 失败/CONNECT 失败 → 均视为不可用</td></tr>
+  <tr><td>最多 3 次尝试</td><td>获取代理后最多 3 次尝试找到可用代理，全部失败则降级直连</td></tr>
+</table>
+
+<h3>三、智联招聘：浏览器级代理</h3>
+<p>智联使用 Puppeteer <strong>浏览器级代理</strong>，所有页面请求（包括 WebSocket、资源加载）均经过代理：</p>
+
+<ol>
+  <li><strong>启动前验证</strong>：从代理池获取代理 → 验证可用性（访问 zhaopin.com）→ 不可用则删除并重试（最多 3 次）</li>
+  <li><strong>浏览器注入</strong>：通过 <code>--proxy-server=http://ip:port</code> 参数传递给 Chromium</li>
+  <li><strong>隧道失败检测</strong>：监听浏览器错误事件，识别 <code>ERR_TUNNEL_CONNECTION_FAILED</code> / <code>ERR_PROXY_CONNECTION_FAILED</code> 等代理相关错误</li>
+  <li><strong>自动切换</strong>：检测到隧道失败 → 删除死代理 → 从池中取新代理 → 重启浏览器（携带断点）</li>
+  <li><strong>切换上限</strong>：<code>maxProxySwitchesPerTask</code> 限制单任务最大换代理次数，防止无限重启</li>
+  <li><strong>降级直连</strong>：代理池耗尽或切换次数达上限 → 自动回退到浏览器直连模式</li>
+</ol>
+
+<h3>四、51job：axios 回退路径代理</h3>
+<p>51job 使用不同的代理策略，因为<strong>免费代理 100% 触发 Aliyun WAF</strong>：</p>
+<ul>
+  <li><strong>浏览器不设代理</strong>：Puppeteer 浏览器直连，避免代理触发 WAF</li>
+  <li><strong>axios 详情页代理</strong>：仅用于非浏览器请求路径（已废弃，因直连返回 JS 混淆密文，代理返回 404）</li>
+  <li><strong>死代理黑名单</strong>：<code>deadProxyCache: Set&lt;string&gt;</code>，404/ECONNRESET/ETIMEDOUT/响应 &lt; 1KB 的代理自动加入</li>
+  <li><strong>连续失败保护</strong>：连续 5 次失败停止返回代理</li>
+</ul>
+
+<h3>五、代理池配置</h3>
+
+<h4>配置常量 (zhilian.ts / job51.ts)</h4>
+<table>
+  <tr><th>配置项</th><th>默认值</th><th>说明</th></tr>
+  <tr><td><code>enabled</code></td><td><code>true</code></td><td>是否启用代理池</td></tr>
+  <tr><td><code>poolUrl</code></td><td><code>http://127.0.0.1:5010</code></td><td>proxy_pool 服务地址</td></tr>
+  <tr><td><code>maxProxySwitchesPerTask</code></td><td><code>3</code></td><td>单任务最大换代理次数</td></tr>
+  <tr><td><code>healthCheckTimeout</code></td><td><code>8000ms</code></td><td>健康检查超时时间</td></tr>
+</table>
+
+<h4>部署 proxy_pool 服务</h4>
+<pre><code># 克隆并启动代理池服务
+git clone https://github.com/jhao104/proxy_pool.git
+cd proxy_pool
+docker-compose up -d         # Docker 部署
+# 或
+pip install -r requirements.txt && python run.py  # 手动部署
+
+# 验证服务可用
+curl http://127.0.0.1:5010/count
+# → {"count": 15}</code></pre>
+
+<h3>六、完整工作流</h3>
+<pre><code>爬虫任务启动
+        ↓
+检查 PROXY_POOL_CONFIG.enabled
+        ↓
+  ┌─ 禁用 → 浏览器直连模式
+  └─ 启用 → proxyPool.getCount() → 检查代理池数量
+              ↓
+        ┌─ 为空 → 降级直连
+        └─ 有代理 → getProxy() → checkHealth(targetUrl)
+                      ↓
+                ┌─ 不可用 → deleteProxy() → 重试（最多 3 次）
+                │              └─ 全部不可用 → 降级直连
+                └─ 可用 → 设置 currentProxy → 浏览器 --proxy-server
+                            ↓
+                      爬取过程中监听错误事件
+                            ↓
+                ┌─ ERR_TUNNEL_CONNECTION_FAILED 触发
+                │   → deleteProxy(deadProxy)
+                │   → proxySwitchCount++
+                │   → getProxy() + checkHealth()
+                │   → 新代理可用 → 重启浏览器（携带断点坐标）
+                │   → 新代理不可用 → 降级直连
+                │   → 切换次数超限 → 降级直连
+                └─ 正常完成 → 保持代理直到浏览器主动重启</code></pre>
+
+<h3>七、容错与降级策略</h3>
+<table>
+  <tr><th>场景</th><th>策略</th><th>恢复方式</th></tr>
+  <tr><td>代理池服务不可达</td><td>跳过代理，浏览器直连</td><td>任务结束后自动重试</td></tr>
+  <tr><td>代理池为空</td><td>降级直连</td><td>等待代理池补充，下次任务可用</td></tr>
+  <tr><td>连续 5 次获取代理失败</td><td><code>isAvailable()</code> 返回 false</td><td>调用 <code>resetFailures()</code> 手动重置</td></tr>
+  <tr><td>隧道连接失败</td><td>自动切换代理 + 浏览器重启</td><td>切换上限内自动恢复</td></tr>
+  <tr><td>所有代理不可用</td><td>降级直连模式</td><td>依赖浏览器自身的反爬能力</td></tr>
+  <tr><td>代理速度过慢</td><td>8 秒超时自动淘汰</td><td>代理池自动补充新代理</td></tr>
+</table>
+
+<h3>八、两个平台代理策略对比</h3>
+<table>
+  <tr><th>维度</th><th>智联招聘</th><th>前程无忧 (51job)</th></tr>
+  <tr><td>代理层级</td><td>浏览器级（--proxy-server）</td><td>axios 回退路径（浏览器直连）</td></tr>
+  <tr><td>代理原因</td><td>WAF 封 IP，浏览器所有流量需代理</td><td>浏览器直连已够用，仅备用路径使用</td></tr>
+  <tr><td>健康检查目标</td><td>zhaopin.com</td><td>51job.com</td></tr>
+  <tr><td>死代理检测</td><td>ERR_TUNNEL_CONNECTION_FAILED</td><td>404 + ECONNRESET + ETIMEDOUT</td></tr>
+  <tr><td>黑名单方式</td><td>实时 deleteProxy()</td><td>deadProxyCache Set + 连续失败计数</td></tr>
+  <tr><td>切换上限</td><td>maxProxySwitchesPerTask</td><td>连续 5 次失败停止返回</td></tr>
+  <tr><td>降级策略</td><td>直连模式（无代理浏览器）</td><td>axios 直连（可能触发 WAF）</td></tr>
+</table>
+
+<h3>九、扩展付费代理</h3>
+<p>当前代理池默认使用 11 个免费代理源，代理质量低、可用率不到 5%。<strong>接入付费代理只需两步</strong>：</p>
+
+<h4>第一步：在 <code>fetcher/proxyFetcher.py</code> 中添加方法</h4>
+<pre><code># 示例 1：付费代理 API（token 鉴权）
+@staticmethod
+def paidProxy01():
+    import requests
+    resp = requests.get(
+        "https://付费代理API地址/get_proxies",
+        params={"token": "your_api_key"}
+    )
+    for item in resp.json():
+        yield f"{item['host']}:{item['port']}"
+
+# 示例 2：白名单 IP 提取（本地出口 IP 已在代理平台加入白名单）
+@staticmethod
+def paidProxy02():
+    import requests
+    # 付费代理平台通常提供一个固定 URL，每次返回不同 IP
+    resp = requests.get("https://proxy-provider.com/dynamic-ip")
+    # 返回格式可能是纯文本 ip:port 或 JSON
+    yield resp.text.strip()</code></pre>
+
+<h4>第二步：在 <code>setting.py</code> 注册</h4>
+<pre><code>PROXY_FETCHER = [
+    "freeProxy01",   # 站大爷
+    "freeProxy02",   # 66代理
+    # ... 原有 11 个免费源 ...
+    "freeProxy11",   # 稻壳代理
+    "paidProxy01",   # ← 新增付费源
+    "paidProxy02",   # ← 新增付费源
+]</code></pre>
+
+<h4>关键要点</h4>
+<table>
+  <tr><th>要点</th><th>说明</th></tr>
+  <tr><td>方法签名</td><td>必须是 <code>@staticmethod</code></td></tr>
+  <tr><td>返回格式</td><td>必须用 <code>yield</code> 逐个返回 <code>host:port</code> 字符串</td></tr>
+  <tr><td>命名</td><td>不能和已有 11 个方法重名</td></tr>
+  <tr><td>注册</td><td><code>PROXY_FETCHER</code> 列表中的名字必须与方法名一致</td></tr>
+  <tr><td>生效</td><td><code>schedule</code> 进程下次定时抓取时自动识别新方法</td></tr>
+</table>
+
+<h4>常用付费代理平台接入示例</h4>
+<table>
+  <tr><th>平台</th><th>API 方式</th><th>特点</th></tr>
+  <tr><td>快代理 (私密代理)</td><td><code>GET /api/getproxy?secret_id=xx&num=10</code></td><td>高质量独享，支持白名单</td></tr>
+  <tr><td>芝麻代理</td><td><code>GET /api/getip?appKey=xx&num=10</code></td><td>每次返回 JSON 含 expire 过期时间</td></tr>
+  <tr><td>站大爷 (付费版)</td><td><code>GET /api/getip?api_key=xx&count=10</code></td><td>与免费源同一平台，付费质量更好</td></tr>
+  <tr><td>Bright Data (国际)</td><td>REST API + Zone 管理</td><td>企业级，住宅 IP，覆盖全球</td></tr>
+</table>
+
+<p>接入付费代理后，<code>checkHealth()</code> 的实时验证依然有效——付费代理不会 100% 可用，健康检查保证只使用当前可连通的代理。</p>
+
+<h3>十、常见问答</h3>
+
+<h4>Q1: <code>/count</code> 返回的是可用代理数量吗？</h4>
+<p><strong>不是。</strong><code>/count</code> 返回代理池 Redis 中<strong>已入库的全部代理总数</strong>（<code>{"total": 150, "https": 45}</code>），而不是实时可用的代理数量。</p>
+<ul>
+  <li>代理入库时经过一次验证，但验证是<strong>周期性</strong>的（非实时），从上次验证到当前期间代理可能已失效</li>
+  <li>已入库的代理并不保证此刻 100% 可用——定时验证任务会扣分淘汰失效代理，但存在时间窗口</li>
+  <li><strong>注</strong>：<code>getCount()</code> 早期版本曾错误地解析 <code>count</code> 字段（实际 API 返回 <code>total</code>），导致始终返回 0，已修复为正确解析 <code>total</code> 并兼容多种格式</li>
+</ul>
+
+<h4>Q2: <code>/get/</code> 返回的是可用代理吗？</h4>
+<p><strong>不完全保证。</strong><code>/get/</code> 只返回 score 高于阈值的代理（已过滤掉多次验证失败的低分代理），但不保证当前时刻 100% 可用。</p>
+<ul>
+  <li>代理池按 score 评分机制维护：初始高分 → 验证失败扣分 → 低于阈值被排除</li>
+  <li>但验证是周期性的，从上次验证到当前期间代理可能已失效</li>
+  <li><strong>本项目的做法是正确的</strong>：<code>getProxy()</code> 之后立即调用 <code>checkHealth()</code> 做实时验证，不可用就 <code>deleteProxy()</code> 删除并换下一个，最多重试 3 次</li>
+</ul>
+
+<h4>Q3: <code>checkHealth()</code> 验证通过后就一定可用吗？</h4>
+<p><strong>不能保证 100%。</strong><code>checkHealth()</code> 只能证明<strong>那一瞬间</strong>代理可用，实际爬取中仍可能因以下原因失败：</p>
+<table>
+  <tr><th>原因</th><th>说明</th></tr>
+  <tr><td>时间窗口</td><td>健康检查通过后的几秒内，免费代理可能突然失效（极不稳定）</td></tr>
+  <tr><td>协议差异</td><td>checkHealth 用 axios 发普通 GET，Puppeteer 走 HTTP CONNECT 隧道——代理能转发简单请求，不代表能承载浏览器 HTTPS + WebSocket 流量</td></tr>
+  <tr><td>目标 URL 不同</td><td>健康检查只测首页（zhaopin.com），爬虫实际访问搜索 API、详情页等不同端点，代理 IP 可能已被具体接口封禁</td></tr>
+  <tr><td>负载差异</td><td>单个 axios 请求 vs 浏览器多并发（页面资源、XHR、WebSocket），代理轻载通过、重载超时</td></tr>
+</table>
+<p>这是一个<strong>实用的分层防御</strong>，而非追求单点完美：</p>
+<pre><code>checkHealth 通过 → 浏览器启动 → 爬取中 ERR_TUNNEL_CONNECTION_FAILED
+                                    → deleteProxy → 换新代理 → 重启浏览器</code></pre>
+<p><code>checkHealth()</code> 做快速初筛淘汰明显死代理，后续浏览器隧道失败时触发二次切换，形成多层保障。</p>
+
+<h4>Q4: proxy_pool 日志中大量 <code>fail</code> 和 <code>pass</code> 是什么意思？</h4>
+<p>这些是 jhao104/proxy_pool 内部的<strong>代理验证日志</strong>，来自 <code>check.py</code> 的 <code>RawProxyCheck</code> 多线程验证流程：</p>
+<table>
+  <tr><th>日志关键词</th><th>含义</th></tr>
+  <tr><td><code>IP:PORT fail</code></td><td>代理验证失败（超时/拒绝连接/无响应），<strong>丢弃不入库</strong></td></tr>
+  <tr><td><code>IP:PORT pass</code></td><td>代理验证通过，<strong>正式入库</strong>可供 <code>/get/</code> 获取</td></tr>
+  <tr><td><code>IP:PORT exist</code></td><td>代理已存在于池中，<strong>跳过重复添加</strong></td></tr>
+  <tr><td><code>Expecting value: ... (char 0)</code></td><td>验证目标 URL 返回空响应或非 JSON，JSON 解析失败</td></tr>
+</table>
+<p>实际观察中，<strong>免费代理的存活率极低</strong>——一批 20+ 个代理通常只有 1 个能通过验证（通过率不到 5%），绝大多数被发现时已经失效（端口关闭、IP 被回收、目标站封禁）。这恰恰解释了为什么本项目的 <code>checkHealth()</code> 二次验证至关重要——proxy_pool 的 <code>pass</code> 只证明代理能访问通用测试 URL，不代表能稳定连接我们的目标站。</p>
+
+<h4>Q5: 爬虫从代理池获取的"代理"具体是什么？</h4>
+<p>就是一个 <strong><code>IP:端口</code></strong> 字符串，代表一个 HTTP 正向代理服务器地址。</p>
+<p><strong>数据结构</strong>（<code>ProxyInfo</code> 接口）：</p>
+<pre><code>{
+  proxy: "39.102.208.189:8081",  // IP:端口 — 核心内容
+  type: "http",                   // 代理协议类型
+  source: "freeProxy01",          // 来源（哪个免费代理源抓取的）
+  score: 7,                       // 质量评分（高分优先）
+  https: false                    // 是否支持 HTTPS CONNECT 隧道
+}</code></pre>
+<p><strong>使用方式</strong>：</p>
+<table>
+  <tr><th>场景</th><th>格式化方式</th><th>示例</th></tr>
+  <tr><td>Puppeteer 浏览器</td><td><code>--proxy-server=http://ip:port</code></td><td><code>--proxy-server=http://39.102.208.189:8081</code></td></tr>
+  <tr><td>axios HTTP 请求</td><td><code>{ host, port, protocol }</code></td><td><code>{ host: "39.102.208.189", port: 8081 }</code></td></tr>
+</table>
+<p>本质是<strong>一个中间人</strong>——你的流量先走到这个 IP:端口，再由它转发到目标站，目标站看到的来源 IP 是代理 IP 而非你的真实 IP。</p>
+
+<h4>Q6: 11 个免费代理源具体是怎么定义的？</h4>
+<p>代理源定义在 <code>d:/proxy_pool/fetcher/proxyFetcher.py</code>，注册在 <code>d:/proxy_pool/setting.py</code> 的 <code>PROXY_FETCHER</code> 列表中：</p>
+<table>
+  <tr><th>注册名</th><th>来源网站</th><th>抓取方式</th><th>特点</th></tr>
+  <tr><td><code>freeProxy01</code></td><td>站大爷 zdaye.com</td><td>xpath 解析表格</td><td>只采 5 分钟内的更新</td></tr>
+  <tr><td><code>freeProxy02</code></td><td>66代理 66ip.cn</td><td>xpath 解析第 3 个 table</td><td>结构简单</td></tr>
+  <tr><td><code>freeProxy03</code></td><td>开心代理 kxdaili.com</td><td>xpath 解析表格</td><td>固定两个 URL</td></tr>
+  <tr><td><code>freeProxy04</code></td><td>FreeProxyList freeproxylists.net</td><td>URL 解码 + 正则</td><td>IP 被 JS 编码，需先解码</td></tr>
+  <tr><td><code>freeProxy05</code></td><td>快代理 kuaidaili.com</td><td>xpath 遍历两分类多页</td><td>必须 sleep 1s 防封</td></tr>
+  <tr><td><code>freeProxy06</code></td><td>冰凌代理 binglx.cn</td><td>xpath 解析表格</td><td>更新最快（★★★）</td></tr>
+  <tr><td><code>freeProxy07</code></td><td>云代理 ip3366.net</td><td>正则提取</td><td>两个页面（国内/国外）</td></tr>
+  <tr><td><code>freeProxy08</code></td><td>小幻代理 ip.ihuan.me</td><td>正则提取</td><td>中文页面</td></tr>
+  <tr><td><code>freeProxy09</code></td><td>免费代理库 ip.jiangxianli.com</td><td>xpath 遍历分页</td><td>更新较慢（☆）</td></tr>
+  <tr><td><code>freeProxy10</code></td><td>89免费代理 89ip.cn</td><td>正则跨行匹配</td><td>更新较慢（☆）</td></tr>
+  <tr><td><code>freeProxy11</code></td><td>稻壳代理 docip.net</td><td><strong>JSON API</strong></td><td>可用率最高（★★★）唯一 API 源</td></tr>
+</table>
+<p>注册配置（<code>setting.py</code>）：</p>
+<pre><code>PROXY_FETCHER = [
+    "freeProxy01", "freeProxy02", "freeProxy03", "freeProxy04",
+    "freeProxy05", "freeProxy06", "freeProxy07", "freeProxy08",
+    "freeProxy09", "freeProxy10", "freeProxy11"
+]</code></pre>
+<p><strong>注意</strong>：proxy_pool 默认验证目标站是 <code>httpbin.org</code> 和 <code>qq.com</code>，不是我们的 zhaopin.com / 51job.com，这也是为什么本项目的 <code>checkHealth()</code> 二次验证必须存在。</p>
+
+<h4>Q7: 以站大爷为例，代理从源头到浏览器使用的完整链路是怎样的？</h4>
+<p>以 <code>freeProxy01</code>（站大爷）为例，它<strong>不是通过付费 API</strong> 而是直接<strong>爬取论坛 HTML 页面</strong>获取代理：</p>
+<pre><code># d:/proxy_pool/fetcher/proxyFetcher.py 第 28-47 行
+@staticmethod
+def freeProxy01():
+    # 1. 先访问站大爷首页，找最新帖子链接
+    start_url = "https://www.zdaye.com/dayProxy.html"
+    html_tree = WebRequest().get(start_url, verify=False).tree
+
+    # 2. 只处理 5 分钟内的新帖
+    latest_page_time = html_tree.xpath("//span[@class='thread_time_info']/text()")[0]
+    if interval.seconds &lt; 300:
+        # 3. 进入帖子详情页，解析 IP 表格
+        target_url = "https://www.zdaye.com/" + html_tree.xpath("//h3/a/@href")[0]
+        while target_url:
+            _tree = WebRequest().get(target_url, verify=False).tree
+            for tr in _tree.xpath("//table//tr"):
+                ip   = tr.xpath("./td[1]/text()")   # 第 1 列 → IP
+                port = tr.xpath("./td[2]/text()")   # 第 2 列 → 端口
+                yield "%s:%s" % (ip, port)
+            # 4. 翻页继续
+            next_page = _tree.xpath("//div[@class='page']/a[@title='下一页']/@href")
+            target_url = next_page[0] if next_page else False
+            sleep(5)</code></pre>
+<p><strong>完整数据流（7 层链路）：</strong></p>
+<pre><code>┌──────────────────────────────────────────────────────────────────┐
+│ 1. 站大爷论坛 (zdaye.com/dayProxy.html)                           │
+│    网友手动发帖分享公开代理 IP 表格                                 │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ 2. freeProxy01() 爬取 HTML                                        │
+│    xpath 解析 &lt;table&gt; → 逐行提取 IP:端口 → yield "ip:port"        │
+│    翻页间隔 sleep(5) 防止被 ban                                    │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ 3. RawProxyCheck 多线程验证 (proxy_pool 内部)                      │
+│    访问 httpbin.org / qq.com 测试连通性                            │
+│    pass → 存入 Redis    fail → 丢弃                               │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ 4. Redis (127.0.0.1:6379)                                         │
+│    存储格式: use_proxy hash table                                  │
+│    key: "39.102.208.189:8081"  value: {"score": 7, "https": false}│
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ 5. GET /get/ API (proxy_pool :5010)                               │
+│    随机返回一个 score > 0 的代理                                   │
+│    Response: { "proxy": "39.102.208.189:8081", "type": "http" }   │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ 6. 本项目 ProxyPool.getProxy() + checkHealth(zhaopin.com)         │
+│    获取后立即实时验证目标站可用性                                   │
+│    通过 → 设为 currentProxy                                        │
+│    失败 → deleteProxy() → 换下一个（最多 3 次）                    │
+└────────────────────────┬─────────────────────────────────────────┘
+                         ↓
+┌──────────────────────────────────────────────────────────────────┐
+│ 7. Puppeteer 浏览器使用代理                                       │
+│    --proxy-server=http://39.102.208.189:8081                       │
+│    目标站看到的来源 IP = 39.102.208.189（非本机 IP）               │
+└──────────────────────────────────────────────────────────────────┘</code></pre>
+<p><strong>核心问题</strong>：站大爷的代理本质是<strong>网友公开分享的免费 IP</strong>，不是付费 API 的结构化数据。一个 IP 被帖子公开后，全世界爬虫都会用，几分钟内就失效。如果要接入站大爷的付费 API（如 <code>http://open.zdaye.com/ShortProxy/GetIP/</code>），需参照"扩展付费代理"章节新增一个 <code>@staticmethod</code> 方法。</p>`
   },
 
   // ========== 技术栈 ==========
@@ -1118,7 +1904,21 @@ socket.emit('task:unsubscribe', { taskId: 'xxx' })</code></pre>
 }
 
 // ==================== 响应式状态 ====================
+const route = useRoute()
 const activeSection = ref('intro')
+
+onMounted(() => {
+  const section = route.query.section as string
+  if (section && docs[section]) {
+    activeSection.value = section
+  }
+})
+
+watch(() => route.query.section, (section) => {
+  if (section && docs[section as string]) {
+    activeSection.value = section as string
+  }
+})
 
 const currentTitle = computed(() =>
   docs[activeSection.value]?.title || '项目文档'

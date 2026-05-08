@@ -107,11 +107,17 @@ export class ProxyPool {
       const resp = await axios.get(`${this.poolUrl}/count`, {
         timeout: this.requestTimeout,
       });
-      // 返回格式: { count: 10 } 或直接返回数字
+      // jhao104/proxy_pool 新版返回 { total: 150, https: 45 }
+      // 兼容旧版直接返回数字和 { count: 10 } 格式
       if (typeof resp.data === 'number') return resp.data;
+      if (resp.data && typeof resp.data.total === 'number') return resp.data.total;
       if (resp.data && typeof resp.data.count === 'number') return resp.data.count;
-      const match = JSON.stringify(resp.data).match(/"count":\s*(\d+)/);
-      if (match) return parseInt(match[1]);
+      // 兜底正则：优先匹配 total，其次 count
+      const json = JSON.stringify(resp.data);
+      const totalMatch = json.match(/"total":\s*(\d+)/);
+      if (totalMatch) return parseInt(totalMatch[1]);
+      const countMatch = json.match(/"count":\s*(\d+)/);
+      if (countMatch) return parseInt(countMatch[1]);
       return 0;
     } catch (e: any) {
       console.warn(`[ProxyPool] 查询代理数量失败: ${e.message}`);
