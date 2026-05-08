@@ -11,6 +11,10 @@ async function startServer() {
     await initDatabase();
     await llmService.initialize();
 
+    // 运行种子数据（首次启动时自动初始化系统管理数据）
+    const { runSeed } = await import('./services/seedService');
+    await runSeed();
+
     // 启动服务器
     httpServer.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

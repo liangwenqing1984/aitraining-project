@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import authService from '../services/authService';
+import * as userService from '../services/userService';
+import { db } from '../config/database';
 
 /**
  * OAuth2认证控制器
@@ -283,4 +285,86 @@ export async function logout(req: Request, res: Response) {
       message: error.message || '登出失败'
     });
   }
+}
+
+/**
+ * 本地登录
+ * POST /api/auth/local-login
+ * Body: { username, password }
+ */
+export async function localLogin(req: Request, res: Response) {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({
+        success: false,
+        error: '用户名和密码为必填项',
+      });
+    }
+
+    // 查找用户
+    const users = await userService.listUsers({ pageSize: 1, keyword: username });
+    const user = users.list.find((u: any) => u.username === username);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: '用户名或密码错误',
+      });
+    }
+
+    if (!user.status) {
+      return res.status(403).json({
+        success: false,
+        error: '该账号已被禁用，请联系管理员',
+      });
+    }
+
+    // 验证密码
+    const passwordHash = await db_getUserPasswordHash(user.id!);
+    if (!passwordHash) {
+      return res.status(401).json({
+        success: false,
+        error: '该账号未设置密码，请使用统一认证登录',
+      });
+    }
+
+    const valid = await userService.verifyPassword(password, passwordHash);
+    if (!valid) {
+      return res.status(401).json({
+        success: false,
+        error: '用户名或密码错误',
+      });
+    }
+
+    // 返回用户信息（不含密码）
+    return res.json({
+      success: true,
+      data: {
+        username: user.username,
+        name: user.realName,
+        email: user.email,
+        phone: user.phone,
+        role: user.roles && user.roles.length > 0 ? user.roles[0].code : 'user',
+        roles: user.roles || [],
+        roleIds: user.roleIds || [],
+        loginType: 'local',
+      },
+    });
+  } catch (error: any) {
+    console.error('[Auth] 本地登录失败:', error.message);
+    return res.status(500).json({
+      success: false,
+      error: error.message || '登录失败',
+    });
+  }
+}
+
+async function db_getUserPasswordHash(userId: number): Promise<string | null> {
+  const db = require('../config/database').db;
+  const row = await db.prepare(
+    'SELECT password_hash FROM sp_users WHERE id = $1'
+  ).get(userId);
+  return row?.passwordHash || null;
 }

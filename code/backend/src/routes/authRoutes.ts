@@ -25,4 +25,7 @@ router.post('/validate-token', authController.validateToken);
 // 登出
 router.post('/logout', authController.logout);
 
+// 本地登录
+router.post('/local-login', authController.localLogin);
+
 export default router;

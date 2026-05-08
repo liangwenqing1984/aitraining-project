@@ -166,14 +166,6 @@
                       <span class="account-label">管理员:</span>
                       <code>admin / Admin@admin123</code>
                     </div>
-                    <div class="account-item">
-                      <span class="account-label">普通用户:</span>
-                      <code>user / User@123456</code>
-                    </div>
-                    <div class="account-item">
-                      <span class="account-label">测试用户:</span>
-                      <code>test / Test@123456</code>
-                    </div>
                   </div>
                 </template>
               </el-alert>
@@ -260,28 +252,6 @@ const loginForm = reactive({
   password: ''
 });
 
-// 模拟本地用户数据(实际项目应从后端获取)
-const MOCK_USERS = [
-  {
-    username: 'admin',
-    password: 'Admin@admin123',
-    name: '系统管理员',
-    role: 'admin'
-  },
-  {
-    username: 'user',
-    password: 'User@123456',
-    name: '普通用户',
-    role: 'user'
-  },
-  {
-    username: 'test',
-    password: 'Test@123456',
-    name: '测试用户',
-    role: 'user'
-  }
-];
-
 // 表单验证规则
 const loginRules: FormRules = {
   username: [
@@ -320,7 +290,7 @@ if (route.query.error) {
 }
 
 /**
- * 本地登录处理(前端模拟验证)
+ * 本地登录处理 - 调用后端 API 验证
  */
 const handleLocalLogin = async () => {
   if (!loginFormRef.value) return;
@@ -331,25 +301,35 @@ const handleLocalLogin = async () => {
       errorMessage.value = '';
       
       try {
-        // 模拟网络延迟
-        await new Promise(resolve => setTimeout(resolve, 800));
-        
-        // 查找匹配的用户
-        const user = MOCK_USERS.find(
-          u => u.username === loginForm.username && u.password === loginForm.password
-        );
-        
-        if (!user) {
-          throw new Error('用户名或密码错误');
+        // 调用后端本地登录 API
+        const response = await fetch('/api/auth/local-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: loginForm.username,
+            password: loginForm.password
+          })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || '登录失败');
         }
-        
+
+        const user = result.data;
+
         // 登录成功,保存用户信息到 localStorage
         const userInfo = {
           username: user.username,
           name: user.name,
           role: user.role,
+          roles: user.roles || [],
+          roleIds: user.roleIds || [],
+          email: user.email || '',
+          phone: user.phone || '',
           loginTime: new Date().toISOString(),
-          loginType: 'local'  // 标记为本地登录
+          loginType: 'local'
         };
         
         localStorage.setItem('user_info', JSON.stringify(userInfo));
