@@ -5,77 +5,72 @@
       <div class="brand-bg-image"></div>
       <div class="brand-overlay"></div>
 
+      <!-- 装饰几何图形 -->
+      <div class="brand-decorations">
+        <div class="deco-circle deco-1"></div>
+        <div class="deco-circle deco-2"></div>
+        <div class="deco-circle deco-3"></div>
+        <div class="deco-ring deco-4"></div>
+      </div>
+
       <div class="brand-content">
         <div class="brand-header">
           <div class="brand-logo-wrapper">
             <div class="brand-logo-glow"></div>
             <div class="brand-logo">
-              <el-icon :size="40"><Monitor /></el-icon>
+              <svg viewBox="0 0 48 48" class="logo-svg" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="24" cy="24" r="22" fill="none" stroke="#fff" stroke-width="2" opacity="0.6"/>
+                <rect x="16" y="26" width="16" height="5" fill="#fff" rx="1" opacity="0.9"/>
+                <rect x="12" y="20" width="5" height="10" fill="#fff" rx="1" opacity="0.9"/>
+                <rect x="31" y="20" width="5" height="10" fill="#fff" rx="1" opacity="0.9"/>
+                <rect x="19" y="18" width="10" height="5" fill="#fff" rx="1" opacity="0.9"/>
+                <polygon points="24,7 26.5,14.5 34,14.5 28,19 30.5,26.5 24,22 17.5,26.5 20,19 14,14.5 21.5,14.5" fill="#FFD700"/>
+                <rect x="10" y="31" width="28" height="4" fill="#fff" rx="2" opacity="0.9"/>
+                <rect x="14" y="35" width="20" height="3" fill="#fff" rx="1.5" opacity="0.9"/>
+              </svg>
             </div>
           </div>
-          <h1 class="brand-title">黑龙江高质量人才数据集</h1>
-          <p class="brand-subtitle">智能招聘数据采集与分析平台</p>
+          <h1 class="brand-title">高质量人才数据集</h1>
+          <p class="brand-subtitle">AI 驱动的智能招聘数据采集与分析平台</p>
         </div>
 
         <div class="brand-divider"></div>
 
+        <!-- 核心亮点 -->
         <div class="brand-features">
-          <div class="feature-card">
-            <div class="feature-icon-wrapper">
-              <div class="feature-icon">
-                <el-icon :size="24"><Search /></el-icon>
-              </div>
+          <div class="feature-card" v-for="(feat, i) in features" :key="feat.title" :style="{ animationDelay: `${0.2 + i * 0.1}s` }">
+            <div class="feature-icon">
+              <el-icon :size="22"><component :is="feat.icon" /></el-icon>
             </div>
             <div class="feature-content">
-              <h4>多源采集</h4>
-              <p>支持前程无忧、智联招聘等主流招聘平台数据自动采集</p>
-            </div>
-          </div>
-          
-          <div class="feature-card">
-            <div class="feature-icon-wrapper">
-              <div class="feature-icon">
-                <el-icon :size="24"><DataAnalysis /></el-icon>
-              </div>
-            </div>
-            <div class="feature-content">
-              <h4>智能分析</h4>
-              <p>职位数据自动解析、清洗与多维度可视化洞察</p>
-            </div>
-          </div>
-          
-          <div class="feature-card">
-            <div class="feature-icon-wrapper">
-              <div class="feature-icon">
-                <el-icon :size="24"><Lock /></el-icon>
-              </div>
-            </div>
-            <div class="feature-content">
-              <h4>安全可靠</h4>
-              <p>支持企业级OAuth2统一认证和本地账号双重登录方式</p>
+              <h4>{{ feat.title }}</h4>
+              <p>{{ feat.desc }}</p>
             </div>
           </div>
         </div>
 
+        <!-- 数据指标 -->
         <div class="brand-stats">
           <div class="stat-item">
-            <div class="stat-value">10+</div>
-            <div class="stat-label">数据源支持</div>
+            <div class="stat-value">多平台</div>
+            <div class="stat-label">数据源覆盖</div>
           </div>
+          <div class="stat-divider"></div>
           <div class="stat-item">
-            <div class="stat-value">99.9%</div>
-            <div class="stat-label">系统可用性</div>
+            <div class="stat-value">AI</div>
+            <div class="stat-label">智能驱动</div>
           </div>
+          <div class="stat-divider"></div>
           <div class="stat-item">
-            <div class="stat-value">实时</div>
-            <div class="stat-label">数据更新</div>
+            <div class="stat-value">RBAC</div>
+            <div class="stat-label">权限管控</div>
           </div>
         </div>
       </div>
 
       <div class="brand-footer">
         <div class="footer-divider"></div>
-        <p>© 2026 AI Training System · 黑龙江人才数据中心</p>
+        <p>© 2026 黑龙江人才数据中心 · 智能招聘数据平台</p>
       </div>
     </div>
 
@@ -83,11 +78,16 @@
     <div class="login-form-side">
       <div class="form-container">
         <div class="form-header">
-          <h2>欢迎登录</h2>
-          <p>请选择登录方式进入系统</p>
+          <div class="form-avatar">
+            <div class="avatar-circle">
+              <el-icon :size="28"><UserFilled /></el-icon>
+            </div>
+          </div>
+          <h2>欢迎回来</h2>
+          <p>登录以继续使用系统</p>
         </div>
 
-        <!-- 显示错误信息 -->
+        <!-- 错误信息 -->
         <transition name="fade-slide">
           <el-alert
             v-if="errorMessage"
@@ -100,9 +100,8 @@
           />
         </transition>
 
-        <!-- 登录方式切换 Tabs -->
+        <!-- 登录方式 Tabs -->
         <el-tabs v-model="activeTab" class="login-tabs">
-          <!-- 本地登录 Tab -->
           <el-tab-pane label="账号登录" name="local">
             <el-form
               ref="loginFormRef"
@@ -135,8 +134,7 @@
 
               <el-form-item>
                 <div class="form-options">
-                  <el-checkbox v-model="rememberMe">记住我</el-checkbox>
-                  <el-link type="primary" :underline="false">忘记密码?</el-link>
+                  <el-checkbox v-model="rememberMe">记住账号</el-checkbox>
                 </div>
               </el-form-item>
 
@@ -148,11 +146,10 @@
                   :loading="localLoading"
                   @click="handleLocalLogin"
                 >
-                  {{ localLoading ? '登录中...' : '登 录' }}
+                  {{ localLoading ? '验证中...' : '登 录' }}
                 </el-button>
               </el-form-item>
 
-              <!-- 测试账号提示 -->
               <el-alert
                 title="测试账号"
                 type="info"
@@ -162,24 +159,22 @@
               >
                 <template #default>
                   <div class="test-accounts">
-                    <div class="account-item">
-                      <span class="account-label">管理员:</span>
-                      <code>admin / Admin@admin123</code>
-                    </div>
+                    <code>admin / Admin@admin123</code>
                   </div>
                 </template>
               </el-alert>
             </el-form>
           </el-tab-pane>
 
-          <!-- OAuth2 登录 Tab -->
           <el-tab-pane label="统一认证" name="oauth2">
             <div class="oauth2-login">
-              <div class="oauth2-info">
-                <el-icon :size="48" color="#409EFF"><Connection /></el-icon>
-                <h3>企业统一认证</h3>
-                <p>使用公司统一身份认证中心账号登录</p>
+              <div class="oauth2-icon-wrap">
+                <div class="oauth2-icon">
+                  <el-icon :size="32"><Connection /></el-icon>
+                </div>
               </div>
+              <h3>企业统一认证</h3>
+              <p>使用公司统一身份认证中心账号登录</p>
 
               <el-button
                 type="primary"
@@ -189,7 +184,7 @@
                 @click="handleOAuth2Login"
               >
                 <span class="btn-content">
-                  <el-icon v-if="!oauth2Loading" :size="20"><Promotion /></el-icon>
+                  <el-icon v-if="!oauth2Loading" :size="18"><Promotion /></el-icon>
                   <span>{{ oauth2Loading ? '跳转中...' : '前往统一认证中心' }}</span>
                 </span>
               </el-button>
@@ -197,7 +192,7 @@
               <div class="oauth2-tips">
                 <div class="tip-item">
                   <el-icon class="tip-icon" :size="14"><CircleCheckFilled /></el-icon>
-                  <span>单点登录,一次认证全站通行</span>
+                  <span>单点登录，一次认证全站通行</span>
                 </div>
                 <div class="tip-item">
                   <el-icon class="tip-icon" :size="14"><Key /></el-icon>
@@ -207,14 +202,6 @@
             </div>
           </el-tab-pane>
         </el-tabs>
-
-        <div class="login-footer">
-          <el-divider />
-          <div class="help-links">
-            <span class="help-text">遇到问题?</span>
-            <el-link type="primary" :underline="false">联系管理员</el-link>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -224,16 +211,18 @@
 import { ref, reactive } from 'vue';
 import { useRoute } from 'vue-router';
 import type { FormInstance, FormRules } from 'element-plus';
-import { 
-  Monitor, 
-  Search, 
-  DataAnalysis, 
-  Lock, 
+import {
+  DataAnalysis,
+  ChatDotSquare,
+  Search,
+  Monitor,
+  Lock,
   User,
+  UserFilled,
   Connection,
   Promotion,
   CircleCheckFilled,
-  Key
+  Key,
 } from '@element-plus/icons-vue';
 import { login as oauth2Login } from '@/utils/auth';
 import { ElMessage } from 'element-plus';
@@ -245,140 +234,97 @@ const oauth2Loading = ref(false);
 const errorMessage = ref('');
 const rememberMe = ref(false);
 
-// 登录表单
-const loginFormRef = ref<FormInstance>();
-const loginForm = reactive({
-  username: '',
-  password: ''
-});
+// 核心亮点
+const features = [
+  { icon: DataAnalysis, title: 'AI 智能分析', desc: '大模型驱动的职位数据自动解析与多维度可视化洞察' },
+  { icon: ChatDotSquare, title: '自然语言查询', desc: '日常语言提问，AI 自动生成 SQL 并返回分析结果' },
+  { icon: Search, title: '语义向量搜索', desc: '基于 RAG 架构，精准匹配海量人才数据' },
+  { icon: Monitor, title: '多源自动采集', desc: '支持各大招聘平台，智能代理池与反爬对抗' },
+  { icon: Lock, title: '企业级权限管控', desc: 'RBAC 权限体系，统一认证与本地登录双重保障' },
+];
 
-// 表单验证规则
+const loginFormRef = ref<FormInstance>();
+const loginForm = reactive({ username: '', password: '' });
+
 const loginRules: FormRules = {
   username: [
     { required: true, message: '请输入用户名', trigger: 'blur' },
-    { min: 3, max: 20, message: '用户名长度在 3 到 20 个字符', trigger: 'blur' }
+    { min: 3, max: 20, message: '用户名长度 3-20 个字符', trigger: 'blur' },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, message: '密码长度不能少于 6 个字符', trigger: 'blur' }
-  ]
+    { min: 6, message: '密码长度不少于 6 个字符', trigger: 'blur' },
+  ],
 };
 
-// 页面加载时检查是否有 OAuth2 回调错误
+// OAuth2 回调错误处理
 if (route.query.error) {
   const error = route.query.error as string;
-  const errorDescription = route.query.error_description as string;
-  
-  console.error('[Login] 登录错误:', error, errorDescription);
-  
-  switch (error) {
-    case 'missing_code':
-      errorMessage.value = '缺少授权码,请重新登录';
-      break;
-    case 'token_exchange_failed':
-      errorMessage.value = `Token交换失败:${errorDescription || '请稍后重试'}`;
-      break;
-    case 'unknown_error':
-      errorMessage.value = `登录失败:${errorDescription || '未知错误'}`;
-      break;
-    default:
-      errorMessage.value = errorDescription || '登录失败,请重试';
-  }
-  
-  // 切换到 OAuth2 tab
+  const desc = route.query.error_description as string;
+  const map: Record<string, string> = {
+    missing_code: '缺少授权码，请重新登录',
+    token_exchange_failed: `Token交换失败：${desc || '请稍后重试'}`,
+    unknown_error: `登录失败：${desc || '未知错误'}`,
+  };
+  errorMessage.value = map[error] || desc || '登录失败，请重试';
   activeTab.value = 'oauth2';
 }
 
-/**
- * 本地登录处理 - 调用后端 API 验证
- */
-const handleLocalLogin = async () => {
+async function handleLocalLogin() {
   if (!loginFormRef.value) return;
-  
   await loginFormRef.value.validate(async (valid) => {
-    if (valid) {
-      localLoading.value = true;
-      errorMessage.value = '';
-      
-      try {
-        // 调用后端本地登录 API
-        const response = await fetch('/api/auth/local-login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: loginForm.username,
-            password: loginForm.password
-          })
-        });
+    if (!valid) return;
+    localLoading.value = true;
+    errorMessage.value = '';
+    try {
+      const response = await fetch('/api/auth/local-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: loginForm.username, password: loginForm.password }),
+      });
+      const result = await response.json();
+      if (!result.success) throw new Error(result.error || '登录失败');
 
-        const result = await response.json();
-
-        if (!result.success) {
-          throw new Error(result.error || '登录失败');
-        }
-
-        const user = result.data;
-
-        // 登录成功,保存用户信息到 localStorage
-        const userInfo = {
-          username: user.username,
-          name: user.name,
-          role: user.role,
-          roles: user.roles || [],
-          roleIds: user.roleIds || [],
-          email: user.email || '',
-          phone: user.phone || '',
-          loginTime: new Date().toISOString(),
-          loginType: 'local'
-        };
-        
-        localStorage.setItem('user_info', JSON.stringify(userInfo));
-        localStorage.setItem('is_authenticated', 'true');
-        
-        // 如果勾选了记住我,保存用户名
-        if (rememberMe.value) {
-          localStorage.setItem('remember_username', loginForm.username);
-        } else {
-          localStorage.removeItem('remember_username');
-        }
-        
-        ElMessage.success(`欢迎回来,${user.name}!`);
-        
-        // 延迟跳转,让用户看到成功提示
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 500);
-        
-      } catch (error: any) {
-        console.error('[Login] 本地登录失败:', error);
-        errorMessage.value = error.message || '登录失败,请检查用户名和密码';
-        ElMessage.error(errorMessage.value);
-      } finally {
-        localLoading.value = false;
+      const user = result.data;
+      const userInfo = {
+        username: user.username,
+        name: user.name,
+        role: user.role,
+        roles: user.roles || [],
+        roleIds: user.roleIds || [],
+        email: user.email || '',
+        phone: user.phone || '',
+        loginTime: new Date().toISOString(),
+        loginType: 'local',
+      };
+      localStorage.setItem('user_info', JSON.stringify(userInfo));
+      localStorage.setItem('is_authenticated', 'true');
+      if (rememberMe.value) {
+        localStorage.setItem('remember_username', loginForm.username);
+      } else {
+        localStorage.removeItem('remember_username');
       }
+      ElMessage.success(`欢迎回来，${user.name}！`);
+      setTimeout(() => { window.location.href = '/'; }, 500);
+    } catch (error: any) {
+      errorMessage.value = error.message || '登录失败，请检查用户名和密码';
+    } finally {
+      localLoading.value = false;
     }
   });
-};
+}
 
-/**
- * OAuth2 登录处理
- */
-const handleOAuth2Login = () => {
+function handleOAuth2Login() {
   oauth2Loading.value = true;
   errorMessage.value = '';
-  
   try {
-    // 调用 OAuth2 登录(会直接跳转)
     oauth2Login('/');
   } catch (error: any) {
-    console.error('[Login] OAuth2 登录失败:', error);
-    errorMessage.value = '跳转认证中心失败,请重试';
-    ElMessage.error(errorMessage.value);
+    errorMessage.value = '跳转认证中心失败，请重试';
     oauth2Loading.value = false;
   }
-};
+}
 
-// 页面加载时,如果有记住的用户名,自动填充
 const rememberedUsername = localStorage.getItem('remember_username');
 if (rememberedUsername) {
   loginForm.username = rememberedUsername;
@@ -388,14 +334,14 @@ if (rememberedUsername) {
 
 <style scoped>
 /* ========================
-   全局样式 - Gitee 风格
+   全局
    ======================== */
 .login-page {
   min-height: 100vh;
   display: flex;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Microsoft YaHei', sans-serif;
-  background: #f5f7fa;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Microsoft YaHei', sans-serif;
+  background: #f0f2f5;
 }
 
 /* ========================
@@ -406,45 +352,74 @@ if (rememberedUsername) {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 60px 56px;
+  padding: 56px 56px 32px;
   position: relative;
   overflow: hidden;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
-/* 背景图片层 */
 .brand-bg-image {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image: url('@/assets/login-bg.svg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  opacity: 0.15;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 30% 20%, rgba(255,255,255,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 70% 80%, rgba(255,255,255,0.05) 0%, transparent 50%);
   z-index: 0;
 }
 
-/* 渐变遮罩 */
 .brand-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.9) 0%, rgba(118, 75, 162, 0.9) 100%);
+  inset: 0;
+  background: linear-gradient(135deg, rgba(102,126,234,0.92) 0%, rgba(118,75,162,0.92) 100%);
   z-index: 1;
 }
 
+/* 装饰几何图形 */
+.brand-decorations {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.deco-circle {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.04);
+}
+
+.deco-1 {
+  width: 300px; height: 300px;
+  top: -80px; right: -60px;
+}
+
+.deco-2 {
+  width: 200px; height: 200px;
+  bottom: 120px; left: -40px;
+}
+
+.deco-3 {
+  width: 120px; height: 120px;
+  top: 40%; right: 60px;
+}
+
+.deco-ring {
+  position: absolute;
+  width: 400px; height: 400px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.06);
+  bottom: -120px; right: -100px;
+}
+
+/* 内容区 */
 .brand-content {
   position: relative;
   z-index: 2;
   max-width: 520px;
   display: flex;
   flex-direction: column;
-  gap: 40px;
+  gap: 36px;
 }
 
 /* 品牌头部 */
@@ -455,131 +430,126 @@ if (rememberedUsername) {
 .brand-logo-wrapper {
   position: relative;
   display: inline-block;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .brand-logo-glow {
   position: absolute;
-  top: 50%;
-  left: 50%;
+  top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  width: 80px;
-  height: 80px;
-  background: radial-gradient(circle, rgba(255, 255, 255, 0.3) 0%, transparent 70%);
+  width: 80px; height: 80px;
+  background: radial-gradient(circle, rgba(255,255,255,0.25) 0%, transparent 70%);
   border-radius: 50%;
   animation: pulse 3s infinite ease-in-out;
 }
 
 @keyframes pulse {
-  0%, 100% {
-    opacity: 0.6;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1.2);
-  }
+  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
 }
 
 .brand-logo {
-  width: 64px;
-  height: 64px;
+  width: 60px; height: 60px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255,255,255,0.18);
   backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  border: 1.5px solid rgba(255,255,255,0.25);
   position: relative;
   z-index: 1;
 }
 
+.logo-svg {
+  width: 36px; height: 36px;
+}
+
 .brand-title {
-  font-size: 36px;
+  font-size: 34px;
   font-weight: 700;
   color: #fff;
-  margin-bottom: 12px;
-  letter-spacing: -0.5px;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
   line-height: 1.2;
 }
 
 .brand-subtitle {
-  font-size: 17px;
-  color: rgba(255, 255, 255, 0.85);
-  line-height: 1.6;
+  font-size: 16px;
+  color: rgba(255,255,255,0.85);
   font-weight: 400;
 }
 
-/* 分隔线 */
 .brand-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.3) 50%, transparent 100%);
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.25) 50%, transparent 100%);
 }
 
-/* 特性卡片 */
+/* 核心亮点卡片 */
 .brand-features {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 14px;
   animation: fadeInUp 0.8s ease-out 0.2s both;
 }
 
 .feature-card {
   display: flex;
   align-items: flex-start;
-  gap: 20px;
-  padding: 20px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 16px;
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
+  gap: 16px;
+  padding: 16px 18px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeInUp 0.6s ease-out both;
 }
 
 .feature-card:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.4);
-  transform: translateX(8px);
-}
-
-.feature-icon-wrapper {
-  flex-shrink: 0;
+  background: rgba(255,255,255,0.14);
+  border-color: rgba(255,255,255,0.3);
+  transform: translateX(6px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
 }
 
 .feature-icon {
-  width: 48px;
-  height: 48px;
+  width: 44px; height: 44px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255,255,255,0.18);
   display: flex;
   align-items: center;
   justify-content: center;
   color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+
+.feature-card:hover .feature-icon {
+  background: rgba(255,255,255,0.28);
+  box-shadow: 0 0 20px rgba(255,255,255,0.15);
 }
 
 .feature-content h4 {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: #fff;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .feature-content p {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.8);
-  line-height: 1.6;
+  font-size: 13px;
+  color: rgba(255,255,255,0.75);
+  line-height: 1.55;
   margin: 0;
 }
 
-/* 统计数据 */
+/* 数据指标 */
 .brand-stats {
   display: flex;
-  gap: 32px;
-  padding-top: 8px;
+  align-items: center;
+  gap: 28px;
   animation: fadeInUp 0.8s ease-out 0.4s both;
 }
 
@@ -588,16 +558,23 @@ if (rememberedUsername) {
 }
 
 .stat-value {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
   color: #fff;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
+  letter-spacing: 0.5px;
 }
 
 .stat-label {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  color: rgba(255,255,255,0.65);
   font-weight: 500;
+}
+
+.stat-divider {
+  width: 1px;
+  height: 32px;
+  background: rgba(255,255,255,0.2);
 }
 
 /* 页脚 */
@@ -609,47 +586,40 @@ if (rememberedUsername) {
 
 .footer-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.2) 50%, transparent 100%);
-  margin-bottom: 20px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+  margin-bottom: 16px;
 }
 
 .brand-footer p {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  color: rgba(255,255,255,0.5);
   text-align: center;
   margin: 0;
 }
 
 /* ========================
-   右侧登录表单区 - Gitee 简洁风格
+   右侧登录表单区
    ======================== */
 .login-form-side {
-  width: 480px;
-  min-width: 440px;
-  background: #ffffff;
+  width: 460px;
+  min-width: 420px;
+  background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 60px 48px;
-  position: relative;
-  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.06);
+  box-shadow: -4px 0 30px rgba(0,0,0,0.06);
 }
 
 .form-container {
   width: 100%;
-  max-width: 380px;
+  max-width: 360px;
   animation: fadeInRight 0.8s ease-out;
 }
 
 @keyframes fadeInRight {
-  from {
-    opacity: 0;
-    transform: translateX(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 /* 表单头部 */
@@ -658,34 +628,46 @@ if (rememberedUsername) {
   text-align: center;
 }
 
+.form-avatar {
+  margin-bottom: 20px;
+}
+
+.avatar-circle {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(102,126,234,0.3);
+}
+
 .form-header h2 {
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 600;
-  color: #1a1a1a;
-  margin-bottom: 8px;
-  letter-spacing: -0.3px;
+  color: #1a1a2e;
+  margin-bottom: 6px;
 }
 
 .form-header p {
   font-size: 14px;
-  color: #666;
-  line-height: 1.6;
+  color: #8c8c8c;
 }
 
 /* 错误提示 */
 .error-alert {
-  margin-bottom: 20px;
-  border-radius: 8px;
+  margin-bottom: 16px;
+  border-radius: 10px;
 }
 
-/* Tabs 样式优化 */
+/* Tabs */
 .login-tabs {
-  margin-bottom: 24px;
+  margin-bottom: 8px;
 }
 
 .login-tabs :deep(.el-tabs__header) {
-  margin-bottom: 24px;
-  border-bottom: 2px solid #e8e8e8;
+  margin-bottom: 20px;
 }
 
 .login-tabs :deep(.el-tabs__nav-wrap::after) {
@@ -695,11 +677,11 @@ if (rememberedUsername) {
 .login-tabs :deep(.el-tabs__item) {
   font-size: 15px;
   font-weight: 500;
-  color: #666;
-  padding: 0 24px;
-  height: 44px;
-  line-height: 44px;
-  transition: all 0.3s;
+  color: #8c8c8c;
+  padding: 0 20px;
+  height: 40px;
+  line-height: 40px;
+  transition: color 0.3s;
 }
 
 .login-tabs :deep(.el-tabs__item:hover) {
@@ -712,41 +694,39 @@ if (rememberedUsername) {
 }
 
 .login-tabs :deep(.el-tabs__active-bar) {
-  height: 3px;
-  background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-  border-radius: 2px;
+  height: 2px;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 1px;
 }
 
-/* 登录表单 */
-.login-form {
-  margin-top: 8px;
-}
-
+/* 表单 */
 .login-form :deep(.el-form-item) {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .login-form :deep(.el-input__wrapper) {
-  padding: 12px 16px;
-  border-radius: 8px;
-  box-shadow: 0 0 0 1px #d9d9d9 inset;
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px #e2e2e2 inset;
   transition: all 0.3s;
+  background: #fafbfc;
 }
 
 .login-form :deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px #667eea inset;
+  box-shadow: 0 0 0 1px #c4c4c4 inset;
+  background: #fff;
 }
 
 .login-form :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 2px #667eea inset;
+  box-shadow: 0 0 0 2px rgba(102,126,234,0.35) inset;
+  background: #fff;
 }
 
 .login-form :deep(.el-input__inner) {
   font-size: 14px;
-  color: #1a1a1a;
+  color: #1a1a2e;
 }
 
-/* 表单选项 */
 .form-options {
   display: flex;
   justify-content: space-between;
@@ -755,31 +735,27 @@ if (rememberedUsername) {
 }
 
 .form-options :deep(.el-checkbox__label) {
-  font-size: 14px;
-  color: #666;
-}
-
-.form-options :deep(.el-link) {
-  font-size: 14px;
+  font-size: 13px;
+  color: #8c8c8c;
 }
 
 /* 提交按钮 */
 .submit-btn {
   width: 100%;
-  height: 44px;
-  font-size: 15px;
+  height: 46px;
+  font-size: 16px;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 14px rgba(102,126,234,0.35);
   transition: all 0.3s;
-  letter-spacing: 2px;
+  letter-spacing: 4px;
 }
 
 .submit-btn:hover {
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102,126,234,0.45);
+  transform: translateY(-1px);
 }
 
 .submit-btn:active {
@@ -788,89 +764,85 @@ if (rememberedUsername) {
 
 /* 测试账号提示 */
 .test-accounts-alert {
-  margin-top: 16px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border: 1px solid #bae6fd;
+  margin-top: 12px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f5f7ff 0%, #eef0ff 100%);
+  border: 1px solid #d4d8f0;
 }
 
 .test-accounts-alert :deep(.el-alert__title) {
   font-size: 13px;
   font-weight: 600;
-  color: #0369a1;
-  margin-bottom: 8px;
+  color: #5b5ea6;
+  margin-bottom: 6px;
 }
 
 .test-accounts {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  justify-content: center;
 }
 
-.account-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.test-accounts code {
+  background: rgba(102,126,234,0.08);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  color: #667eea;
   font-size: 12px;
+  border: 1px solid rgba(102,126,234,0.15);
 }
 
-.account-label {
-  color: #0c4a6e;
-  font-weight: 500;
-  min-width: 70px;
-}
-
-.account-item code {
-  background: rgba(255, 255, 255, 0.8);
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', monospace;
-  color: #0369a1;
-  font-size: 11px;
-  border: 1px solid #bae6fd;
-}
-
-/* OAuth2 登录区域 */
+/* OAuth2 */
 .oauth2-login {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
-  padding: 20px 0;
+  gap: 20px;
+  padding: 16px 0;
 }
 
-.oauth2-info {
-  text-align: center;
+.oauth2-icon-wrap {
+  margin-bottom: 4px;
 }
 
-.oauth2-info h3 {
-  font-size: 18px;
+.oauth2-icon {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(102,126,234,0.1), rgba(118,75,162,0.1));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667eea;
+}
+
+.oauth2-login h3 {
+  font-size: 17px;
   font-weight: 600;
-  color: #1a1a1a;
-  margin: 16px 0 8px;
+  color: #1a1a2e;
+  margin: 0;
 }
 
-.oauth2-info p {
+.oauth2-login p {
   font-size: 13px;
-  color: #999;
-  line-height: 1.6;
+  color: #8c8c8c;
+  margin: 0;
 }
 
 .oauth2-btn {
   width: 100%;
-  height: 44px;
+  height: 46px;
   font-size: 15px;
   font-weight: 600;
-  border-radius: 8px;
+  border-radius: 10px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 14px rgba(102,126,234,0.35);
   transition: all 0.3s;
 }
 
 .oauth2-btn:hover {
-  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
-  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(102,126,234,0.45);
+  transform: translateY(-1px);
 }
 
 .btn-content {
@@ -883,11 +855,11 @@ if (rememberedUsername) {
 .oauth2-tips {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   width: 100%;
-  padding: 16px;
-  background: #f8f9fa;
-  border-radius: 8px;
+  padding: 14px 16px;
+  background: #f8f9fc;
+  border-radius: 10px;
 }
 
 .tip-item {
@@ -903,157 +875,95 @@ if (rememberedUsername) {
   flex-shrink: 0;
 }
 
-/* 页脚 */
-.login-footer {
-  margin-top: 24px;
-}
-
-.login-footer :deep(.el-divider) {
-  margin: 0;
-  border-color: #e8e8e8;
-}
-
-.help-links {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 16px;
-  font-size: 13px;
-}
-
-.help-text {
-  color: #999;
-}
-
 /* ========================
    动画
    ======================== */
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .fade-slide-enter-active,
 .fade-slide-leave-active {
   transition: all 0.3s ease;
 }
-
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateY(-10px);
-}
-
+.fade-slide-enter-from,
 .fade-slide-leave-to {
   opacity: 0;
   transform: translateY(-10px);
 }
 
 /* ========================
-   响应式适配
+   响应式
    ======================== */
-@media (max-width: 1200px) {
+@media (max-width: 1100px) {
   .login-brand {
-    padding: 48px 40px;
+    padding: 40px 36px 24px;
   }
-  
   .brand-title {
-    font-size: 32px;
+    font-size: 28px;
   }
-  
   .login-form-side {
-    width: 440px;
-    min-width: 400px;
-    padding: 48px 40px;
+    width: 420px;
+    min-width: 380px;
+    padding: 48px 36px;
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
   .login-page {
     flex-direction: column;
   }
-
   .login-brand {
-    padding: 40px 32px;
     min-height: auto;
+    padding: 36px 28px 24px;
   }
-
   .brand-features {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 16px;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
-
+  .feature-card {
+    padding: 14px;
+  }
   .brand-stats {
-    justify-content: space-around;
+    justify-content: center;
   }
-
   .brand-footer {
-    margin-top: 32px;
+    margin-top: 24px;
   }
-
   .login-form-side {
     width: 100%;
     min-width: unset;
-    padding: 48px 32px;
+    padding: 40px 28px;
     flex: 1;
   }
 }
 
-@media (max-width: 768px) {
-  .login-brand {
-    padding: 32px 24px;
-  }
-
+@media (max-width: 600px) {
   .brand-title {
-    font-size: 28px;
+    font-size: 24px;
   }
-
   .brand-features {
     grid-template-columns: 1fr;
   }
-
   .brand-stats {
-    gap: 20px;
+    gap: 16px;
   }
-
   .stat-value {
-    font-size: 24px;
+    font-size: 18px;
   }
-
   .login-form-side {
-    padding: 40px 24px;
+    padding: 32px 20px;
   }
-
   .form-header h2 {
-    font-size: 24px;
-  }
-
-  .login-tabs :deep(.el-tabs__item) {
-    padding: 0 16px;
-    font-size: 14px;
+    font-size: 22px;
   }
 }
 
-/* 减少动画偏好 */
 @media (prefers-reduced-motion: reduce) {
-  .brand-logo-glow {
-    animation: none;
-  }
-  
-  .submit-btn:hover,
-  .oauth2-btn:hover {
-    transform: none;
-  }
-  
-  .feature-card:hover {
-    transform: none;
-  }
+  .brand-logo-glow { animation: none; }
+  .submit-btn:hover, .oauth2-btn:hover { transform: none; }
+  .feature-card:hover { transform: none; }
 }
 </style>
