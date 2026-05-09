@@ -50,7 +50,7 @@ export const taskApi = {
     return api.post('/tasks', config) as any
   },
 
-  getTasks(params?: { status?: string; page?: number; pageSize?: number }): Promise<ApiResponse<{ list: Task[]; total: number }>> {
+  getTasks(params?: { status?: string; page?: number; pageSize?: number }): Promise<ApiResponse<{ list: Task[]; total: number; page?: number; pageSize?: number }>> {
     return api.get('/tasks', { params }) as any
   },
 
@@ -96,6 +96,10 @@ export const taskApi = {
   }>> {
     const params = limit ? { limit } : {}
     return api.get(`/tasks/${id}/logs`, { params }) as any
+  },
+
+  getStats(): Promise<ApiResponse<{ total: number; running: number; completed: number; records: number }>> {
+    return api.get('/tasks/stats') as any
   },
 
   getRegions(): Promise<ApiResponse> {

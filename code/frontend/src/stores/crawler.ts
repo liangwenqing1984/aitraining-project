@@ -9,7 +9,12 @@ export const useCrawlerStore = defineStore('crawler', () => {
   const tasks = ref<Task[]>([])
   const currentTask = ref<Task | null>(null)
   const isConnected = ref(false)
-  
+
+  // 分页
+  const page = ref(1)
+  const pageSize = ref(10)
+  const total = ref(0)
+
   // 🔧 新增：WebSocket重连状态管理
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
@@ -42,12 +47,19 @@ export const useCrawlerStore = defineStore('crawler', () => {
       : []
   )
 
-  const statistics = computed(() => ({
-    total: Array.isArray(tasks.value) ? tasks.value.length : 0,
-    running: Array.isArray(tasks.value) ? tasks.value.filter(t => t.status === 'running').length : 0,
-    completed: Array.isArray(tasks.value) ? tasks.value.filter(t => t.status === 'completed').length : 0,
-    records: Array.isArray(tasks.value) ? tasks.value.reduce((sum, t) => sum + (t.recordCount || 0), 0) : 0
-  }))
+  // 全量统计（独立于分页）
+  const stats = ref({ total: 0, running: 0, completed: 0, records: 0 })
+
+  const statistics = computed(() => stats.value)
+
+  async function loadStats() {
+    try {
+      const res = await taskApi.getStats()
+      if (res.success && res.data) {
+        stats.value = res.data
+      }
+    } catch { /* ignore */ }
+  }
 
   // 🔧 新增：重新订阅所有运行中的任务
   function resubscribeRunningTasks() {
@@ -161,7 +173,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
 
     socket.value.on('task:completed', (data: any) => {
       updateTaskCompleted(data.taskId, data)
-      // 🔧 修复: 只在当前任务是此任务时才添加日志
+      loadStats()
       if (currentTask.value?.id === data.taskId) {
         addLogToTask(data.taskId, 'success', `任务完成，共采集 ${data.totalRecords} 条数据`)
       }
@@ -176,6 +188,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
 
     socket.value.on('task:failed', (data: any) => {
       updateTaskError(data.taskId, data.error, data.recordCount)
+      loadStats()
       if (currentTask.value?.id === data.taskId) {
         addLogToTask(data.taskId, 'error', `任务失败: ${data.error}`)
       }
@@ -183,6 +196,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
 
     socket.value.on('task:stopped', (data: any) => {
       updateTaskStopped(data.taskId, data)
+      loadStats()
       if (currentTask.value?.id === data.taskId) {
         addLogToTask(data.taskId, 'info', `任务已停止，共采集 ${data.totalRecords || 0} 条数据`)
       }
@@ -260,9 +274,10 @@ export const useCrawlerStore = defineStore('crawler', () => {
         // 重新加载任务列表
         await loadTasks()
         
+        loadStats()
         // 订阅任务更新
         subscribeTask(res.data.taskId)
-        
+
         // 设置当前任务 - 确保 tasks.value 是数组
         currentTask.value = Array.isArray(tasks.value) 
           ? tasks.value.find(t => t.id === res.data!.taskId) || null 
@@ -305,6 +320,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
       
       if (res.success) {
         ElMessage.success('任务已启动')
+        loadStats()
         // 重新加载任务列表
         await loadTasks()
         // 订阅任务更新
@@ -335,15 +351,20 @@ export const useCrawlerStore = defineStore('crawler', () => {
   }
 
   // 加载任务列表
-  async function loadTasks() {
+  async function loadTasks(p?: number, ps?: number) {
     try {
-      const res = await taskApi.getTasks()
+      const reqPage = p || page.value;
+      const reqSize = ps || pageSize.value;
+      const res = await taskApi.getTasks({ page: reqPage, pageSize: reqSize });
       console.log('[Store] Load tasks API response:', res)
-      
+
       // 拦截器已经返回了 response.data，即后端的完整响应体 { success, data, error }
       if (res.success && res.data && Array.isArray(res.data.list)) {
         tasks.value = res.data.list
-        console.log('[Store] Tasks loaded:', tasks.value.length)
+        page.value = Number(res.data.page) || reqPage;
+        pageSize.value = Number(res.data.pageSize) || reqSize;
+        total.value = Number(res.data.total) || 0;
+        console.log('[Store] Tasks loaded:', tasks.value.length, 'total:', total.value)
       } else {
         console.warn('[Store] Invalid tasks data format:', res)
         tasks.value = [] // 确保是数组
@@ -394,6 +415,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
         setCurrentTask(updatedTask)
       }
       updateTaskStatus(taskId, 'running')
+      loadStats()
       ElMessage.success('任务已恢复，正在从断点处继续爬取')
     } catch (error: any) {
       console.error('[Store] Resume task error:', error)
@@ -407,6 +429,7 @@ export const useCrawlerStore = defineStore('crawler', () => {
       const res = await taskApi.deleteTask(taskId)
       if (res.success) {
         ElMessage.success('任务已删除')
+        loadStats()
         await loadTasks() // 重新加载列表确保同步
         if (currentTask.value?.id === taskId) {
           currentTask.value = null
@@ -658,6 +681,10 @@ export const useCrawlerStore = defineStore('crawler', () => {
     maxReconnectAttempts,  // 🔧 新增：最大重连次数
     runningTasks,
     statistics,
+    loadStats,
+    page,
+    pageSize,
+    total,
     connectSocket,
     disconnectSocket,
     subscribeTask,

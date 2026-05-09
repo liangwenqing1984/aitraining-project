@@ -9,6 +9,9 @@ router.post('/', taskController.createTask);
 // 获取任务列表
 router.get('/', taskController.getTasks);
 
+// 获取任务统计（全量）
+router.get('/stats', taskController.getStats);
+
 // 获取任务详情
 router.get('/:id', taskController.getTask);
 

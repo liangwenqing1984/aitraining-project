@@ -132,6 +132,33 @@ export async function startTask(req: Request, res: Response) {
   }
 }
 
+// 获取任务统计（全量，不分页）
+export async function getStats(req: Request, res: Response) {
+  try {
+    const row = await db.prepare(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status = 'running') as running,
+        COUNT(*) FILTER (WHERE status = 'completed') as completed,
+        COALESCE(SUM(record_count), 0) as records
+      FROM sp_tasks
+    `).get() as any;
+
+    res.json({
+      success: true,
+      data: {
+        total: Number(row?.total) || 0,
+        running: Number(row?.running) || 0,
+        completed: Number(row?.completed) || 0,
+        records: Number(row?.records) || 0,
+      },
+    });
+  } catch (error: any) {
+    console.error('[TaskController] getStats error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 // 获取任务列表
 export async function getTasks(req: Request, res: Response) {
   try {

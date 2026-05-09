@@ -12,6 +12,9 @@ router.post('/index/:taskId/sync', ragController.indexTaskSync);
 // 语义相似搜索
 router.post('/search', ragController.search);
 
+// 删除指定任务的向量索引
+router.delete('/index/:taskId', ragController.deleteIndex);
+
 // 向量化统计
 router.get('/stats', ragController.stats);
 

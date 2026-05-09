@@ -14,6 +14,7 @@ import llmRoutes from './routes/llmRoutes';
 import ragRoutes from './routes/ragRoutes';
 import systemRoutes from './routes/systemRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
+import regionRoutes from './routes/regionRoutes';
 
 // 中间件
 import { errorHandler } from './middleware/errorHandler';
@@ -49,6 +50,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/llm', llmRoutes);
 app.use('/api/rag', ragRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/region', regionRoutes);
 app.use('/api', systemRoutes);
 
 // 健康检查

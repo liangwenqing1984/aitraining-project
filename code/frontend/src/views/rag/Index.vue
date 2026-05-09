@@ -64,6 +64,7 @@
             <div v-for="s in statsList" :key="s.taskId" class="stat-item">
               <span class="stat-id">{{ s.taskId?.substring(0, 10) }}...</span>
               <span class="stat-count">{{ s.count }} 条</span>
+              <el-button size="small" text type="danger" :icon="Delete" @click="handleDeleteIndex(s.taskId, s.count)" title="删除索引" />
             </div>
           </div>
           <div class="index-action">
@@ -185,8 +186,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Loading } from '@element-plus/icons-vue'
-import { ragSearch, startRAGIndex, getRAGStats, getEnrichmentStatus, type RAGSearchResult } from '@/api/llm'
+import { Search, Loading, Delete } from '@element-plus/icons-vue'
+import { ragSearch, startRAGIndex, getRAGStats, deleteRAGIndex, getEnrichmentStatus, type RAGSearchResult } from '@/api/llm'
+import { ElMessageBox } from 'element-plus'
 import { taskApi } from '@/api/task'
 
 const queryText = ref('')
@@ -246,6 +248,23 @@ async function loadStats() {
     }
   } catch { /* ignore */ }
   statsLoading.value = false
+}
+
+async function handleDeleteIndex(taskId: string, count: number) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除该任务的 ${count} 条向量索引数据吗？删除后需重新索引才能搜索。`,
+      '确认删除向量索引',
+      { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' }
+    )
+    const res: any = await deleteRAGIndex(taskId)
+    if (res.success) {
+      ElMessage.success(res.message || `已删除 ${res.data?.deletedCount || count} 条索引`)
+      loadStats()
+    }
+  } catch {
+    // 用户取消
+  }
 }
 
 async function doSearch() {

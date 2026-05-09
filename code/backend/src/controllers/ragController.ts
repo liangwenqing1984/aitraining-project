@@ -94,6 +94,34 @@ export async function search(req: Request, res: Response) {
 }
 
 /**
+ * DELETE /api/rag/index/:taskId
+ * 删除指定任务的向量索引数据
+ */
+export async function deleteIndex(req: Request, res: Response) {
+  try {
+    const { taskId } = req.params;
+    if (!taskId) {
+      return res.status(400).json({ success: false, error: '缺少 taskId 参数' });
+    }
+
+    const result = await db.prepare(
+      'DELETE FROM sp_job_embeddings WHERE task_id = $1'
+    ).run(taskId);
+
+    console.log(`[RAG] 已删除任务 ${taskId} 的向量索引，共 ${result.changes} 条`);
+
+    res.json({
+      success: true,
+      data: { taskId, deletedCount: result.changes },
+      message: `已删除 ${result.changes} 条向量索引`,
+    });
+  } catch (e: any) {
+    console.error('[RAG] deleteIndex error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+}
+
+/**
  * GET /api/rag/stats
  * 获取向量化统计
  */

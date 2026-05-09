@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, nextTick, computed, ref } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useCrawlerStore } from '@/stores/crawler'
 import { fileApi } from '@/api/file'
+import { taskApi } from '@/api/task'
 import { startEnrichment as startEnrichApi, getEnrichmentStatus } from '@/api/llm'
 import { Plus, Document, VideoPlay, VideoPause, RefreshRight, Monitor, CircleCheck, DataAnalysis, Download, TrendCharts, Setting, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -12,46 +13,25 @@ import StatCard from '@/components/StatCard.vue'
 const router = useRouter()
 const crawlerStore = useCrawlerStore()
 
-// 固定列背景不透明修复 — MutationObserver 监听 DOM 变化，用 JS 直接设 style
-let tableObserver: MutationObserver | null = null
+// 本地分页状态
+const currentPage = ref(1)
+const pageSize = ref(10)
+const totalRecords = ref(0)
 
-function forceFixedColumnBg() {
-  const containers = document.querySelectorAll('.task-table .el-table__fixed-right, .task-table.el-table .el-table__fixed-right')
-  containers.forEach(container => {
-    const el = container as HTMLElement
-    el.style.setProperty('background', '#fff', 'important')
-    el.style.setProperty('background-color', '#fff', 'important')
-  })
-  const cells = document.querySelectorAll(
-    '.task-table .el-table__fixed-right td, .task-table .el-table__fixed-right th,' +
-    '.task-table .el-table__fixed-right .el-table__cell,' +
-    '.task-table .el-table__fixed-body-wrapper,' +
-    '.task-table.el-table .el-table__fixed-right td,' +
-    '.task-table.el-table .el-table__fixed-right th'
-  )
-  cells.forEach(cell => {
-    const el = cell as HTMLElement
-    el.style.setProperty('background', '#fff', 'important')
-    el.style.setProperty('background-color', '#fff', 'important')
-  })
-}
-
-function startTableObserver() {
-  const tableEl = document.querySelector('.task-table')
-  if (tableEl) {
-    tableObserver = new MutationObserver(() => forceFixedColumnBg())
-    tableObserver.observe(tableEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] })
+async function loadTasks(p?: number, ps?: number) {
+  if (p !== undefined) currentPage.value = p
+  if (ps !== undefined) pageSize.value = ps
+  const res = await taskApi.getTasks({ page: currentPage.value, pageSize: pageSize.value })
+  if (res.success && res.data) {
+    crawlerStore.tasks = res.data.list
+    totalRecords.value = Number(res.data.total) || 0
   }
 }
 
 onMounted(() => {
   crawlerStore.connectSocket()
-  crawlerStore.loadTasks()
-  nextTick(() => { forceFixedColumnBg(); startTableObserver() })
-})
-
-onUnmounted(() => {
-  tableObserver?.disconnect()
+  loadTasks()
+  crawlerStore.loadStats()
 })
 
 function goToCreate() {
@@ -370,16 +350,16 @@ async function handleResumeTask(row: any) {
         <el-button type="primary" @click="goToCreate">创建第一个任务</el-button>
       </el-empty>
 
-      <el-table v-else :data="crawlerStore.tasks" stripe class="task-table" :style="{ '--el-table-bg-color': '#fff', '--el-table-tr-bg-color': '#fff' }">
-        <el-table-column prop="name" label="任务名称" min-width="150" />
-        <el-table-column prop="source" label="数据来源" width="120">
+      <el-table v-else :data="crawlerStore.tasks" stripe size="small" class="task-table" :style="{ '--el-table-bg-color': '#fff', '--el-table-tr-bg-color': '#fff' }">
+        <el-table-column prop="name" label="任务名称" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="source" label="数据来源" width="80">
           <template #default="{ row }">
-            <el-tag>{{ row.source === 'zhilian' ? '智联招聘' : row.source === '51job' ? '前程无忧' : '全部' }}</el-tag>
+            <el-tag size="small">{{ row.source === 'zhilian' ? '智联' : row.source === '51job' ? '51job' : '全部' }}</el-tag>
           </template>
         </el-table-column>
-        
+
         <!-- 职位关键词列 -->
-        <el-table-column label="职位关键词" min-width="180" show-overflow-tooltip>
+        <el-table-column label="职位关键词" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">
             <el-popover
               placement="top"
@@ -465,12 +445,12 @@ async function handleResumeTask(row: any) {
           </template>
         </el-table-column>
         
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="75">
           <template #default="{ row }">
-            <el-tag :type="getStatusType(row.status)">{{ getStatusName(row.status) }}</el-tag>
+            <el-tag :type="getStatusType(row.status)" size="small">{{ getStatusName(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="进度" width="180">
+        <el-table-column label="进度" width="130">
           <template #default="{ row }">
             <el-progress
               :percentage="row.progress"
@@ -481,17 +461,17 @@ async function handleResumeTask(row: any) {
             <div v-if="getComboInfo(row).isMultiCombo" class="combo-info">{{ getComboInfo(row).comboText }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="记录数" width="100">
+        <el-table-column label="记录数" width="70" align="center">
           <template #default="{ row }">
             {{ row.recordCount || 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="165">
+        <el-table-column label="创建时间" width="140">
           <template #default="{ row }">
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="420" fixed="right" cell-class-name="ops-cell" :cell-style="{ background: '#fff' }" :header-cell-style="{ background: '#fff' }">
+        <el-table-column label="操作" width="410">
           <template #default="{ row }">
             <div class="action-buttons">
             <!-- 任务控制按钮 -->
@@ -569,6 +549,19 @@ async function handleResumeTask(row: any) {
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 分页 -->
+      <div class="pagination-wrap" v-if="totalRecords > 0">
+        <el-pagination
+          :current-page="currentPage"
+          :page-size="pageSize"
+          :total="totalRecords"
+          :page-sizes="[7, 10, 20, 50, 100]"
+          layout="total, sizes, prev, pager, next, jumper"
+          @current-change="(p: number) => loadTasks(p)"
+          @size-change="(s: number) => loadTasks(1, s)"
+        />
+      </div>
     </el-card>
   </div>
 </template>
@@ -600,12 +593,12 @@ async function handleResumeTask(row: any) {
 /* 关键词详情样式 */
 .keyword-summary {
   cursor: pointer;
-  padding: 6px 12px;
+  padding: 2px 6px;
   border-radius: var(--radius-sm);
   transition: all var(--transition-base);
   color: var(--color-text-regular);
-  font-size: var(--font-size-sm);
-  line-height: 1.6;
+  font-size: 12px;
+  line-height: 1.4;
   background: var(--glass-bg-weak);
   border: 1px solid transparent;
 }
@@ -725,17 +718,17 @@ async function handleResumeTask(row: any) {
   background: #9ca3af;
 }
 
-/* 操作按钮自动换行 */
+/* 操作按钮排列 */
 .action-buttons {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
 }
 
 /* 操作图标样式 */
 .action-icon {
-  margin-right: 2px;
+  margin-right: 3px;
   font-size: 13px;
 }
 
@@ -758,23 +751,17 @@ async function handleResumeTask(row: any) {
   margin-top: 0;
 }
 
+.pagination-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
 </style>
 
 <!-- 非 scoped：强制覆盖 Element Plus 固定列透明背景（body 前缀提高特异性） -->
 <style>
 .task-table {
-  --el-table-bg-color: #fff !important;
-  --el-table-tr-bg-color: #fff !important;
-}
-body .task-table .el-table__fixed-right,
-body .task-table .el-table__fixed-right td,
-body .task-table .el-table__fixed-right th,
-body .task-table .el-table__fixed-body-wrapper,
-body .task-table .el-table__fixed-right .el-table__cell,
-body .task-table .el-table__fixed-body-wrapper .el-table__cell,
-body .task-table .ops-cell {
-  background: #fff !important;
-  background-color: #fff !important;
   --el-table-bg-color: #fff !important;
   --el-table-tr-bg-color: #fff !important;
 }

@@ -112,8 +112,8 @@ function goToDoc(section: string) {
         <h2>系统核心亮点</h2>
         <p class="section-subtitle">一站式招聘数据采集、增强、分析与智能检索平台</p>
       </div>
-      <el-row :gutter="16">
-        <el-col v-for="item in highlights" :key="item.title" :span="8" style="margin-bottom: 16px">
+      <el-row :gutter="12">
+        <el-col v-for="item in highlights" :key="item.title" :span="8" style="margin-bottom: 12px">
           <el-popover
             placement="bottom-start"
             :width="720"
@@ -188,14 +188,14 @@ function goToDoc(section: string) {
 .home-page {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 8px 0;
+  padding: 0;
 }
 
 .section {
-  margin-bottom: 28px;
+  margin-bottom: 16px;
 }
 .section-header {
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 .section-header h2 {
   margin: 0;
@@ -204,7 +204,7 @@ function goToDoc(section: string) {
   color: var(--color-text-primary);
 }
 .section-subtitle {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   font-size: 13px;
   color: var(--color-text-secondary);
 }
@@ -219,11 +219,14 @@ function goToDoc(section: string) {
 .highlight-card:hover {
   transform: translateY(-2px);
 }
+:deep(.highlight-card .el-card__body) {
+  padding: 14px 16px;
+}
 .highlight-top {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .highlight-icon {
   width: 44px;
@@ -263,10 +266,13 @@ function goToDoc(section: string) {
 .flow-card {
   border-radius: var(--radius-lg) !important;
 }
+:deep(.flow-card .el-card__body) {
+  padding: 14px 20px;
+}
 .flow-steps {
   display: flex;
   align-items: flex-start;
-  padding: 8px 0;
+  padding: 4px 0;
 }
 .flow-step {
   display: flex;

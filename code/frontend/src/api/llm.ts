@@ -195,3 +195,8 @@ export function ragSearch(query: string, options?: {
 export function getRAGStats(taskId?: string): Promise<ApiResponse<any>> {
   return api.get('/rag/stats', { params: taskId ? { taskId } : {} })
 }
+
+// 删除指定任务的向量索引
+export function deleteRAGIndex(taskId: string): Promise<ApiResponse<{ taskId: string; deletedCount: number }>> {
+  return api.delete(`/rag/index/${taskId}`)
+}
