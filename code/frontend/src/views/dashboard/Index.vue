@@ -21,192 +21,137 @@ function formatSalary(val: number): string {
   return val >= 1000 ? `${(val / 1000).toFixed(0)}K` : String(val);
 }
 
+function initChart(key: string, option: any) {
+  try {
+    const dom = chartRefs[key];
+    if (!dom) { console.warn(`[Dashboard] chart ${key} DOM not found`); return; }
+    if (charts[key]) charts[key].dispose();
+    const instance = echarts.init(dom);
+    instance.setOption(option);
+    charts[key] = instance;
+  } catch (e) {
+    console.error(`[Dashboard] chart ${key} init failed:`, e);
+  }
+}
+
 function initCharts() {
   if (!data.value) return;
 
-  const { summary, salaryDistribution, cityDistribution, educationDistribution,
+  const { salaryDistribution, cityDistribution, educationDistribution,
     experienceDistribution, industryDistribution, categoryDistribution,
     topSkills, workModeDistribution } = data.value;
 
   // ====== 薪资分布 ======
-  const salaryDom = chartRefs['salary'];
-  if (salaryDom) {
-    charts.salary = echarts.init(salaryDom);
-    charts.salary.setOption({
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
-      xAxis: { type: 'category', data: salaryDistribution.map(d => d.label), axisLabel: { fontSize: 11 } },
-      yAxis: { type: 'value', name: '职位数' },
-      series: [{
-        type: 'bar',
-        data: salaryDistribution.map(d => d.count),
-        itemStyle: {
-          borderRadius: [4, 4, 0, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#409eff' }, { offset: 1, color: '#79bbff' }
-          ]),
-        },
-        barWidth: '55%',
-      }],
-    });
-  }
+  initChart('salary', {
+    tooltip: { trigger: 'axis' },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
+    xAxis: { type: 'category', data: salaryDistribution.map(d => d.label), axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', name: '职位数' },
+    series: [{
+      type: 'bar', data: salaryDistribution.map(d => d.count),
+      itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#409eff' }, { offset: 1, color: '#79bbff' }]) },
+      barWidth: '55%',
+    }],
+  });
 
   // ====== 城市分布 ======
-  const cityDom = chartRefs['city'];
-  if (cityDom) {
-    charts.city = echarts.init(cityDom);
-    const cities = cityDistribution.slice(0, 10).reverse();
-    charts.city.setOption({
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
-      xAxis: { type: 'value', name: '职位数' },
-      yAxis: { type: 'category', data: cities.map(d => d.name), axisLabel: { fontSize: 11 } },
-      series: [{
-        type: 'bar',
-        data: cities.map(d => d.count),
-        itemStyle: {
-          borderRadius: [0, 4, 4, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: '#67c23a' }, { offset: 1, color: '#b3e19d' }
-          ]),
-        },
-        barWidth: '55%',
-      }],
-    });
-  }
+  const cities = cityDistribution.slice(0, 10).reverse();
+  initChart('city', {
+    tooltip: { trigger: 'axis' },
+    grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
+    xAxis: { type: 'value', name: '职位数' },
+    yAxis: { type: 'category', data: cities.map(d => d.name), axisLabel: { fontSize: 11 } },
+    series: [{
+      type: 'bar', data: cities.map(d => d.count),
+      itemStyle: { borderRadius: [0, 4, 4, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#67c23a' }, { offset: 1, color: '#b3e19d' }]) },
+      barWidth: '55%',
+    }],
+  });
 
   // ====== 学历分布 ======
-  const eduDom = chartRefs['education'];
-  if (eduDom) {
-    charts.education = echarts.init(eduDom);
-    charts.education.setOption({
-      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-      series: [{
-        type: 'pie',
-        radius: ['45%', '70%'],
-        center: ['50%', '55%'],
-        data: educationDistribution.map(d => ({ name: d.name, value: d.count })),
-        label: { fontSize: 11, formatter: '{b}\n{d}%' },
-        emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } },
-        itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-      }],
-      color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6', '#00b8ba'],
-    });
-  }
+  initChart('education', {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie', radius: ['45%', '70%'], center: ['50%', '55%'],
+      data: educationDistribution.map(d => ({ name: d.name, value: d.count })),
+      label: { fontSize: 11, formatter: '{b}\n{d}%' },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } },
+      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
+    }],
+    color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6', '#00b8ba'],
+  });
 
   // ====== 经验分布 ======
-  const expDom = chartRefs['experience'];
-  if (expDom) {
-    charts.experience = echarts.init(expDom);
-    charts.experience.setOption({
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
-      xAxis: { type: 'category', data: experienceDistribution.map(d => d.name), axisLabel: { fontSize: 10, rotate: 30 } },
-      yAxis: { type: 'value', name: '职位数' },
-      series: [{
-        type: 'bar',
-        data: experienceDistribution.map(d => d.count),
-        itemStyle: {
-          borderRadius: [4, 4, 0, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#e6a23c' }, { offset: 1, color: '#f3d19e' }
-          ]),
-        },
-        barWidth: '50%',
-      }],
-    });
-  }
+  initChart('experience', {
+    tooltip: { trigger: 'axis' },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
+    xAxis: { type: 'category', data: experienceDistribution.map(d => d.name), axisLabel: { fontSize: 10, rotate: 30 } },
+    yAxis: { type: 'value', name: '职位数' },
+    series: [{
+      type: 'bar', data: experienceDistribution.map(d => d.count),
+      itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#e6a23c' }, { offset: 1, color: '#f3d19e' }]) },
+      barWidth: '50%',
+    }],
+  });
 
   // ====== 行业分布 ======
-  const industryDom = chartRefs['industry'];
-  if (industryDom) {
-    charts.industry = echarts.init(industryDom);
-    const industries = industryDistribution.slice(0, 10).reverse();
-    charts.industry.setOption({
-      tooltip: {
-        trigger: 'axis',
-        formatter: (params: any) => {
-          const p = params[0];
-          const item = industryDistribution.find(d => d.name === p.name);
-          return `${p.name}<br/>职位数: ${p.value}<br/>平均薪资: ${item ? formatSalary(item.avgSalary) : '-'}`;
-        },
+  const industries = industryDistribution.slice(0, 10).reverse();
+  initChart('industry', {
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params: any) => {
+        const p = params[0];
+        const item = industryDistribution.find(d => d.name === p.name);
+        return `${p.name}<br/>职位数: ${p.value}<br/>平均薪资: ${item ? formatSalary(item.avgSalary) : '-'}`;
       },
-      grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
-      xAxis: { type: 'value', name: '职位数' },
-      yAxis: { type: 'category', data: industries.map(d => d.name), axisLabel: { fontSize: 11 } },
-      series: [{
-        type: 'bar',
-        data: industries.map(d => d.count),
-        itemStyle: {
-          borderRadius: [0, 4, 4, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: '#9b59b6' }, { offset: 1, color: '#c9a0dc' }
-          ]),
-        },
-        barWidth: '55%',
-      }],
-    });
-  }
+    },
+    grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
+    xAxis: { type: 'value', name: '职位数' },
+    yAxis: { type: 'category', data: industries.map(d => d.name), axisLabel: { fontSize: 11 } },
+    series: [{
+      type: 'bar', data: industries.map(d => d.count),
+      itemStyle: { borderRadius: [0, 4, 4, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#9b59b6' }, { offset: 1, color: '#c9a0dc' }]) },
+      barWidth: '55%',
+    }],
+  });
 
   // ====== 职位分类 ======
-  const catDom = chartRefs['category'];
-  if (catDom) {
-    charts.category = echarts.init(catDom);
-    charts.category.setOption({
-      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-      series: [{
-        type: 'pie',
-        radius: ['40%', '65%'],
-        center: ['50%', '55%'],
-        data: categoryDistribution.map(d => ({ name: d.name, value: d.count })),
-        label: { fontSize: 10, formatter: '{b}\n{d}%' },
-        itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
-      }],
-      color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6', '#00b8ba', '#fd726d', '#79bbff', '#b88230', '#8b5cf6', '#06b6d4', '#84cc16'],
-    });
-  }
+  initChart('category', {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie', radius: ['40%', '65%'], center: ['50%', '55%'],
+      data: categoryDistribution.map(d => ({ name: d.name, value: d.count })),
+      label: { fontSize: 10, formatter: '{b}\n{d}%' },
+      itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
+    }],
+    color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6', '#00b8ba', '#fd726d', '#79bbff', '#b88230', '#8b5cf6', '#06b6d4', '#84cc16'],
+  });
 
   // ====== 工作模式 ======
-  const wmDom = chartRefs['workMode'];
-  if (wmDom) {
-    charts.workMode = echarts.init(wmDom);
-    charts.workMode.setOption({
-      tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-      series: [{
-        type: 'pie',
-        radius: '65%',
-        center: ['50%', '55%'],
-        data: workModeDistribution.map(d => ({ name: d.name, value: d.count })),
-        label: { fontSize: 11, formatter: '{b}\n{d}%' },
-        itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
-      }],
-      color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6'],
-    });
-  }
+  initChart('workMode', {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie', radius: '65%', center: ['50%', '55%'],
+      data: workModeDistribution.map(d => ({ name: d.name, value: d.count })),
+      label: { fontSize: 11, formatter: '{b}\n{d}%' },
+      itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
+    }],
+    color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6'],
+  });
 
   // ====== 热门技能 Top 15 ======
-  const skillDom = chartRefs['skills'];
-  if (skillDom) {
-    charts.skills = echarts.init(skillDom);
-    const skills = topSkills.slice(0, 15).reverse();
-    charts.skills.setOption({
-      tooltip: { trigger: 'axis' },
-      grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
-      xAxis: { type: 'value', name: '出现次数' },
-      yAxis: { type: 'category', data: skills.map(d => d.name), axisLabel: { fontSize: 11 } },
-      series: [{
-        type: 'bar',
-        data: skills.map(d => d.count),
-        itemStyle: {
-          borderRadius: [0, 4, 4, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: '#f56c6c' }, { offset: 1, color: '#fab6b6' }
-          ]),
-        },
-        barWidth: '55%',
-      }],
-    });
-  }
+  const skills = topSkills.slice(0, 15).reverse();
+  initChart('skills', {
+    tooltip: { trigger: 'axis' },
+    grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
+    xAxis: { type: 'value', name: '出现次数' },
+    yAxis: { type: 'category', data: skills.map(d => d.name), axisLabel: { fontSize: 11 } },
+    series: [{
+      type: 'bar', data: skills.map(d => d.count),
+      itemStyle: { borderRadius: [0, 4, 4, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#f56c6c' }, { offset: 1, color: '#fab6b6' }]) },
+      barWidth: '55%',
+    }],
+  });
 }
 
 function resizeCharts() {
@@ -217,7 +162,27 @@ async function load() {
   loading.value = true;
   error.value = '';
   try {
-    data.value = await fetchOverview();
+    const raw = await fetchOverview();
+    // 数值归一化：PG 驱动可能返回字符串类型的 COUNT/AVG 结果
+    const n = (v: any) => Number(v) || 0;
+    data.value = {
+      summary: {
+        totalJobs: n(raw.summary.totalJobs),
+        totalTasks: n(raw.summary.totalTasks),
+        totalCompanies: n(raw.summary.totalCompanies),
+        avgSalary: n(raw.summary.avgSalary),
+        maxSalary: n(raw.summary.maxSalary),
+        minSalary: n(raw.summary.minSalary),
+      },
+      salaryDistribution: raw.salaryDistribution.map(d => ({ ...d, count: n(d.count) })),
+      cityDistribution: raw.cityDistribution.map(d => ({ name: d.name, count: n(d.count) })),
+      educationDistribution: raw.educationDistribution.map(d => ({ name: d.name, count: n(d.count) })),
+      experienceDistribution: raw.experienceDistribution.map(d => ({ name: d.name, count: n(d.count) })),
+      industryDistribution: raw.industryDistribution.map(d => ({ name: d.name, count: n(d.count), avgSalary: n(d.avgSalary) })),
+      categoryDistribution: raw.categoryDistribution.map(d => ({ name: d.name, count: n(d.count) })),
+      topSkills: raw.topSkills.map(d => ({ name: d.name, count: n(d.count) })),
+      workModeDistribution: raw.workModeDistribution.map(d => ({ name: d.name, count: n(d.count) })),
+    };
     await nextTick();
     initCharts();
   } catch (e: any) {
@@ -419,7 +384,7 @@ onBeforeUnmount(() => {
   padding: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   border: 1px solid #f0f0f0;
-  min-height: 380px;
+  height: 400px;
   display: flex;
   flex-direction: column;
 }
@@ -430,10 +395,13 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: #303133;
   flex-shrink: 0;
+  height: 24px;
+  line-height: 24px;
 }
 
 .chart-box {
   flex: 1;
   min-height: 0;
+  width: 100%;
 }
 </style>

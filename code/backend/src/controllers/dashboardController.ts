@@ -118,25 +118,28 @@ export async function overview(_req: Request, res: Response) {
       SELECT COUNT(DISTINCT company_name) as cnt FROM sp_jobs WHERE company_name IS NOT NULL
     `).get() as any;
 
+    // 强制转换所有数值为 number（PG 驱动可能返回字符串）
+    const num = (v: any) => Number(v) || 0;
+
     res.json({
       success: true,
       data: {
         summary: {
-          totalJobs: summary?.totalJobs || 0,
-          totalTasks: summary?.totalTasks || 0,
-          totalCompanies: companyCount?.cnt || 0,
-          avgSalary: summary?.avgSalary || 0,
-          maxSalary: summary?.maxSalary || 0,
-          minSalary: summary?.minSalary || 0,
+          totalJobs: num(summary?.totalJobs),
+          totalTasks: num(summary?.totalTasks),
+          totalCompanies: num(companyCount?.cnt),
+          avgSalary: num(summary?.avgSalary),
+          maxSalary: num(summary?.maxSalary),
+          minSalary: num(summary?.minSalary),
         },
-        salaryDistribution: salaryBuckets,
-        cityDistribution: cityRows.map((r: any) => ({ name: r.city, count: r.cnt })),
-        educationDistribution: eduRows,
-        experienceDistribution,
-        industryDistribution: industryRows,
-        categoryDistribution: categoryRows,
-        topSkills,
-        workModeDistribution: workModeRows,
+        salaryDistribution: salaryBuckets.map(b => ({ ...b, count: num(b.count) })),
+        cityDistribution: cityRows.map((r: any) => ({ name: r.city, count: num(r.cnt) })),
+        educationDistribution: eduRows.map((r: any) => ({ name: r.name, count: num(r.count) })),
+        experienceDistribution: experienceDistribution.map((r: any) => ({ ...r, count: num(r.count) })),
+        industryDistribution: industryRows.map((r: any) => ({ name: r.name, count: num(r.count), avgSalary: num(r.avgSalary) })),
+        categoryDistribution: categoryRows.map((r: any) => ({ name: r.name, count: num(r.count) })),
+        topSkills: topSkills.map(s => ({ ...s, count: num(s.count) })),
+        workModeDistribution: workModeRows.map((r: any) => ({ name: r.name, count: num(r.count) })),
       },
     } as ApiResponse);
   } catch (error: any) {
