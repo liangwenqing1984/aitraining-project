@@ -2,6 +2,7 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import 'echarts-wordcloud';
+import { Briefcase, Monitor, OfficeBuilding, Coin, TrendCharts } from '@element-plus/icons-vue';
 import { fetchOverview, type DashboardOverview } from '@/api/dashboard';
 import { fetchRegionStats, type RegionStats } from '@/api/region';
 
@@ -251,24 +252,39 @@ onBeforeUnmount(() => {
       <!-- 顶部统计卡片 -->
       <div class="stat-row">
         <div class="stat-card">
-          <div class="stat-value">{{ data.summary.totalJobs.toLocaleString() }}</div>
-          <div class="stat-label">总职位数</div>
+          <div class="stat-icon" style="background:#ecf5ff;color:#409eff"><el-icon :size="20"><Briefcase /></el-icon></div>
+          <div class="stat-text">
+            <div class="stat-value">{{ data.summary.totalJobs.toLocaleString() }}</div>
+            <div class="stat-label">总职位数</div>
+          </div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">{{ data.summary.totalTasks }}</div>
-          <div class="stat-label">采集任务</div>
+          <div class="stat-icon" style="background:#f0f9eb;color:#67c23a"><el-icon :size="20"><Monitor /></el-icon></div>
+          <div class="stat-text">
+            <div class="stat-value">{{ data.summary.totalTasks }}</div>
+            <div class="stat-label">采集任务</div>
+          </div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">{{ data.summary.totalCompanies.toLocaleString() }}</div>
-          <div class="stat-label">企业数量</div>
+          <div class="stat-icon" style="background:#fef0f0;color:#f56c6c"><el-icon :size="20"><OfficeBuilding /></el-icon></div>
+          <div class="stat-text">
+            <div class="stat-value">{{ data.summary.totalCompanies.toLocaleString() }}</div>
+            <div class="stat-label">企业数量</div>
+          </div>
         </div>
         <div class="stat-card accent">
-          <div class="stat-value">{{ formatSalary(data.summary.avgSalary) }}</div>
-          <div class="stat-label">平均薪资</div>
+          <div class="stat-icon" style="background:#fdf6ec;color:#e6a23c"><el-icon :size="20"><Coin /></el-icon></div>
+          <div class="stat-text">
+            <div class="stat-value">{{ formatSalary(data.summary.avgSalary) }}</div>
+            <div class="stat-label">平均薪资</div>
+          </div>
         </div>
         <div class="stat-card accent-high">
-          <div class="stat-value">{{ formatSalary(data.summary.maxSalary) }}</div>
-          <div class="stat-label">最高薪资</div>
+          <div class="stat-icon" style="background:#e8fffe;color:#00b8ba"><el-icon :size="20"><TrendCharts /></el-icon></div>
+          <div class="stat-text">
+            <div class="stat-value">{{ formatSalary(data.summary.maxSalary) }}</div>
+            <div class="stat-label">最高薪资</div>
+          </div>
         </div>
       </div>
 
@@ -357,12 +373,24 @@ onBeforeUnmount(() => {
   padding: 20px 24px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   border: 1px solid #f0f0f0;
-  text-align: center;
+  display: flex;
+  align-items: center;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 .stat-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 12px;
 }
 
 .stat-value {
@@ -373,6 +401,10 @@ onBeforeUnmount(() => {
 }
 .stat-card.accent .stat-value { color: #409eff; }
 .stat-card.accent-high .stat-value { color: #f56c6c; }
+
+.stat-text {
+  min-width: 0;
+}
 
 .stat-label {
   font-size: 13px;
