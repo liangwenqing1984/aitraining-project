@@ -51,6 +51,7 @@ const menuItems: MenuItem[] = [
   { path: '/crawler', title: '数据采集', icon: Monitor },
   { path: '/files', title: '数据管理', icon: Files },
   { path: '/analysis', title: '智能分析', icon: TrendCharts },
+  { path: '/dashboard', title: '数据看板', icon: DataAnalysis },
   { path: '/query', title: '智能查询', icon: TrendCharts },
   { path: '/rag', title: '语义搜索', icon: Search },
   {

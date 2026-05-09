@@ -113,6 +113,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '数据分析', icon: 'DataAnalysis' }
       },
       {
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('@/views/dashboard/Index.vue'),
+        meta: { title: '数据看板', icon: 'DataAnalysis' }
+      },
+      {
         path: 'docs',  // 🔧 添加文档页面路由
         name: 'Docs',
         component: () => import('@/views/Docs.vue'),
