@@ -10,23 +10,9 @@ const data = ref<DashboardOverview | null>(null);
 // ECharts instances
 const charts: Record<string, echarts.ECharts> = {};
 
-// 模板 refs — Vue 3 标准写法
-const salaryRef = ref<HTMLElement>();
-const cityRef = ref<HTMLElement>();
-const educationRef = ref<HTMLElement>();
-const experienceRef = ref<HTMLElement>();
-const industryRef = ref<HTMLElement>();
-const categoryRef = ref<HTMLElement>();
-const workModeRef = ref<HTMLElement>();
-const skillsRef = ref<HTMLElement>();
-
-function getDom(key: string): HTMLElement | undefined {
-  const map: Record<string, any> = {
-    salary: salaryRef, city: cityRef, education: educationRef,
-    experience: experienceRef, industry: industryRef, category: categoryRef,
-    workMode: workModeRef, skills: skillsRef,
-  };
-  return map[key]?.value;
+// 直接用 data-chart 属性 + querySelector，绕过 Vue ref 绑定时序问题
+function getDom(key: string): HTMLElement | null {
+  return document.querySelector(`[data-chart="${key}"]`);
 }
 
 function formatSalary(val: number): string {
@@ -260,13 +246,13 @@ onBeforeUnmount(() => {
         <!-- 薪资分布 -->
         <div class="chart-card">
           <h3 class="chart-title">薪资分布</h3>
-          <div ref="salaryRef" class="chart-box"></div>
+          <div data-chart="salary" class="chart-box"></div>
         </div>
 
         <!-- 城市分布 -->
         <div class="chart-card">
           <h3 class="chart-title">城市热力 TOP10</h3>
-          <div ref="cityRef" class="chart-box"></div>
+          <div data-chart="city" class="chart-box"></div>
         </div>
       </div>
 
@@ -274,19 +260,19 @@ onBeforeUnmount(() => {
         <!-- 学历分布 -->
         <div class="chart-card">
           <h3 class="chart-title">学历要求</h3>
-          <div ref="educationRef" class="chart-box"></div>
+          <div data-chart="education" class="chart-box"></div>
         </div>
 
         <!-- 经验分布 -->
         <div class="chart-card">
           <h3 class="chart-title">经验年限</h3>
-          <div ref="experienceRef" class="chart-box"></div>
+          <div data-chart="experience" class="chart-box"></div>
         </div>
 
         <!-- 工作模式 -->
         <div class="chart-card">
           <h3 class="chart-title">工作模式</h3>
-          <div ref="workModeRef" class="chart-box"></div>
+          <div data-chart="workMode" class="chart-box"></div>
         </div>
       </div>
 
@@ -294,13 +280,13 @@ onBeforeUnmount(() => {
         <!-- 行业分布 -->
         <div class="chart-card">
           <h3 class="chart-title">行业分布 TOP10</h3>
-          <div ref="industryRef" class="chart-box"></div>
+          <div data-chart="industry" class="chart-box"></div>
         </div>
 
         <!-- 职位分类 -->
         <div class="chart-card">
           <h3 class="chart-title">职位分类</h3>
-          <div ref="categoryRef" class="chart-box"></div>
+          <div data-chart="category" class="chart-box"></div>
         </div>
       </div>
 
@@ -308,7 +294,7 @@ onBeforeUnmount(() => {
         <!-- 热门技能 -->
         <div class="chart-card">
           <h3 class="chart-title">热门技能 TOP15</h3>
-          <div ref="skillsRef" class="chart-box"></div>
+          <div data-chart="skills" class="chart-box"></div>
         </div>
       </div>
     </template>
