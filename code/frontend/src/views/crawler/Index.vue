@@ -50,6 +50,10 @@ function goToEdit(taskId: string) {
   router.push(`/crawler/edit/${taskId}`)
 }
 
+function goToFiles(taskId: string) {
+  router.push({ path: '/files', query: { taskId } })
+}
+
 // 下载任务结果文件
 async function downloadTaskFile(taskId: string) {
   try {
@@ -351,7 +355,11 @@ async function handleResumeTask(row: any) {
       </el-empty>
 
       <el-table v-else :data="crawlerStore.tasks" stripe size="small" class="task-table" :style="{ '--el-table-bg-color': '#fff', '--el-table-tr-bg-color': '#fff' }">
-        <el-table-column prop="name" label="任务名称" min-width="120" show-overflow-tooltip />
+        <el-table-column label="任务名称" min-width="130">
+          <template #default="{ row }">
+            <el-link type="primary" :underline="false" @click="goToFiles(row.id)">{{ row.name }}</el-link>
+          </template>
+        </el-table-column>
         <el-table-column prop="source" label="数据来源" width="80">
           <template #default="{ row }">
             <el-tag size="small">{{ row.source === 'zhilian' ? '智联' : row.source === '51job' ? '51job' : '全部' }}</el-tag>

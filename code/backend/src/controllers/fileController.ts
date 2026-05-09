@@ -10,26 +10,30 @@ const csvDir = path.join(__dirname, '../../data/csv');
 // 获取文件列表
 export async function getFiles(req: Request, res: Response) {
   try {
-    const { source, keyword, page = 1, pageSize = 10 } = req.query;
+    const { source, keyword, taskId, page = 1, pageSize = 10 } = req.query;
     const offset = (Number(page) - 1) * Number(pageSize);
 
     let sql = 'SELECT * FROM sp_csv_files';
     const params: any[] = [];
     let paramIndex = 1;
 
-    // 🔧 修复: 添加WHERE子句构建逻辑
     const conditions: string[] = [];
-    
+
     if (source) {
       conditions.push(`source = $${paramIndex++}`);
       params.push(source);
     }
-    
+
     if (keyword && typeof keyword === 'string') {
       conditions.push(`filename LIKE $${paramIndex++}`);
       params.push(`%${keyword}%`);
     }
-    
+
+    if (taskId && typeof taskId === 'string') {
+      conditions.push(`task_id = $${paramIndex++}`);
+      params.push(taskId);
+    }
+
     if (conditions.length > 0) {
       sql += ` WHERE ${conditions.join(' AND ')}`;
     }
@@ -39,17 +43,11 @@ export async function getFiles(req: Request, res: Response) {
 
     const files = await db.prepare(sql).all(...params);
 
-    console.log('[FileController] Query result:', {
-      type: Array.isArray(files) ? 'array' : typeof files,
-      length: Array.isArray(files) ? files.length : 'N/A',
-      value: files
-    });
-
     // 获取总数
     let countSql = 'SELECT COUNT(*) as total FROM sp_csv_files';
     const countParams: any[] = [];
     let countParamIndex = 1;
-    
+
     const countConditions: string[] = [];
     if (source) {
       countConditions.push(`source = $${countParamIndex++}`);
@@ -59,21 +57,24 @@ export async function getFiles(req: Request, res: Response) {
       countConditions.push(`filename LIKE $${countParamIndex++}`);
       countParams.push(`%${keyword}%`);
     }
-    
+    if (taskId && typeof taskId === 'string') {
+      countConditions.push(`task_id = $${countParamIndex++}`);
+      countParams.push(taskId);
+    }
+
     if (countConditions.length > 0) {
       countSql += ` WHERE ${countConditions.join(' AND ')}`;
     }
-    
+
     const total = await db.prepare(countSql).get(...countParams) as { total: number };
 
-    // 🔧 关键修复：确保list始终是数组
     const fileList = Array.isArray(files) ? files : [];
 
     res.json({
       success: true,
       data: {
         list: fileList,
-        total: total?.total || 0,
+        total: Number(total?.total) || 0,
         page: Number(page),
         pageSize: Number(pageSize)
       }

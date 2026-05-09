@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import * as echarts from 'echarts';
+import 'echarts-wordcloud';
 import { fetchOverview, type DashboardOverview } from '@/api/dashboard';
 import { fetchRegionStats, type RegionStats } from '@/api/region';
 
@@ -19,153 +20,63 @@ let geoJsonLoaded = false;
 let mapChart: echarts.ECharts | null = null;
 let barChart: echarts.ECharts | null = null;
 
-// ECharts instances
-const charts: Record<string, echarts.ECharts> = {};
-
-// 直接用 data-chart 属性 + querySelector，绕过 Vue ref 绑定时序问题
-function getDom(key: string): HTMLElement | null {
-  return document.querySelector(`[data-chart="${key}"]`);
-}
 
 function formatSalary(val: number): string {
   return val >= 1000 ? `${(val / 1000).toFixed(0)}K` : String(val);
 }
 
-function initChart(key: string, option: any) {
-  try {
-    const dom = getDom(key);
-    if (!dom) { console.warn(`[Dashboard] chart ${key} DOM not found`); return; }
-    if (charts[key]) charts[key].dispose();
-    const instance = echarts.init(dom);
-    instance.setOption(option);
-    charts[key] = instance;
-  } catch (e) {
-    console.error(`[Dashboard] chart ${key} init failed:`, e);
+function renderAnalysisChart() {
+  if (!data.value || !barDom.value) return;
+  // 保留左侧地图，仅更新右侧面板
+  if (barChart) { barChart.dispose(); barChart = null; }
+
+  if (activeDim.value === 'experience') {
+    const { experienceDistribution } = data.value;
+    barChart = echarts.init(barDom.value);
+    barChart.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
+      xAxis: { type: 'category', data: experienceDistribution.map(d => d.name), axisLabel: { fontSize: 10, rotate: 30 } },
+      yAxis: { type: 'value', name: '职位数' },
+      series: [{
+        type: 'bar', data: experienceDistribution.map(d => d.count),
+        itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#e6a23c' }, { offset: 1, color: '#f3d19e' }]) },
+        barWidth: '50%',
+      }],
+    });
+  } else {
+    const { topSkills } = data.value;
+    barChart = echarts.init(barDom.value);
+    barChart.setOption({
+      tooltip: { trigger: 'item', formatter: '{b}: {c} 次' },
+      series: [{
+        type: 'wordCloud',
+        shape: 'circle',
+        width: '100%',
+        height: '100%',
+        sizeRange: [14, 48],
+        rotationRange: [-45, 45],
+        rotationStep: 45,
+        gridSize: 8,
+        drawOutOfBound: false,
+        layoutAnimation: true,
+        keepAspect: true,
+        textStyle: {
+          fontWeight: 'bold',
+          fontFamily: 'sans-serif',
+          color() {
+            const colors = ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6', '#00b8ba', '#fd726d', '#79bbff'];
+            return colors[Math.floor(Math.random() * colors.length)];
+          },
+        },
+        emphasis: { textStyle: { fontSize: 52, color: '#f56c6c' } },
+        data: topSkills.slice(0, 50).map(d => ({ name: d.name, value: d.count })),
+      }],
+    });
   }
 }
 
-function initCharts() {
-  if (!data.value) return;
-
-  const { salaryDistribution, cityDistribution, educationDistribution,
-    experienceDistribution, industryDistribution, categoryDistribution,
-    topSkills, workModeDistribution } = data.value;
-
-  // ====== 薪资分布 ======
-  initChart('salary', {
-    tooltip: { trigger: 'axis' },
-    grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
-    xAxis: { type: 'category', data: salaryDistribution.map(d => d.label), axisLabel: { fontSize: 11 } },
-    yAxis: { type: 'value', name: '职位数' },
-    series: [{
-      type: 'bar', data: salaryDistribution.map(d => d.count),
-      itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#409eff' }, { offset: 1, color: '#79bbff' }]) },
-      barWidth: '55%',
-    }],
-  });
-
-  // ====== 城市分布 ======
-  const cities = cityDistribution.slice(0, 10).reverse();
-  initChart('city', {
-    tooltip: { trigger: 'axis' },
-    grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
-    xAxis: { type: 'value', name: '职位数' },
-    yAxis: { type: 'category', data: cities.map(d => d.name), axisLabel: { fontSize: 11 } },
-    series: [{
-      type: 'bar', data: cities.map(d => d.count),
-      itemStyle: { borderRadius: [0, 4, 4, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#67c23a' }, { offset: 1, color: '#b3e19d' }]) },
-      barWidth: '55%',
-    }],
-  });
-
-  // ====== 学历分布 ======
-  initChart('education', {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    series: [{
-      type: 'pie', radius: ['45%', '70%'], center: ['50%', '55%'],
-      data: educationDistribution.map(d => ({ name: d.name, value: d.count })),
-      label: { fontSize: 11, formatter: '{b}\n{d}%' },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowOffsetX: 0, shadowColor: 'rgba(0,0,0,0.5)' } },
-      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-    }],
-    color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6', '#00b8ba'],
-  });
-
-  // ====== 经验分布 ======
-  initChart('experience', {
-    tooltip: { trigger: 'axis' },
-    grid: { left: '3%', right: '4%', bottom: '3%', top: '10%', containLabel: true },
-    xAxis: { type: 'category', data: experienceDistribution.map(d => d.name), axisLabel: { fontSize: 10, rotate: 30 } },
-    yAxis: { type: 'value', name: '职位数' },
-    series: [{
-      type: 'bar', data: experienceDistribution.map(d => d.count),
-      itemStyle: { borderRadius: [4, 4, 0, 0], color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: '#e6a23c' }, { offset: 1, color: '#f3d19e' }]) },
-      barWidth: '50%',
-    }],
-  });
-
-  // ====== 行业分布 ======
-  const industries = industryDistribution.slice(0, 10).reverse();
-  initChart('industry', {
-    tooltip: {
-      trigger: 'axis',
-      formatter: (params: any) => {
-        const p = params[0];
-        const item = industryDistribution.find(d => d.name === p.name);
-        return `${p.name}<br/>职位数: ${p.value}<br/>平均薪资: ${item ? formatSalary(item.avgSalary) : '-'}`;
-      },
-    },
-    grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
-    xAxis: { type: 'value', name: '职位数' },
-    yAxis: { type: 'category', data: industries.map(d => d.name), axisLabel: { fontSize: 11 } },
-    series: [{
-      type: 'bar', data: industries.map(d => d.count),
-      itemStyle: { borderRadius: [0, 4, 4, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#9b59b6' }, { offset: 1, color: '#c9a0dc' }]) },
-      barWidth: '55%',
-    }],
-  });
-
-  // ====== 职位分类 ======
-  initChart('category', {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    series: [{
-      type: 'pie', radius: ['40%', '65%'], center: ['50%', '55%'],
-      data: categoryDistribution.map(d => ({ name: d.name, value: d.count })),
-      label: { fontSize: 10, formatter: '{b}\n{d}%' },
-      itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
-    }],
-    color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6', '#00b8ba', '#fd726d', '#79bbff', '#b88230', '#8b5cf6', '#06b6d4', '#84cc16'],
-  });
-
-  // ====== 工作模式 ======
-  initChart('workMode', {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    series: [{
-      type: 'pie', radius: '65%', center: ['50%', '55%'],
-      data: workModeDistribution.map(d => ({ name: d.name, value: d.count })),
-      label: { fontSize: 11, formatter: '{b}\n{d}%' },
-      itemStyle: { borderRadius: 3, borderColor: '#fff', borderWidth: 2 },
-    }],
-    color: ['#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9b59b6'],
-  });
-
-  // ====== 热门技能 Top 15 ======
-  const skills = topSkills.slice(0, 15).reverse();
-  initChart('skills', {
-    tooltip: { trigger: 'axis' },
-    grid: { left: '3%', right: '8%', bottom: '3%', top: '3%', containLabel: true },
-    xAxis: { type: 'value', name: '出现次数' },
-    yAxis: { type: 'category', data: skills.map(d => d.name), axisLabel: { fontSize: 11 } },
-    series: [{
-      type: 'bar', data: skills.map(d => d.count),
-      itemStyle: { borderRadius: [0, 4, 4, 0], color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [{ offset: 0, color: '#f56c6c' }, { offset: 1, color: '#fab6b6' }]) },
-      barWidth: '55%',
-    }],
-  });
-}
-
 function resizeCharts() {
-  Object.values(charts).forEach(c => c.resize());
   mapChart?.resize();
   barChart?.resize();
 }
@@ -196,8 +107,6 @@ async function load() {
     };
     // 必须先关闭 loading，否则 v-if="loading" 导致图表 DOM 不渲染
     loading.value = false;
-    await nextTick();
-    initCharts();
   } catch (e: any) {
     loading.value = false;
     error.value = e.message || '加载失败';
@@ -216,6 +125,15 @@ async function loadGeoJSON(): Promise<any> {
 async function switchRegionDim(dim: string) {
   if (activeDim.value === dim) return;
   activeDim.value = dim;
+
+  // 经验年限 / 技能词云 使用 dashboard 汇总数据，无需请求后端
+  if (dim === 'experience' || dim === 'skills') {
+    regionLoading.value = false;
+    await nextTick();
+    renderAnalysisChart();
+    return;
+  }
+
   regionLoading.value = true;
   try {
     const data = await fetchRegionStats(dim);
@@ -309,7 +227,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCharts);
-  Object.values(charts).forEach(c => c.dispose());
   mapChart?.dispose();
   barChart?.dispose();
 });
@@ -374,76 +291,25 @@ onBeforeUnmount(() => {
             :class="{ active: activeDim === dim.key }"
             @click="switchRegionDim(dim.key)"
           >{{ dim.label }}</button>
+          <button :class="{ active: activeDim === 'experience' }" @click="switchRegionDim('experience')">经验年限</button>
+          <button :class="{ active: activeDim === 'skills' }" @click="switchRegionDim('skills')">技能词云</button>
         </div>
 
         <div class="chart-row">
           <div class="chart-panel map-panel">
-            <h3>黑龙江省{{ regionStats.dimensions.find(d => d.key === activeDim)?.label }}</h3>
+            <h3>黑龙江省{{ regionStats.dimensions.find(d => d.key === activeDim)?.label || '区域分布' }}</h3>
             <div ref="mapDom" class="chart-box"></div>
           </div>
           <div class="chart-panel bar-panel">
-            <h3>{{ regionStats.dimensions.find(d => d.key === activeDim)?.label }}明细</h3>
+            <h3>
+              <template v-if="activeDim === 'experience'">经验年限</template>
+              <template v-else-if="activeDim === 'skills'">技能词云</template>
+              <template v-else>{{ regionStats.dimensions.find(d => d.key === activeDim)?.label }}明细</template>
+            </h3>
             <div ref="barDom" class="chart-box"></div>
           </div>
         </div>
       </template>
-
-      <!-- 图表区域 -->
-      <div class="chart-grid chart-grid-2">
-        <!-- 薪资分布 -->
-        <div class="chart-card">
-          <h3 class="chart-title">薪资分布</h3>
-          <div data-chart="salary" class="chart-box"></div>
-        </div>
-
-        <!-- 城市分布 -->
-        <div class="chart-card">
-          <h3 class="chart-title">城市热力 TOP10</h3>
-          <div data-chart="city" class="chart-box"></div>
-        </div>
-      </div>
-
-      <div class="chart-grid chart-grid-3">
-        <!-- 学历分布 -->
-        <div class="chart-card">
-          <h3 class="chart-title">学历要求</h3>
-          <div data-chart="education" class="chart-box"></div>
-        </div>
-
-        <!-- 经验分布 -->
-        <div class="chart-card">
-          <h3 class="chart-title">经验年限</h3>
-          <div data-chart="experience" class="chart-box"></div>
-        </div>
-
-        <!-- 工作模式 -->
-        <div class="chart-card">
-          <h3 class="chart-title">工作模式</h3>
-          <div data-chart="workMode" class="chart-box"></div>
-        </div>
-      </div>
-
-      <div class="chart-grid chart-grid-2">
-        <!-- 行业分布 -->
-        <div class="chart-card">
-          <h3 class="chart-title">行业分布 TOP10</h3>
-          <div data-chart="industry" class="chart-box"></div>
-        </div>
-
-        <!-- 职位分类 -->
-        <div class="chart-card">
-          <h3 class="chart-title">职位分类</h3>
-          <div data-chart="category" class="chart-box"></div>
-        </div>
-      </div>
-
-      <div class="chart-grid chart-grid-1">
-        <!-- 热门技能 -->
-        <div class="chart-card">
-          <h3 class="chart-title">热门技能 TOP15</h3>
-          <div data-chart="skills" class="chart-box"></div>
-        </div>
-      </div>
 
     </template>
   </div>
@@ -512,37 +378,6 @@ onBeforeUnmount(() => {
   font-size: 13px;
   color: #909399;
   margin-top: 4px;
-}
-
-/* 图表网格 */
-.chart-grid {
-  display: grid;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-.chart-grid-1 { grid-template-columns: 1fr; }
-.chart-grid-2 { grid-template-columns: repeat(2, 1fr); }
-.chart-grid-3 { grid-template-columns: repeat(3, 1fr); }
-
-.chart-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  border: 1px solid #f0f0f0;
-  height: 400px;
-  display: flex;
-  flex-direction: column;
-}
-
-.chart-title {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-  flex-shrink: 0;
-  height: 24px;
-  line-height: 24px;
 }
 
 .chart-box {

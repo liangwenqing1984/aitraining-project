@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { fileApi, type CsvFile } from '@/api/file'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { View, Download, Delete } from '@element-plus/icons-vue'
+
+const route = useRoute()
 
 const files = ref<CsvFile[]>([])
 const total = ref(0)
@@ -10,7 +13,7 @@ const currentPage = ref(1)
 const pageSize = ref(10)
 const searchKeyword = ref('')
 const searchSource = ref('')
-const dateRange = ref<[Date, Date]>()
+const filterTaskId = ref('')
 const selectedFiles = ref<string[]>([])
 const previewVisible = ref(false)
 const previewData = ref<any[]>([])
@@ -84,50 +87,47 @@ const previewColumns = computed(() => {
 })
 
 onMounted(() => {
+  const tid = route.query.taskId as string
+  if (tid) filterTaskId.value = tid
   loadFiles()
 })
 
-async function loadFiles() {
+async function loadFiles(p?: number, ps?: number) {
+  if (p !== undefined) currentPage.value = p
+  if (ps !== undefined) pageSize.value = ps
   try {
-    // 🔧 修复: 传递搜索参数给后端API
     const params: any = {
       page: currentPage.value,
       pageSize: pageSize.value
     }
-    
-    // 添加文件名搜索条件
     if (searchKeyword.value && searchKeyword.value.trim()) {
       params.keyword = searchKeyword.value.trim()
     }
-    
-    // 添加数据来源筛选条件
     if (searchSource.value) {
       params.source = searchSource.value
     }
-    
-    console.log('[Files] Search params:', params)
-    
+    if (filterTaskId.value) {
+      params.taskId = filterTaskId.value
+    }
     const res: any = await fileApi.getFiles(params)
-    
-    console.log('[Files] API response:', res)
-    
-    // 确保数据结构正确
     if (res.success && res.data && Array.isArray(res.data.list)) {
       files.value = res.data.list
-      total.value = res.data.total || 0
-      console.log('[Files] Loaded', files.value.length, 'files')
+      total.value = Number(res.data.total) || 0
     } else {
-      console.warn('[Files] Invalid data format, using empty array')
       files.value = []
       total.value = 0
       ElMessage.warning('数据格式异常')
     }
-  } catch (error) {
-    console.error('[Files] Load files error:', error)
+  } catch {
     files.value = []
     total.value = 0
     ElMessage.error('加载文件列表失败')
   }
+}
+
+function handleSearch() {
+  filterTaskId.value = ''
+  loadFiles(1)
 }
 
 function handleSelectionChange(selection: CsvFile[]) {
@@ -235,15 +235,7 @@ async function batchDelete() {
   }
 }
 
-function handlePageChange(page: number) {
-  currentPage.value = page
-  loadFiles()
-}
 
-function handleSizeChange(size: number) {
-  pageSize.value = size
-  loadFiles()
-}
 </script>
 
 <template>
@@ -265,7 +257,7 @@ function handleSizeChange(size: number) {
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadFiles">搜索</el-button>
+          <el-button type="primary" @click="handleSearch">搜索</el-button>
           <el-button
             type="danger"
             :disabled="!selectedFiles.length"
@@ -281,28 +273,29 @@ function handleSizeChange(size: number) {
       <el-table
         :data="files"
         stripe
+        size="small"
         class="files-table" :style="{ '--el-table-bg-color': '#fafafa', '--el-table-tr-bg-color': '#fafafa' }"
         @selection-change="handleSelectionChange"
       >
-        <el-table-column type="selection" width="55" />
-        <el-table-column prop="filename" label="文件名" min-width="200" />
-        <el-table-column prop="source" label="数据来源" width="120">
+        <el-table-column type="selection" width="40" />
+        <el-table-column prop="filename" label="文件名" min-width="180" />
+        <el-table-column prop="source" label="数据来源" width="100">
           <template #default="{ row }">
-            <el-tag>{{ getSourceName(row.source) }}</el-tag>
+            <el-tag size="small">{{ getSourceName(row.source) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="recordCount" label="记录数" width="100" />
-        <el-table-column label="文件大小" width="100">
+        <el-table-column prop="recordCount" label="记录数" width="80" />
+        <el-table-column label="文件大小" width="90">
           <template #default="{ row }">
             {{ formatSize(row.fileSize) }}
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="180">
+        <el-table-column label="创建时间" width="160">
           <template #default="{ row }">
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="260" fixed="right">
+        <el-table-column label="操作" width="240">
           <template #default="{ row }">
             <div class="action-buttons">
             <el-button type="primary" link @click="preview(row)">
@@ -320,13 +313,13 @@ function handleSizeChange(size: number) {
       </el-table>
 
       <el-pagination
-        v-model:current-page="currentPage"
-        v-model:page-size="pageSize"
+        :current-page="currentPage"
+        :page-size="pageSize"
         :total="total"
         :page-sizes="[10, 20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
-        @current-change="handlePageChange"
-        @size-change="handleSizeChange"
+        layout="total, sizes, prev, pager, next, jumper"
+        @current-change="(p: number) => loadFiles(p)"
+        @size-change="(s: number) => loadFiles(1, s)"
         style="margin-top: 16px; justify-content: flex-end; display: flex;"
       />
     </el-card>
@@ -437,33 +430,8 @@ function handleSizeChange(size: number) {
 }
 </style>
 
-<!-- 非 scoped：文件页表格固定列不透明 -->
+<!-- 非 scoped：预览弹窗 body 横向滚动 -->
 <style>
-.files-table {
-  --el-table-bg-color: #fafafa !important;
-  --el-table-tr-bg-color: #fafafa !important;
-}
-.files-table .el-table__fixed-right,
-.files-table .el-table__fixed-right td,
-.files-table .el-table__fixed-right th,
-.files-table .el-table__fixed-right .el-table__cell,
-.files-table .el-table__fixed-body-wrapper,
-.files-table .el-table__fixed-body-wrapper .el-table__cell {
-  background: #fafafa !important;
-  --el-table-bg-color: #fafafa !important;
-  --el-table-tr-bg-color: #fafafa !important;
-}
-/* 预览表格也确保不透明 */
-.preview-table {
-  --el-table-bg-color: #fafafa !important;
-}
-.preview-table .el-table__fixed-right,
-.preview-table .el-table__fixed-right td,
-.preview-table .el-table__fixed-right th,
-.preview-table .el-table__fixed-body-wrapper {
-  background: #fafafa !important;
-}
-
 /* 预览弹窗 — el-dialog teleport 到 body 后 scoped 样式无法穿透 */
 .preview-dialog .el-dialog__body {
   overflow-x: auto;

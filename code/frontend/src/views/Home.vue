@@ -336,19 +336,19 @@ function goToDoc(section: string) {
 /* popover 挂载在 body，需要非 scoped 样式 */
 .highlight-detail-popover {
   padding: 4px 0 !important;
-  background: #f0f7ff !important;
+  background: #1a1a2e !important;
 }
 .detail-content {
   max-height: 620px;
   overflow-y: auto;
   font-size: 13px;
   line-height: 1.7;
-  color: #303133;
+  color: #c8c8d4;
 }
 .detail-content p {
   margin: 0 0 10px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #ebeef5;
+  border-bottom: 1px solid #2d2d44;
 }
 .detail-content table {
   width: 100%;
@@ -358,16 +358,16 @@ function goToDoc(section: string) {
 }
 .detail-content td {
   padding: 6px 8px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #2d2d44;
   vertical-align: top;
 }
 .detail-content td:first-child {
   white-space: nowrap;
   font-weight: 600;
-  color: #606266;
+  color: #8b8ba0;
   width: 90px;
 }
 .detail-content td:last-child {
-  color: #303133;
+  color: #c8c8d4;
 }
 </style>

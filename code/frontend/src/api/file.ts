@@ -12,7 +12,7 @@ export interface CsvFile {
 }
 
 export const fileApi = {
-  getFiles(params?: { source?: string; page?: number; pageSize?: number }) {
+  getFiles(params?: { source?: string; keyword?: string; taskId?: string; page?: number; pageSize?: number }) {
     return api.get('/files', { params })
   },
 
