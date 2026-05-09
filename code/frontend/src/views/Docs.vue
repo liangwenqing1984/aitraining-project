@@ -74,12 +74,14 @@ const menuGroups = [
   {
     id: 'api', label: 'API 概览', icon: List,
     children: [
-      { id: 'api-tasks', label: '任务管理 (11)' },
+      { id: 'api-tasks', label: '任务管理 (12)' },
       { id: 'api-files', label: '文件管理 (8)' },
       { id: 'api-analysis', label: '数据分析 (5)' },
-      { id: 'api-rag', label: 'RAG 知识库 (4)' },
-      { id: 'api-llm', label: 'AI 服务 (17)' },
-      { id: 'api-auth', label: '认证 (6)' },
+      { id: 'api-dashboard', label: '数据看板 (2)' },
+      { id: 'api-rag', label: 'RAG 知识库 (5)' },
+      { id: 'api-llm', label: 'AI 服务 (18)' },
+      { id: 'api-auth', label: '认证 (7)' },
+      { id: 'api-system', label: '系统管理 (23)' },
     ]
   },
   { id: 'database', label: '数据库表结构', icon: Folder },
@@ -117,10 +119,11 @@ const docs: Record<string, { title: string; content: string }> = {
 
 <h3>版本信息</h3>
 <table>
-  <tr><td><strong>当前版本</strong></td><td>2.0.0</td></tr>
-  <tr><td><strong>分支</strong></td><td>with_ip_proxy_pool</td></tr>
+  <tr><td><strong>当前版本</strong></td><td>2.1.0</td></tr>
+  <tr><td><strong>分支</strong></td><td>with-dashboard</td></tr>
   <tr><td><strong>Node.js</strong></td><td>v24.14.0+</td></tr>
   <tr><td><strong>PostgreSQL</strong></td><td>SeaboxSQL 7300</td></tr>
+  <tr><td><strong>ECharts</strong></td><td>6.0 + echarts-wordcloud 2.1</td></tr>
 </table>`
   },
 
@@ -643,8 +646,11 @@ const docs: Record<string, { title: string; content: string }> = {
 <ul>
   <li><strong>向量维度</strong>: 768 维（nomic-embed-text），IVFFlat 索引（100 个列表）</li>
   <li><strong>混合数据源</strong>: Excel 原始字段（职位名/公司名/城市）+ job_enrichments 增强字段</li>
-  <li><strong>ON CONFLICT UPSERT</strong>: 支持安全重索引，旧数据自动更新</li>
-  <li><strong>余弦相似度</strong>: 默认阈值 0.3，支持 <code>task_id</code> 范围限定</li>
+  <li><strong>查询扩展</strong>: 短查询（≤10 字符）自动触发 30+ 术语映射表扩展，解决"Java"→"Java开发工程师"语义稀疏问题</li>
+  <li><strong>幂等索引</strong>: <code>ON CONFLICT (task_id, job_id) DO UPDATE</code>，重复索引自动覆盖旧值</li>
+  <li><strong>删除索引</strong>: 前端支持按任务删除向量索引数据，删除后需重新索引才能搜索</li>
+  <li><strong>增强检查</strong>: 索引前自动检查任务是否已完成 AI 增强，未增强的任务提示先执行增强</li>
+  <li><strong>相似度过滤</strong>: 默认阈值 0.5，前端可调 0.3-0.9，支持 <code>taskId</code> 范围限定</li>
   <li><strong>Ollama 本地推理</strong>: 数据不出本地，200ms 请求间隔避免过载</li>
 </ul>
 
@@ -675,8 +681,36 @@ const docs: Record<string, { title: string; content: string }> = {
 </ul>`
   },
   'feat-insights': {
-    title: 'AI 市场洞察',
-    content: `<p>基于增强数据自动聚合统计，调用 LLM 生成深度分析报告：</p>
+    title: 'AI 市场洞察 & 数据看板',
+    content: `<p>系统提供两层数据分析能力：<strong>数据看板</strong>（实时汇总统计）和 <strong>AI 深度分析报告</strong>（LLM 生成专业洞察）。</p>
+
+<h2>一、数据看板（Dashboard）</h2>
+
+<h4>顶部统计卡片</h4>
+<ul>
+  <li><strong>5 个核心指标</strong>：总职位数、采集任务、企业数量、平均薪资、最高薪资</li>
+  <li>每张卡片带左侧彩色图标（Briefcase/Monitor/OfficeBuilding/Coin/TrendCharts），配色与指标含义对应</li>
+  <li>数据来自全库聚合 API（非当前页），随任务完成实时更新</li>
+</ul>
+
+<h4>黑龙江省区域分布</h4>
+<ul>
+  <li><strong>地图 + 明细双面板</strong>：左侧 ECharts 地图（GeoJSON 注册），右侧柱状图明细 Top 12</li>
+  <li><strong>维度标签切换</strong>：城市分布 / 薪资分布 / 学历分布等（后端 API 动态维度）+ 经验年限 / 技能词云</li>
+  <li><strong>经验年限</strong>：基于 dashboard 汇总数据的柱状图，标签切换时保留左侧地图</li>
+  <li><strong>技能词云</strong>：echarts-wordcloud 圆形布局，字号 14-48，8 色随机，展示 Top 50 热门技能</li>
+  <li>地图支持缩放漫游（roam），视觉映射（visualMap）按数值着色</li>
+</ul>
+
+<h4>技术实现</h4>
+<ul>
+  <li>GeoJSON 异步加载 + echarts.registerMap 注册</li>
+  <li>标签切换：区域维度走 API 请求，经验/词云走 dashboard 缓存数据（零请求切换）</li>
+  <li>ECharts 实例管理：切换标签时 dispose 旧实例避免内存泄漏</li>
+  <li>响应式：window resize 时联动 resize 所有图表实例</li>
+</ul>
+
+<h2>二、AI 深度分析报告</h2>
 
 <ul>
   <li>从 <code>job_enrichments</code> 表聚合：薪资分布、职位分类、技能排行、行业分布、学历/经验要求、工作模式</li>
@@ -1182,7 +1216,53 @@ LIMIT $4;</code></pre>
   <li>需要 Ollama 运行 <strong>nomic-embed-text</strong> 模型（768 维）</li>
   <li>如果 pgvector 不可用，向量表创建会被跳过，RAG 语义搜索功能禁用</li>
   <li>首次索引会自动检查并尝试拉取 embedding 模型</li>
-</ul>`
+</ul>
+
+<h3>七、常见问题</h3>
+
+<h4>Q: 文本向量化用的是哪个大模型？</h4>
+<p>使用的是 <strong>Ollama 本地部署的 nomic-embed-text 模型</strong>，<strong>不是云端大模型</strong>（如 DeepSeek/OpenAI）。这是一个专门用于文本向量化（Embedding）的小型模型，输出 <strong>768 维浮点向量</strong>。</p>
+
+<h4>模型信息速览</h4>
+<table>
+  <tr><th>属性</th><th>值</th></tr>
+  <tr><td>模型名称</td><td><code>nomic-embed-text</code></td></tr>
+  <tr><td>运行环境</td><td>Ollama 本地服务（默认 <code>http://localhost:11434</code>）</td></tr>
+  <tr><td>向量维度</td><td>768 维</td></tr>
+  <tr><td>API 端点</td><td><code>POST /api/embeddings</code></td></tr>
+  <tr><td>单条延迟</td><td>~50-200ms（视硬件配置而定）</td></tr>
+  <tr><td>费用</td><td><strong>完全免费</strong>（本地推理，无 API 调用费）</td></tr>
+</table>
+
+<h4>Q: 如何调用的？完整链路是怎样的？</h4>
+<ol>
+  <li><strong>触发入口</strong>：前端「语义搜索」页面 → 选择任务 → 点击「开始索引」</li>
+  <li><strong>API 请求</strong>：<code>POST /api/rag/index/:taskId</code> → <code>ragController.indexTask()</code></li>
+  <li><strong>读取数据</strong>：从 <code>sp_job_enrichments</code> 读取 AI 增强后的结构化职位数据</li>
+  <li><strong>文本拼接</strong>：<code>buildJobText()</code> 将职位的职位名称/公司/城市/分类/技能/行业/学历/薪资等多维字段拼接为一段自然语言文本<br/>
+  <code>"职位: Java开发; 分类: 技术; 技能: Java, Spring; 行业: 互联网; 城市: 北京; ..."</code></li>
+  <li><strong>调用 Ollama</strong>：<code>POST http://localhost:11434/api/embeddings</code>，Body: <code>{ model: "nomic-embed-text", prompt: text }</code></li>
+  <li><strong>解析响应</strong>：从 Ollama 返回的 JSON 中提取 <code>embedding</code> 数组（768 个 float32）</li>
+  <li><strong>写入 pgvector</strong>：将向量格式化为 PostgreSQL 兼容字符串，INSERT 到 <code>sp_job_embeddings</code> 表的 <code>vector(768)</code> 列</li>
+  <li><strong>IVFFlat 索引</strong>：100 个聚类列表 + cosine_ops，加速后续相似搜索</li>
+</ol>
+
+<h4>Q: 为什么用 Ollama + nomic-embed-text 而不是调用 OpenAI/DeepSeek 的 Embedding API？</h4>
+<ul>
+  <li><strong>完全免费</strong>：本地运行，不产生任何 API 调用费用。如果索引上万条职位数据，云端 Embedding API 费用可观</li>
+  <li><strong>数据不出服务器</strong>：职位数据（含公司名称/薪资等敏感信息）完全在本地处理，无需发送到第三方</li>
+  <li><strong>无网络依赖</strong>：不依赖外部 API 可用性，离线环境也能正常工作</li>
+  <li><strong>性能足够</strong>：nomic-embed-text 在 MTEB 基准测试中评分 62+，对于职位语义匹配场景完全够用</li>
+  <li><strong>批量处理友好</strong>：逐条间隔 100ms 避免过载，适合后台批处理场景</li>
+</ul>
+
+<h4>Q: 如何确认 Ollama 和模型是否就绪？</h4>
+<ol>
+  <li>确认 Ollama 服务运行：<code>ollama list</code> 查看已安装模型</li>
+  <li>如缺少模型，手动拉取：<code>ollama pull nomic-embed-text</code></li>
+  <li>后端启动时也会自动检测并尝试拉取</li>
+  <li>测试调用：<code>curl http://localhost:11434/api/embeddings -d '{"model":"nomic-embed-text","prompt":"测试文本"}'</code></li>
+</ol>`
   },
   'feat-proxy': {
     title: 'IP 代理池',
@@ -1689,7 +1769,7 @@ npm run dev
 
   // ========== API 概览 ==========
   'api-tasks': {
-    title: '任务管理 API（11 个端点）',
+    title: '任务管理 API（12 个端点）',
     content: `<p><strong>Base:</strong> <code>/api/tasks</code></p>
 <table>
   <tr><th>方法</th><th>路径</th><th>说明</th></tr>
@@ -1704,6 +1784,7 @@ npm run dev
   <tr><td>DELETE</td><td><code>/:id</code></td><td>删除任务及关联文件</td></tr>
   <tr><td>PUT</td><td><code>/:id/config</code></td><td>更新任务配置</td></tr>
   <tr><td>GET</td><td><code>/regions/list</code></td><td>省市列表</td></tr>
+  <tr><td>GET</td><td><code>/stats</code></td><td>全库任务统计（total/running/completed/records）</td></tr>
 </table>`
   },
   'api-files': {
@@ -1711,10 +1792,10 @@ npm run dev
     content: `<p><strong>Base:</strong> <code>/api/files</code></p>
 <table>
   <tr><th>方法</th><th>路径</th><th>说明</th></tr>
-  <tr><td>GET</td><td><code>/</code></td><td>文件列表（分页/来源/关键词筛选）</td></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>文件列表（分页/来源/关键词/任务ID筛选）<br/>Query: <code>?keyword=&source=&taskId=&page=&pageSize=</code></td></tr>
   <tr><td>GET</td><td><code>/:id</code></td><td>文件详情</td></tr>
   <tr><td>GET</td><td><code>/:id/analyze</code></td><td>深度分析（Excel 解析 + 统计）</td></tr>
-  <tr><td>GET</td><td><code>/:id/preview</code></td><td>预览前 100 条数据</td></tr>
+  <tr><td>GET</td><td><code>/:id/preview</code></td><td>预览前 N 条数据（Query: <code>?limit=10</code>）</td></tr>
   <tr><td>GET</td><td><code>/:id/download</code></td><td>下载文件</td></tr>
   <tr><td>GET</td><td><code>/task/:taskId</code></td><td>按任务查询文件</td></tr>
   <tr><td>DELETE</td><td><code>/:id</code></td><td>删除文件</td></tr>
@@ -1733,13 +1814,37 @@ npm run dev
   <tr><td>GET</td><td><code>/experience/:fileId</code></td><td>经验要求分布</td></tr>
 </table>`
   },
+  'api-dashboard': {
+    title: '数据看板 API（2 个端点）',
+    content: `<p>汇总全库数据提供看板统计，不依赖单文件查询。</p>
+<table>
+  <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+  <tr><td>GET</td><td><code>/api/dashboard/overview</code></td><td>全库概览统计（总职位/任务/企业/薪资 + 6 维度分布 + 技能词云）</td></tr>
+  <tr><td>GET</td><td><code>/api/regions/stats?dim=city</code></td><td>黑龙江省区域分布统计<br/>dim: city | district | salary | education<br/>返回地图数据 + 明细柱状图数据</td></tr>
+</table>
+
+<h4>/api/dashboard/overview 响应结构</h4>
+<pre><code>{
+  summary: { totalJobs, totalTasks, totalCompanies, avgSalary, maxSalary, minSalary },
+  salaryDistribution: [{ range, count }],
+  cityDistribution: [{ name, count }],
+  educationDistribution: [{ name, count }],
+  experienceDistribution: [{ name, count }],
+  industryDistribution: [{ name, count, avgSalary }],
+  categoryDistribution: [{ name, count }],
+  topSkills: [{ name, count }],
+  workModeDistribution: [{ name, count }]
+}</code></pre>`
+  },
+
   'api-rag': {
-    title: 'RAG 知识库 API（4 个端点）',
+    title: 'RAG 知识库 API（5 个端点）',
     content: `<p><strong>Base:</strong> <code>/api/rag</code></p>
 <table>
   <tr><th>方法</th><th>路径</th><th>说明</th></tr>
   <tr><td>POST</td><td><code>/index/:taskId</code></td><td>异步索引任务数据到向量库（WebSocket 推送进度）</td></tr>
   <tr><td>POST</td><td><code>/index/:taskId/sync</code></td><td>同步索引，直接返回结果（调试用）</td></tr>
+	  <tr><td>DELETE</td><td><code>/index/:taskId</code></td><td>删除任务索引（清理向量数据）</td></tr>
   <tr><td>POST</td><td><code>/search</code></td><td>语义搜索<br/>Body: <code>{ query, taskId?, limit?, minSimilarity? }</code></td></tr>
   <tr><td>GET</td><td><code>/stats</code></td><td>查询向量库统计（按任务统计 + 总览）</td></tr>
 </table>
@@ -1766,7 +1871,7 @@ npm run dev
 </table>`
   },
   'api-llm': {
-    title: 'AI 服务 API（17 个端点）',
+    title: 'AI 服务 API（18 个端点）',
     content: `<p><strong>Base:</strong> <code>/api/llm</code></p>
 
 <h4>LLM 配置管理</h4>
@@ -1776,6 +1881,7 @@ npm run dev
   <tr><td>DELETE</td><td><code>/config/:id</code></td><td>删除配置</td></tr>
   <tr><td>GET</td><td><code>/health</code></td><td>健康检查（models + latency）</td></tr>
   <tr><td>POST</td><td><code>/test</code></td><td>测试 LLM 调用</td></tr>
+	  <tr><td>GET</td><td><code>/models/:provider</code></td><td>查询提供商可用模型列表</td></tr>
 </table>
 
 <h4>数据增强</h4>
@@ -1807,7 +1913,7 @@ npm run dev
 </table>`
   },
   'api-auth': {
-    title: '认证 API（6 个端点）',
+    title: '认证 API（7 个端点）',
     content: `<p><strong>Base:</strong> <code>/api/auth</code></p>
 <table>
   <tr><th>方法</th><th>路径</th><th>说明</th></tr>
@@ -1817,13 +1923,63 @@ npm run dev
   <tr><td>GET</td><td><code>/user-info</code></td><td>当前用户信息</td></tr>
   <tr><td>POST</td><td><code>/validate-token</code></td><td>验证 Token 有效性</td></tr>
   <tr><td>POST</td><td><code>/logout</code></td><td>登出（获取 logoutTicket + 清除 Cookie）</td></tr>
+	  <tr><td>POST</td><td><code>/local-login</code></td><td>本地账号密码登录（系统管理用户）</td></tr>
 </table>`
   },
 
+
+  'api-system': {
+    title: '系统管理 API（23 个端点）',
+    content: `<p>RBAC 权限管理体系，包含用户、角色、权限、菜单四组 CRUD。</p>
+
+<h4>用户管理 — <code>/api/users</code></h4>
+<table>
+  <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>用户列表（分页+搜索）</td></tr>
+  <tr><td>GET</td><td><code>/:id</code></td><td>用户详情（含角色列表）</td></tr>
+  <tr><td>POST</td><td><code>/</code></td><td>创建用户（密码 bcrypt 加密）</td></tr>
+  <tr><td>PUT</td><td><code>/:id</code></td><td>更新用户</td></tr>
+  <tr><td>DELETE</td><td><code>/:id</code></td><td>删除用户</td></tr>
+  <tr><td>PUT</td><td><code>/:id/roles</code></td><td>更新用户角色关联</td></tr>
+</table>
+
+<h4>角色管理 — <code>/api/roles</code></h4>
+<table>
+  <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>角色列表（分页+搜索）</td></tr>
+  <tr><td>GET</td><td><code>/all</code></td><td>全部角色（下拉选择用）</td></tr>
+  <tr><td>GET</td><td><code>/:id</code></td><td>角色详情（含权限/菜单ID列表）</td></tr>
+  <tr><td>POST</td><td><code>/</code></td><td>创建角色</td></tr>
+  <tr><td>PUT</td><td><code>/:id</code></td><td>更新角色（含权限/菜单关联）</td></tr>
+  <tr><td>DELETE</td><td><code>/:id</code></td><td>删除角色</td></tr>
+</table>
+
+<h4>权限管理 — <code>/api/permissions</code></h4>
+<table>
+  <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>权限列表（分页+搜索）</td></tr>
+  <tr><td>GET</td><td><code>/all</code></td><td>全部权限（按 resource 分组返回）</td></tr>
+  <tr><td>GET</td><td><code>/:id</code></td><td>权限详情</td></tr>
+  <tr><td>POST</td><td><code>/</code></td><td>创建权限</td></tr>
+  <tr><td>PUT</td><td><code>/:id</code></td><td>更新权限</td></tr>
+  <tr><td>DELETE</td><td><code>/:id</code></td><td>删除权限</td></tr>
+</table>
+
+<h4>菜单管理 — <code>/api/menus</code></h4>
+<table>
+  <tr><th>方法</th><th>路径</th><th>说明</th></tr>
+  <tr><td>GET</td><td><code>/</code></td><td>菜单列表（平铺表格展示）</td></tr>
+  <tr><td>GET</td><td><code>/tree</code></td><td>菜单树（嵌套结构，用于前端渲染）</td></tr>
+  <tr><td>GET</td><td><code>/:id</code></td><td>菜单详情</td></tr>
+  <tr><td>POST</td><td><code>/</code></td><td>创建菜单</td></tr>
+  <tr><td>PUT</td><td><code>/:id</code></td><td>更新菜单</td></tr>
+  <tr><td>DELETE</td><td><code>/:id</code></td><td>删除菜单（有子菜单时禁止）</td></tr>
+</table>`
+  },
   // ========== 数据库 ==========
   database: {
     title: '数据库表结构',
-    content: `<p>Schema: <code>liangwenqing</code>，共 <strong>7 张表</strong>（含 pgvector 向量库）。
+    content: `<p>Schema: <code>liangwenqing</code>，共 <strong>15 张表</strong>（7 张业务表 + 5 张 RBAC 表 + 3 张关联表）。
 
 <h3>sp_tasks — 爬虫任务</h3>
 <table>
@@ -1834,6 +1990,24 @@ npm run dev
   <tr><td>config</td><td>JSONB</td><td>关键词/城市/企业/页数</td></tr>
   <tr><td>status</td><td>VARCHAR(20)</td><td>pending→running→completed/failed</td></tr>
   <tr><td>record_count</td><td>INTEGER</td><td>采集记录数</td></tr>
+</table>
+
+<h3>sp_jobs — 原始职位数据</h3>
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td>id</td><td>VARCHAR(255) PK</td><td>UUID</td></tr>
+  <tr><td>task_id</td><td>VARCHAR(255) FK</td><td>关联任务</td></tr>
+  <tr><td>job_id</td><td>VARCHAR(255)</td><td>职位 ID（平台原始 ID）</td></tr>
+  <tr><td>data_source</td><td>VARCHAR(50)</td><td>zhilian / 51job</td></tr>
+  <tr><td>company_name</td><td>VARCHAR(500)</td><td>企业名称</td></tr>
+  <tr><td>job_name</td><td>VARCHAR(500)</td><td>职位名称</td></tr>
+  <tr><td>work_city</td><td>VARCHAR(100)</td><td>工作城市</td></tr>
+  <tr><td>salary_range</td><td>VARCHAR(100)</td><td>原始薪资文本</td></tr>
+  <tr><td>education</td><td>VARCHAR(50)</td><td>原始学历要求</td></tr>
+  <tr><td>work_experience</td><td>VARCHAR(100)</td><td>原始经验要求</td></tr>
+  <tr><td>job_category</td><td>VARCHAR(200)</td><td>原始职位分类</td></tr>
+  <tr><td>raw_data</td><td>JSONB</td><td>完整原始数据（含职位描述/标签/福利等）</td></tr>
+  <tr><td>UNIQUE</td><td>(task_id, job_id)</td><td>任务+职位唯一去重</td></tr>
 </table>
 
 <h3>sp_csv_files — 导出文件</h3>
@@ -1914,8 +2088,11 @@ npm run dev
   <li>选择目标城市（可多选）</li>
   <li>可选：指定目标企业列表过滤</li>
   <li>设置最大页数 → 点击「创建」</li>
+  <li>任务列表 <strong>点击任务名称</strong> 可跳转文件管理页查看该任务的文件</li>
+  <li>实时监控：WebSocket 推送进度条 + 分级彩色日志 + 详情页阶段状态</li>
+  <li>任务完成后可进入「数据看板」查看全库汇总统计</li>
 </ol>
-<blockquote>批量创建支持多关键词 × 多城市自动生成笛卡尔积组合任务。</blockquote>`
+<blockquote>批量创建支持多关键词 × 多城市自动生成笛卡尔积组合任务。任务断点续传，最大 10 次崩溃恢复。</blockquote>`
   },
   'guide-enrich': {
     title: 'AI 增强数据',
@@ -1923,11 +2100,12 @@ npm run dev
   <li>等待任务状态变为「已完成」</li>
   <li>在任务列表找到目标任务</li>
   <li>点击行右侧的 <strong>「AI 增强」</strong> 按钮</li>
-  <li>确认后，系统逐条调用 LLM 处理每条职位数据</li>
-  <li>WebSocket 实时推送进度（后端日志 + 前端通知）</li>
-  <li>增强完成后进入「智能分析」查看标准化数据</li>
+  <li>确认后，系统逐条调用 LLM 处理每条职位数据（BATCH_SIZE=1 + 500ms 间隔 + 3 次重试）</li>
+  <li>WebSocket 实时推送进度（<code>enrichment:progress</code> 事件）</li>
+  <li>增强维度：薪资标准化 / 职位分类(14类) / 行业识别 / 技能提取 / 学历规范 / 经验年限 / 福利 / 工作模式</li>
+  <li>增强完成后可在「数据看板」查看技能词云、经验分布等多维度图表</li>
 </ol>
-<blockquote>增强基于 ON CONFLICT UPSERT，重复点击不会产生重复数据，可安全重跑。</blockquote>`
+<blockquote>增强基于 ON CONFLICT UPSERT，重复点击不会产生重复数据，可安全重跑。支持 3 层 JSON 降级解析确保鲁棒性。</blockquote>`
   },
   'guide-rag': {
     title: '语义搜索',
@@ -1940,11 +2118,13 @@ npm run dev
       <li>从 Excel 读取原始职位字段（职位名称/企业/城市）</li>
       <li>从 <code>sp_job_enrichments</code> 读取增强字段（分类/技能/行业）</li>
       <li>调用 Ollama nomic-embed-text 生成 768 维向量</li>
-      <li>存入 <code>sp_job_embeddings</code> 表（pgvector）</li>
+      <li>存入 <code>sp_job_embeddings</code> 表（pgvector，IVFFlat 索引）</li>
     </ul>
   </li>
-  <li>索引完成后，在搜索框输入自然语言查询</li>
+  <li>索引完成后，在搜索框输入自然语言查询（支持模糊语义匹配）</li>
   <li>结果按余弦相似度降序排列，显示职位名称/公司/城市/薪资/技能等完整信息</li>
+  <li><strong>查询扩展</strong>：短查询（≤10字符）自动触发 30+ 术语映射表扩展，解决语义稀疏问题</li>
+  <li>可点击 <strong>「删除索引」</strong> 清理向量数据重新索引</li>
 </ol>
 <blockquote>索引使用 ON CONFLICT UPSERT，重复索引会更新已有数据。建议每个任务仅需索引一次。</blockquote>
 
@@ -1953,18 +2133,21 @@ npm run dev
   <li>需要 Ollama 运行 <code>nomic-embed-text</code> 模型（768 维）</li>
   <li>首次索引会自动检查并尝试拉取模型</li>
   <li>单条 200ms 间隔避免 Ollama 过载</li>
+  <li>pgvector IVFFlat 索引（100 lists, cosine_ops），近似搜索比全量快 10-100 倍</li>
 </ul>`
   },
   'guide-insights': {
     title: 'AI 深度分析',
     content: `<ol>
-  <li>从文件管理点击「分析」进入智能分析页面</li>
-  <li>此时已展示基础图表（薪资分布/城市分布/学历分布等 7 种）</li>
+  <li><strong>数据看板（Dashboard）</strong>：首页汇总全库统计 — 5 张统计卡片 + 黑龙江省地图（城市/薪资/学历维度）+ 经验年限柱状图 + 技能词云</li>
+  <li><strong>智能分析</strong>：从文件管理点击「分析」进入单文件分析页面</li>
+  <li>展示基础图表（薪资分布/城市分布/学历分布等 7 种）</li>
   <li>点击 <strong>「🤖 AI 深度分析」</strong> 按钮</li>
-  <li>系统自动检查增强数据是否存在 → 聚合多维度统计 → 调用 LLM 生成报告</li>
-  <li>约 20-40 秒后自动展示：摘要 + 各维度分析 + AI 生成的可视化图表</li>
-  <li>支持历史报告切换查看</li>
-</ol>`
+  <li>系统自动检查增强数据是否存在 → 聚合多维度统计 → 调用 LLM 生成专业报告</li>
+  <li>约 20-40 秒后自动展示：摘要 + 各维度分析 + AI 生成的可视化图表（含 ECharts 配置）</li>
+  <li>支持历史报告切换查看（sp_market_reports 表按 file_id 存储多版本）</li>
+</ol>
+<blockquote>数据看板使用 ECharts 6.0 + echarts-wordcloud 2.1 渲染；Map 使用 GeoJSON 注册黑龙江地图。</blockquote>`
   },
   'guide-query': {
     title: '自然语言查询',
@@ -2004,21 +2187,36 @@ npm run dev
   websocket: {
     title: 'WebSocket 事件',
     content: `<h3>客户端 → 服务端</h3>
-<pre><code>socket.emit('task:subscribe', { taskId: 'xxx' })
-socket.emit('task:unsubscribe', { taskId: 'xxx' })</code></pre>
+<table>
+  <tr><th>事件</th><th>载荷</th><th>说明</th></tr>
+  <tr><td><code>task:subscribe</code></td><td>{ taskId }</td><td>加入任务房间，接收实时推送（含增强进度重放）</td></tr>
+  <tr><td><code>task:unsubscribe</code></td><td>{ taskId }</td><td>离开任务房间</td></tr>
+  <tr><td><code>task:stop</code></td><td>{ taskId }</td><td>停止正在运行的任务</td></tr>
+</table>
 
 <h3>服务端 → 客户端</h3>
 <table>
   <tr><th>事件</th><th>载荷</th><th>说明</th></tr>
-  <tr><td><code>task:progress</code></td><td>{taskId, progress, current, total}</td><td>任务进度</td></tr>
-  <tr><td><code>task:status</code></td><td>{taskId, status}</td><td>状态变更</td></tr>
-  <tr><td><code>task:log</code></td><td>{taskId, level, message}</td><td>实时分级日志</td></tr>
-  <tr><td><code>task:completed</code></td><td>{taskId, totalRecords}</td><td>任务完成</td></tr>
-  <tr><td><code>task:error</code></td><td>{taskId, error}</td><td>任务异常</td></tr>
-  <tr><td><code>enrichment:progress</code></td><td>{taskId, status, completed, total, message}</td><td>AI 增强进度</td></tr>
-  <tr><td><code>insights:progress</code></td><td>{fileId, message}</td><td>报告生成进度</td></tr>
-  <tr><td><code>insights:completed</code></td><td>{fileId, reportId, title, summary}</td><td>报告生成完成</td></tr>
-</table>`
+  <tr><td><code>task:progress</code></td><td>{ taskId, progress, current, total }</td><td>采集进度更新</td></tr>
+  <tr><td><code>task:status</code></td><td>{ taskId, status }</td><td>任务状态变更</td></tr>
+  <tr><td><code>task:log</code></td><td>{ taskId, level, message }</td><td>实时分级日志（info/warn/error/success）</td></tr>
+  <tr><td><code>task:completed</code></td><td>{ taskId, totalRecords }</td><td>任务采集完成</td></tr>
+  <tr><td><code>task:failed</code></td><td>{ taskId, error }</td><td>任务采集失败</td></tr>
+  <tr><td><code>task:stopped</code></td><td>{ taskId, task }</td><td>任务被手动停止</td></tr>
+  <tr><td><code>task:combinationProgress</code></td><td>{ taskId, ... }</td><td>智联关键词×城市组合进度</td></tr>
+  <tr><td><code>enrichment:progress</code></td><td>{ taskId, status, completed, total, message }</td><td>AI 增强进度（订阅时自动重放当前状态）</td></tr>
+  <tr><td><code>insights:progress</code></td><td>{ fileId, message, timestamp }</td><td>AI 报告生成阶段进度</td></tr>
+  <tr><td><code>insights:completed</code></td><td>{ fileId, reportId, title, summary }</td><td>AI 报告生成完成</td></tr>
+</table>
+
+<h4>连接说明</h4>
+<ul>
+  <li>WebSocket 端口：<strong>3004</strong>（独立于 HTTP 3002）</li>
+  <li>传输方式：<code>transports: ['websocket']</code>（纯 WebSocket，无轮询降级）</li>
+  <li>自动重连：断线后自动重连 + 指数退避</li>
+  <li>房间机制：每个 taskId 一个 Socket.IO 房间，订阅即加入</li>
+  <li>进度重放：订阅时若有运行中的增强任务，立即推送当前进度（解决刷新丢失）</li>
+</ul>`
   },
 
   // ========== 系统诊断手册 ==========
@@ -2059,17 +2257,29 @@ socket.emit('task:unsubscribe', { taskId: 'xxx' })</code></pre>
     content: `<h4>Q: AI 增强只成功部分记录？</h4>
 <p>检查后端日志，通常是 LLM 返回非标准 JSON 导致解析失败。系统已内置 3 层降级解析 + 3 次重试机制，重新点击 AI 增强即可补全。</p>
 
+<h4>Q: 数据看板的技能词云不显示？</h4>
+<p>需要安装 <code>echarts-wordcloud</code> 依赖。如遇 peer dependency 冲突，使用 <code>npm install echarts-wordcloud --legacy-peer-deps</code> 安装。</p>
+
+<h4>Q: 黑龙江地图无法加载？</h4>
+<p>确保 <code>public/230000_full.json</code> GeoJSON 文件存在。该文件在前端启动时通过 fetch 加载并注册到 ECharts。</p>
+
+<h4>Q: 文件管理分页不准确？</h4>
+<p>PostgreSQL 的 <code>pg</code> 驱动将 <code>COUNT(*)</code> 返回为字符串类型，前端已使用 <code>Number()</code> 转换处理。</p>
+
 <h4>Q: 自然语言查询返回无关数据？</h4>
 <p>确保 LLM 配置中任务路由包含 <code>query</code> 类型，且 Prompt 中已包含 <code>job_enrichments</code> 表结构。</p>
 
 <h4>Q: 爬虫被反爬拦截？</h4>
-<p>系统内置 WAF 检测 + 自动降级串行 + AI 页面分类。查看任务监控日志可看到拦截详情和应对策略。</p>
+<p>系统内置 WAF 检测 + 自动降级串行 + AI 页面分类。查看任务监控日志可看到拦截详情和三级恢复策略。</p>
 
 <h4>Q: DeepSeek 推理模型返回空内容？</h4>
 <p>推理模型（如 deepseek-v4-pro）的 thinking tokens 会占用 <code>max_tokens</code>。数据增强已设置 <code>maxTokens: 8192</code> 并移除 <code>response_format</code> 约束。</p>
 
 <h4>Q: Puppeteer 内存占用高？</h4>
 <p>限制并发任务数 ≤ 3，或使用 <code>node --max-old-space-size=4096</code> 增加内存。系统已配置孤儿标签页清理和资源拦截优化。</p>
+
+<h4>Q: 代理池获取不到可用代理？</h4>
+<p>代理健康检查仅允许 2xx 响应，拒绝 3xx/4xx/5xx。连续 5 次失败自动停止返回代理，系统回退直连模式。可检查 proxy_pool 服务是否正常运行。</p>
 
 <h4>Q: 如何添加新的 LLM 提供商？</h4>
 <ol>
@@ -2079,7 +2289,10 @@ socket.emit('task:unsubscribe', { taskId: 'xxx' })</code></pre>
 </ol>
 
 <h4>Q: 数据库表如何迁移？</h4>
-<p>所有表在 <code>config/database.ts</code> 中通过 <code>CREATE TABLE IF NOT EXISTS</code> 自动迁移，后端启动时自动执行。</p>`
+<p>所有表在 <code>config/database.ts</code> 中通过 <code>CREATE TABLE IF NOT EXISTS</code> 自动迁移，后端启动时自动执行。目前共 15 张表。</p>
+
+<h4>Q: 什么是 RBAC 系统管理？</h4>
+<p>侧边栏「系统管理」提供用户/角色/权限/菜单的完整 CRUD 管理。支持本地账号密码登录（bcrypt 加密），角色可分配权限和菜单，实现细粒度访问控制。</p>`
   },
 }
 
