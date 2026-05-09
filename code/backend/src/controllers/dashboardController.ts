@@ -57,15 +57,19 @@ export async function overview(_req: Request, res: Response) {
     // 经验年限分布
     const expRows = await db.prepare(`
       SELECT
-        CASE
-          WHEN experience_years_max IS NOT NULL THEN experience_years_min || '-' || experience_years_max || '年'
-          WHEN experience_years_min IS NOT NULL THEN experience_years_min || '年以上'
-          ELSE '不限'
-        END as name,
+        experience_years_min,
+        experience_years_max,
         COUNT(*) as count
       FROM sp_job_enrichments WHERE experience_years_min IS NOT NULL
-      GROUP BY name ORDER BY experience_years_min
+      GROUP BY experience_years_min, experience_years_max
+      ORDER BY experience_years_min
     `).all() as any[];
+    const experienceDistribution = expRows.map((r: any) => ({
+      name: r.experienceYearsMax
+        ? `${r.experienceYearsMin}-${r.experienceYearsMax}年`
+        : `${r.experienceYearsMin}年以上`,
+      count: r.count,
+    }));
 
     // 行业分布
     const industryRows = await db.prepare(`
@@ -128,7 +132,7 @@ export async function overview(_req: Request, res: Response) {
         salaryDistribution: salaryBuckets,
         cityDistribution: cityRows.map((r: any) => ({ name: r.city, count: r.cnt })),
         educationDistribution: eduRows,
-        experienceDistribution: expRows,
+        experienceDistribution,
         industryDistribution: industryRows,
         categoryDistribution: categoryRows,
         topSkills,
