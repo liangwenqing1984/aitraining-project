@@ -9,12 +9,24 @@ const data = ref<DashboardOverview | null>(null);
 
 // ECharts instances
 const charts: Record<string, echarts.ECharts> = {};
-const chartRefs: Record<string, any> = {};
 
-function setRef(key: string) {
-  return (el: any) => {
-    if (el) chartRefs[key] = el;
+// 模板 refs — Vue 3 标准写法
+const salaryRef = ref<HTMLElement>();
+const cityRef = ref<HTMLElement>();
+const educationRef = ref<HTMLElement>();
+const experienceRef = ref<HTMLElement>();
+const industryRef = ref<HTMLElement>();
+const categoryRef = ref<HTMLElement>();
+const workModeRef = ref<HTMLElement>();
+const skillsRef = ref<HTMLElement>();
+
+function getDom(key: string): HTMLElement | undefined {
+  const map: Record<string, any> = {
+    salary: salaryRef, city: cityRef, education: educationRef,
+    experience: experienceRef, industry: industryRef, category: categoryRef,
+    workMode: workModeRef, skills: skillsRef,
   };
+  return map[key]?.value;
 }
 
 function formatSalary(val: number): string {
@@ -23,7 +35,7 @@ function formatSalary(val: number): string {
 
 function initChart(key: string, option: any) {
   try {
-    const dom = chartRefs[key];
+    const dom = getDom(key);
     if (!dom) { console.warn(`[Dashboard] chart ${key} DOM not found`); return; }
     if (charts[key]) charts[key].dispose();
     const instance = echarts.init(dom);
@@ -248,13 +260,13 @@ onBeforeUnmount(() => {
         <!-- 薪资分布 -->
         <div class="chart-card">
           <h3 class="chart-title">薪资分布</h3>
-          <div :ref="setRef('salary')" class="chart-box"></div>
+          <div ref="salaryRef" class="chart-box"></div>
         </div>
 
         <!-- 城市分布 -->
         <div class="chart-card">
           <h3 class="chart-title">城市热力 TOP10</h3>
-          <div :ref="setRef('city')" class="chart-box"></div>
+          <div ref="cityRef" class="chart-box"></div>
         </div>
       </div>
 
@@ -262,19 +274,19 @@ onBeforeUnmount(() => {
         <!-- 学历分布 -->
         <div class="chart-card">
           <h3 class="chart-title">学历要求</h3>
-          <div :ref="setRef('education')" class="chart-box"></div>
+          <div ref="educationRef" class="chart-box"></div>
         </div>
 
         <!-- 经验分布 -->
         <div class="chart-card">
           <h3 class="chart-title">经验年限</h3>
-          <div :ref="setRef('experience')" class="chart-box"></div>
+          <div ref="experienceRef" class="chart-box"></div>
         </div>
 
         <!-- 工作模式 -->
         <div class="chart-card">
           <h3 class="chart-title">工作模式</h3>
-          <div :ref="setRef('workMode')" class="chart-box"></div>
+          <div ref="workModeRef" class="chart-box"></div>
         </div>
       </div>
 
@@ -282,13 +294,13 @@ onBeforeUnmount(() => {
         <!-- 行业分布 -->
         <div class="chart-card">
           <h3 class="chart-title">行业分布 TOP10</h3>
-          <div :ref="setRef('industry')" class="chart-box"></div>
+          <div ref="industryRef" class="chart-box"></div>
         </div>
 
         <!-- 职位分类 -->
         <div class="chart-card">
           <h3 class="chart-title">职位分类</h3>
-          <div :ref="setRef('category')" class="chart-box"></div>
+          <div ref="categoryRef" class="chart-box"></div>
         </div>
       </div>
 
@@ -296,7 +308,7 @@ onBeforeUnmount(() => {
         <!-- 热门技能 -->
         <div class="chart-card">
           <h3 class="chart-title">热门技能 TOP15</h3>
-          <div :ref="setRef('skills')" class="chart-box"></div>
+          <div ref="skillsRef" class="chart-box"></div>
         </div>
       </div>
     </template>
