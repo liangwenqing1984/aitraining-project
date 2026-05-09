@@ -161,7 +161,6 @@ async function load() {
   error.value = '';
   try {
     const raw = await fetchOverview();
-    // 数值归一化：PG 驱动可能返回字符串类型的 COUNT/AVG 结果
     const n = (v: any) => Number(v) || 0;
     data.value = {
       summary: {
@@ -181,12 +180,13 @@ async function load() {
       topSkills: raw.topSkills.map(d => ({ name: d.name, count: n(d.count) })),
       workModeDistribution: raw.workModeDistribution.map(d => ({ name: d.name, count: n(d.count) })),
     };
+    // 必须先关闭 loading，否则 v-if="loading" 导致图表 DOM 不渲染
+    loading.value = false;
     await nextTick();
     initCharts();
   } catch (e: any) {
-    error.value = e.message || '加载失败';
-  } finally {
     loading.value = false;
+    error.value = e.message || '加载失败';
   }
 }
 
