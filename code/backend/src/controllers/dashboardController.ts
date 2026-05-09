@@ -4,11 +4,14 @@ import { ApiResponse } from '../types';
 
 export async function overview(_req: Request, res: Response) {
   try {
-    // 汇总统计
-    const summary = await db.prepare(`
+    // 汇总统计 — 总数不加薪资过滤，薪资相关指标单独过滤
+    const totalResult = await db.prepare(`
+      SELECT COUNT(*) as cnt, COUNT(DISTINCT task_id) as tasks
+      FROM sp_job_enrichments
+    `).get() as any;
+
+    const salarySummary = await db.prepare(`
       SELECT
-        COUNT(*) as total_jobs,
-        COUNT(DISTINCT task_id) as total_tasks,
         ROUND(AVG((salary_monthly_min + salary_monthly_max) / 2.0)) as avg_salary,
         MAX(salary_monthly_max) as max_salary,
         MIN(salary_monthly_min) as min_salary
@@ -125,12 +128,12 @@ export async function overview(_req: Request, res: Response) {
       success: true,
       data: {
         summary: {
-          totalJobs: num(summary?.totalJobs),
-          totalTasks: num(summary?.totalTasks),
+          totalJobs: num(totalResult?.cnt),
+          totalTasks: num(totalResult?.tasks),
           totalCompanies: num(companyCount?.cnt),
-          avgSalary: num(summary?.avgSalary),
-          maxSalary: num(summary?.maxSalary),
-          minSalary: num(summary?.minSalary),
+          avgSalary: num(salarySummary?.avgSalary),
+          maxSalary: num(salarySummary?.maxSalary),
+          minSalary: num(salarySummary?.minSalary),
         },
         salaryDistribution: salaryBuckets.map(b => ({ ...b, count: num(b.count) })),
         cityDistribution: cityRows.map((r: any) => ({ name: r.city, count: num(r.cnt) })),
