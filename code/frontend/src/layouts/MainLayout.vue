@@ -5,6 +5,7 @@ import { getUserInfo, logout as authLogout } from '@/utils/auth'
 import {
   HomeFilled, Monitor, Files, TrendCharts, DataAnalysis, Search,
   Setting, User, UserFilled, Lock, Menu as MenuIcon, Document, InfoFilled,
+  PieChart, ChatDotRound,
 } from '@element-plus/icons-vue'
 import { getMenuTree, type SystemMenu } from '@/api/system'
 
@@ -35,6 +36,7 @@ const namedIcons: Record<string, any> = {
   TrendCharts: markRaw(TrendCharts), DataAnalysis: markRaw(DataAnalysis), Search: markRaw(Search),
   Setting: markRaw(Setting), User: markRaw(User), UserFilled: markRaw(UserFilled),
   Lock: markRaw(Lock), Menu: markRaw(MenuIcon), Document: markRaw(Document), InfoFilled: markRaw(InfoFilled),
+  PieChart: markRaw(PieChart), ChatDotRound: markRaw(ChatDotRound),
 }
 
 // 默认菜单（API 故障时的兜底）
@@ -42,9 +44,9 @@ const defaultMenuItems: MenuItem[] = [
   { path: '/home', title: '首页', icon: namedIcons.HomeFilled },
   { path: '/crawler', title: '数据采集', icon: namedIcons.Monitor },
   { path: '/files', title: '数据管理', icon: namedIcons.Files },
-  { path: '/analysis', title: '智能分析', icon: namedIcons.TrendCharts },
+  { path: '/analysis', title: '智能分析', icon: namedIcons.PieChart },
   { path: '/dashboard', title: '数据看板', icon: namedIcons.DataAnalysis },
-  { path: '/query', title: '智能查询', icon: namedIcons.TrendCharts },
+  { path: '/query', title: '智能查询', icon: namedIcons.ChatDotRound },
   { path: '/rag', title: '语义搜索', icon: namedIcons.Search },
   {
     title: '系统管理', icon: namedIcons.Setting,
