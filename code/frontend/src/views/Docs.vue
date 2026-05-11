@@ -569,7 +569,41 @@ const docs: Record<string, { title: string; content: string }> = {
   <li><strong>硬编码兜底</strong>：AI 故障时硬编码规则仍然生效</li>
   <li><strong>AI 扩展</strong>：硬编码只能识别已见过的 5 类，AI 能识别全新反爬形式</li>
   <li><strong>精准识别后规避</strong>：先判断当前页面是否被拦截、被哪种方式拦截，再选择对应策略（重载 10s / 长等 45-90s / 去参数首页回退）</li>
-</ul>`
+</ul>
+
+<h4>常见问题</h4>
+
+<h5>Q: "硬编码签名识别"和"AI 驱动页面分类"分别指什么？</h5>
+<p><strong>硬编码签名识别</strong>：在爬虫代码中预先写死的关键词/特征匹配规则，用来快速检测反爬页面。例如检测页面中是否出现 <code>安全验证</code>、<code>captcha</code>、<code>滑块</code> 等关键词，或页面 body 是否为空（智联 WAF 拦截的典型特征）。这是毫秒级、零成本的快速初筛。</p>
+<p><strong>AI 驱动页面分类</strong>：当硬编码签名命中后，调用 LLM（ANTI_CRAWL Prompt）对页面 HTML 内容进行语义分析，返回页面类型（<code>normal</code> / <code>captcha</code> / <code>waf</code> / <code>login</code> / <code>error</code> / <code>empty</code>）和置信度。这是秒级、消耗 token 的精准确认。</p>
+<p>两者构成<strong>双重检测机制</strong>：硬编码做粗筛 → 命中后 AI 做精筛，兼顾抓取效率和检测准确率。硬编码还是 AI 的安全网——当 AI 网络异常或返回垃圾结果时，硬编码规则仍然生效，不会阻塞爬取流程。</p>
+<table>
+  <tr><th>层级</th><th>方式</th><th>特点</th></tr>
+  <tr><td>第一道：硬编码签名识别</td><td>代码中预置的关键词/特征匹配</td><td>毫秒级，零成本，但可能误判</td></tr>
+  <tr><td>第二道：AI 驱动页面分类</td><td>调用 LLM 分析页面 HTML 语义</td><td>秒级，消耗 token，更精准，能识别未知反爬形式</td></tr>
+</table>
+
+<h5>Q: CAPTCHA 是什么？</h5>
+<p>CAPTCHA 全称 <em>Completely Automated Public Turing test to tell Computers and Humans Apart</em>，是一种区分人类和机器的<strong>自动图灵测试</strong>。最常见的形式包括"选出图中所有红绿灯"、输入图片中的扭曲字符、"按住滑块拖动到最右边"等。</p>
+<p>在本项目的爬虫场景中，CAPTCHA 是目标网站（51job、智联招聘）最常用的反爬手段之一：</p>
+<table>
+  <tr><th>形式</th><th>本项目中对应的检测</th></tr>
+  <tr><td>滑块验证（Geetest）</td><td>页面出现"滑块"、"请按住滑块，拖动到最右边"关键词</td></tr>
+  <tr><td>图文验证码</td><td>页面出现"验证码"、"captcha"关键词</td></tr>
+  <tr><td>JS 挑战（静默验证）</td><td>HTML 极小（&lt; 1KB），含阿里云 WAF 脚本</td></tr>
+</table>
+<p>系统通过<strong>硬编码签名检测</strong>这些关键词 + <strong>AI 语义分析</strong>双重确认，一旦判定触发 CAPTCHA 就会自动切换 IP 代理、降低请求频率或重启浏览器来绕过。</p>
+
+<h5>Q: JS 挑战（静默验证）是什么？</h5>
+<p>JS 挑战全称 <strong>JavaScript Challenge</strong>，是一种<strong>对用户不可见</strong>的验证方式。与滑块、图形验证码不同，它不需要用户手动操作——浏览器在后台静默执行一段被混淆的 JavaScript 代码，计算出验证 token 提交给服务器，通过后才加载真实页面。</p>
+<p>在本项目中（51job 阿里云 WAF），表现如下：</p>
+<table>
+  <tr><th>特征</th><th>表现</th></tr>
+  <tr><td>页面大小</td><td>HTML &lt; 1KB（几乎空白）</td></tr>
+  <tr><td>内容</td><td>包含指向 <code>cf-app-waf.cfc.aliyuncs.com</code> 的混淆脚本</td></tr>
+  <tr><td>行为</td><td>脚本在浏览器中执行 → 生成 token → 重定向到真实页面</td></tr>
+</table>
+<p>普通用户用浏览器正常访问时，浏览器自动执行 JS 完成验证，用户完全无感知。但对爬虫来说，如果 Puppeteer 没有正确执行这段 JS（例如被资源拦截策略跳过），就会被 WAF 拦截，获取不到真实数据。</p>`
   },
   'feat-enrich': {
     title: 'AI 数据增强',
