@@ -90,8 +90,9 @@ function buildMenuItems(menus: SystemMenu[]): MenuItem[] {
 onMounted(async () => {
   try {
     const res = await getMenuTree()
-    if (res?.data?.success && res.data.data?.length > 0) {
-      menuItems.value = buildMenuItems(res.data.data)
+    // 注意：axios 响应拦截器已解包 response.data，res 即 { success, data }
+    if (res?.success && res.data?.length > 0) {
+      menuItems.value = buildMenuItems(res.data)
     }
   } catch (e) {
     console.error('[MainLayout] 获取菜单树失败，使用默认菜单', e)
