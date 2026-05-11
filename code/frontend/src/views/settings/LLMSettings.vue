@@ -506,81 +506,38 @@ const localCardDefs = [
 
 const remoteCards = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  const configuredProviders = new Set(
-    configs.value.filter(c => c.isActive).map(c => c.provider)
-  )
+  const providerConfigMap = new Map<string, LLMConfig>()
+  configs.value.filter(c => c.provider !== 'ollama' && c.isActive).forEach(c => {
+    if (!providerConfigMap.has(c.provider)) providerConfigMap.set(c.provider, c)
+  })
 
-  // 每条已配置的远程模型对应一张卡片
-  const configuredCards = configs.value
-    .filter(c => c.provider !== 'ollama' && c.isActive)
-    .filter(c => {
-      if (!q) return true
-      const def = remoteCardDefs.find(d => d.provider === c.provider)
-      const label = def?.label || c.provider
-      return label.toLowerCase().includes(q)
-        || c.provider.toLowerCase().includes(q)
-        || c.modelName.toLowerCase().includes(q)
-    })
-    .map(c => {
-      const def = remoteCardDefs.find(d => d.provider === c.provider)
-      return {
-        provider: c.provider,
-        label: c.modelName,
-        sublabel: def?.label || c.provider,
-        configured: true as const,
-        config: c,
-        color: def?.color || '#667eea',
-      }
-    })
-
-  // 未配置的供应商显示为占位卡片
-  const placeholderCards = remoteCardDefs
-    .filter(def => !configuredProviders.has(def.provider))
+  return remoteCardDefs
     .filter(def => {
       if (!q) return true
       return def.label.toLowerCase().includes(q)
         || def.provider.toLowerCase().includes(q)
     })
-    .map(def => ({
-      provider: def.provider,
-      label: def.label,
-      sublabel: '',
-      configured: false as const,
-      config: null,
-      color: def.color,
-    }))
-
-  return [...configuredCards, ...placeholderCards]
+    .map(def => {
+      const config = providerConfigMap.get(def.provider)
+      return {
+        provider: def.provider,
+        label: def.label,
+        sublabel: config ? config.modelName : '',
+        configured: !!config as (true | false),
+        config: config || null,
+        color: def.color,
+      }
+    })
 })
 
 const localCards = computed(() => {
-  const q = searchQuery.value.toLowerCase()
-  const ollamaConfigs = configs.value.filter(c => c.provider === 'ollama' && c.isActive)
-
-  if (ollamaConfigs.length > 0) {
-    return ollamaConfigs
-      .filter(c => {
-        if (!q) return true
-        return c.modelName.toLowerCase().includes(q)
-          || 'ollama'.includes(q)
-      })
-      .map(c => ({
-        provider: c.provider,
-        label: c.modelName,
-        sublabel: 'Ollama 本地',
-        configured: true as const,
-        config: c,
-        color: '#f59e0b',
-      }))
-  }
-
-  // 无配置时显示 Ollama 占位卡片
+  const ollamaConfig = configs.value.find(c => c.provider === 'ollama' && c.isActive)
   return [{
     provider: 'ollama',
     label: 'Ollama',
-    sublabel: '',
-    configured: false as const,
-    config: null,
+    sublabel: ollamaConfig ? ollamaConfig.modelName : '',
+    configured: !!ollamaConfig as (true | false),
+    config: ollamaConfig || null,
     color: '#f59e0b',
   }]
 })
