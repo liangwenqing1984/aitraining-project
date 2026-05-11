@@ -30,7 +30,7 @@
               :key="card.provider"
               class="provider-card"
               :class="{ 'is-configured': card.configured }"
-              @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
+              @click="quickAdd(card.provider)"
             >
               <div class="card-icon">
                 <el-avatar :size="36" :style="{ background: card.color }">
@@ -66,7 +66,7 @@
               :key="card.provider"
               class="provider-card"
               :class="{ 'is-configured': card.configured }"
-              @click="card.configured ? editConfig(card.config!) : quickAdd(card.provider)"
+              @click="quickAdd(card.provider)"
             >
               <div class="card-icon">
                 <el-avatar :size="36" :style="{ background: card.color }">
