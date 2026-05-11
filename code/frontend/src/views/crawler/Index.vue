@@ -321,20 +321,12 @@ async function handleResumeTask(row: any) {
 <template>
   <div class="crawler-page">
     <!-- 统计卡片 -->
-    <el-row :gutter="20" class="stats-row">
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard :value="crawlerStore.statistics.total" label="总任务数" :icon="Document" theme="primary" />
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard :value="crawlerStore.statistics.running" label="运行中" :icon="VideoPlay" theme="warning" />
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard :value="crawlerStore.statistics.completed" label="已完成" :icon="CircleCheck" theme="success" />
-      </el-col>
-      <el-col :xs="12" :sm="12" :md="6">
-        <StatCard :value="crawlerStore.statistics.records" label="总数据量" :icon="DataAnalysis" theme="info" />
-      </el-col>
-    </el-row>
+    <div class="stat-row">
+      <StatCard :value="crawlerStore.statistics.total" label="总任务数" :icon="Document" theme="primary" />
+      <StatCard :value="crawlerStore.statistics.running" label="运行中" :icon="VideoPlay" theme="warning" />
+      <StatCard :value="crawlerStore.statistics.completed" label="已完成" :icon="CircleCheck" theme="success" />
+      <StatCard :value="crawlerStore.statistics.records" label="总数据量" :icon="DataAnalysis" theme="info" />
+    </div>
 
     <el-card class="task-list-card">
       <template #header>
@@ -579,9 +571,17 @@ async function handleResumeTask(row: any) {
   padding: 0;
 }
 
-/* 统计卡片容器 */
-.stats-row {
-  margin-bottom: 20px;
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+  .stat-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 .card-header {

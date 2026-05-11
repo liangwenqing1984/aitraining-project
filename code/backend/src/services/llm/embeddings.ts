@@ -1,25 +1,64 @@
 /**
  * Embedding 向量化服务
- * 使用 Ollama nomic-embed-text 模型生成 768 维文本向量
+ * 优先使用 LLM 配置中的 embedding 模型，未配置时回退到 Ollama nomic-embed-text
  * 支持单个/批量文本向量化
  */
 
-const EMBEDDING_MODEL = 'nomic-embed-text';
-const EMBEDDING_DIM = 768;
-const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+import { llmService } from './index';
+import { EmbeddingResult } from '../../types';
 
-export interface EmbeddingResult {
-  embedding: number[];
-  tokens: number;
-  duration: number;
+// 回退常量（未配置 embedding 模型时使用）
+const FALLBACK_MODEL = 'nomic-embed-text';
+const FALLBACK_DIM = 768;
+const FALLBACK_OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+
+// 常用 embedding 模型维度映射（动态获取配置时用于确定向量维度）
+const MODEL_DIM_MAP: Record<string, number> = {
+  'nomic-embed-text': 768,
+  'text-embedding-3-small': 1536,
+  'text-embedding-3-large': 3072,
+  'text-embedding-ada-002': 1536,
+  'bge-large-zh': 1024,
+  'bge-m3': 1024,
+  'mxbai-embed-large': 1024,
+  'all-minilm': 384,
+};
+
+let cachedDim: number | null = null;
+
+/**
+ * 获取当前使用的 embedding 向量维度
+ */
+export async function getEmbeddingDim(): Promise<number> {
+  if (cachedDim !== null) return cachedDim;
+  try {
+    const config = await llmService.getConfigForTask('embedding');
+    if (config) {
+      cachedDim = MODEL_DIM_MAP[config.modelName] || FALLBACK_DIM;
+      return cachedDim;
+    }
+  } catch {}
+  cachedDim = FALLBACK_DIM;
+  return cachedDim;
 }
 
-async function callOllamaEmbedding(text: string): Promise<EmbeddingResult> {
+/**
+ * 重置维度缓存（配置变更后调用）
+ */
+export function resetEmbeddingDimCache(): void {
+  cachedDim = null;
+}
+
+/**
+ * 回退方案：直接调用 Ollama Embedding API（无配置时使用）
+ */
+async function fallbackOllamaEmbedding(text: string): Promise<EmbeddingResult> {
   const start = Date.now();
-  const response = await fetch(`${OLLAMA_URL}/api/embeddings`, {
+  const response = await fetch(`${FALLBACK_OLLAMA_URL}/api/embeddings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
+    body: JSON.stringify({ model: FALLBACK_MODEL, prompt: text }),
+    signal: AbortSignal.timeout(30000),
   });
 
   if (!response.ok) {
@@ -91,27 +130,37 @@ export function buildJobText(job: {
 }
 
 /**
- * 生成单个文本的 embedding
+ * 生成单个文本的 embedding（优先使用配置，回退到 Ollama 本地模型）
  */
 export async function generateEmbedding(text: string): Promise<EmbeddingResult> {
-  return callOllamaEmbedding(text);
+  try {
+    const config = await llmService.getConfigForTask('embedding');
+    if (config) {
+      console.log(`[Embedding] 使用模型: ${config.provider}/${config.modelName}`);
+      return await llmService.embed(text);
+    }
+  } catch (e: any) {
+    console.warn(`[Embedding] 配置模型调用失败，回退到 Ollama ${FALLBACK_MODEL}: ${e.message}`);
+  }
+
+  console.log(`[Embedding] 回退到默认模型: ${FALLBACK_MODEL}`);
+  return fallbackOllamaEmbedding(text);
 }
 
 /**
- * 批量生成 embedding（顺序调用，避免 Ollama 并发压力）
+ * 批量生成 embedding（顺序调用，避免并发压力）
  */
 export async function generateEmbeddings(texts: string[]): Promise<EmbeddingResult[]> {
   const results: EmbeddingResult[] = [];
   for (let i = 0; i < texts.length; i++) {
     console.log(`[Embedding] 向量化 ${i + 1}/${texts.length}...`);
     try {
-      const result = await callOllamaEmbedding(texts[i]);
+      const result = await generateEmbedding(texts[i]);
       results.push(result);
     } catch (e: any) {
       console.error(`[Embedding] 第 ${i + 1} 条失败:`, e.message);
       throw e;
     }
-    // 避免 Ollama 过载
     if (i < texts.length - 1) {
       await new Promise(r => setTimeout(r, 100));
     }
@@ -119,4 +168,6 @@ export async function generateEmbeddings(texts: string[]): Promise<EmbeddingResu
   return results;
 }
 
-export { EMBEDDING_MODEL, EMBEDDING_DIM };
+// 保留旧常量导出以兼容（推荐使用 getEmbeddingDim()）
+export const EMBEDDING_MODEL = FALLBACK_MODEL;
+export const EMBEDDING_DIM = FALLBACK_DIM;

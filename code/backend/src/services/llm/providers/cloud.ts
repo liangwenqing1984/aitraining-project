@@ -1,4 +1,4 @@
-import { LLMCallOptions, LLMCallResult, LLMProvider } from '../../../types';
+import { LLMCallOptions, LLMCallResult, LLMProvider, EmbeddingResult } from '../../../types';
 
 export class CloudProvider {
   name: LLMProvider;
@@ -96,6 +96,50 @@ export class CloudProvider {
         total: usage.total_tokens || 0,
       } : undefined,
       duration: 0,
+    };
+  }
+
+  async embed(
+    text: string,
+    modelName: string,
+    options: { apiKey?: string; baseUrl?: string }
+  ): Promise<EmbeddingResult> {
+    const baseUrl = options.baseUrl || this.getDefaultBaseUrl();
+    const apiKey = options.apiKey || process.env.OPENAI_API_KEY || '';
+
+    if (!apiKey) {
+      throw new Error(`缺少 ${this.name} API Key，无法调用 Embedding API`);
+    }
+
+    const start = Date.now();
+    const url = `${baseUrl}${this.getApiPath('embeddings')}`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model: modelName, input: text }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '未知错误');
+      throw new Error(`Embedding API 错误 (${response.status}): ${errText.substring(0, 200)}`);
+    }
+
+    const data: any = await response.json();
+    const embedding = data.data?.[0]?.embedding as number[];
+
+    if (!embedding || embedding.length === 0) {
+      throw new Error(`${this.name} Embedding API 返回空 embedding`);
+    }
+
+    return {
+      embedding,
+      tokens: data.usage?.total_tokens || 0,
+      duration: Date.now() - start,
     };
   }
 

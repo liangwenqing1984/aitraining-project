@@ -308,6 +308,262 @@ export async function getInsightsHistory(fileId: string): Promise<MarketReport[]
   }));
 }
 
+// ==================== 全量数据洞察 ====================
+
+async function buildAllStats() {
+  const stats: any = {};
+
+  // 总职位数
+  const countResult = await db.prepare(
+    'SELECT COUNT(*) as cnt FROM sp_job_enrichments'
+  ).get() as any;
+  stats.totalJobs = countResult?.cnt || 0;
+
+  if (stats.totalJobs === 0) {
+    throw new Error('数据库中没有增强后的职位数据，请先进行 AI 增强');
+  }
+
+  // 覆盖城市数
+  const cityResult = await db.prepare(
+    'SELECT COUNT(DISTINCT work_city) as cnt FROM sp_jobs'
+  ).get() as any;
+  stats.cityCount = cityResult?.cnt || 0;
+
+  // 公司总数
+  const companyResult = await db.prepare(
+    'SELECT COUNT(DISTINCT company_name) as cnt FROM sp_jobs WHERE company_name IS NOT NULL'
+  ).get() as any;
+  stats.totalCompanies = companyResult?.cnt || 0;
+
+  // 任务数
+  const taskResult = await db.prepare(
+    'SELECT COUNT(DISTINCT task_id) as cnt FROM sp_job_enrichments'
+  ).get() as any;
+  stats.totalTasks = taskResult?.cnt || 0;
+
+  // 薪资分布
+  const salaryRows = await db.prepare(`
+    SELECT salary_monthly_min, salary_monthly_max
+    FROM sp_job_enrichments WHERE salary_monthly_min IS NOT NULL
+  `).all() as any[];
+
+  if (salaryRows.length > 0) {
+    const ranges = [
+      { label: '5K以下', min: 0, max: 5000, count: 0 },
+      { label: '5K-10K', min: 5000, max: 10000, count: 0 },
+      { label: '10K-15K', min: 10000, max: 15000, count: 0 },
+      { label: '15K-20K', min: 15000, max: 20000, count: 0 },
+      { label: '20K-30K', min: 20000, max: 30000, count: 0 },
+      { label: '30K以上', min: 30000, max: Infinity, count: 0 },
+    ];
+    salaryRows.forEach((r: any) => {
+      const mid = r.salaryMonthlyMax
+        ? (r.salaryMonthlyMin + r.salaryMonthlyMax) / 2
+        : r.salaryMonthlyMin;
+      const val = mid || r.salaryMonthlyMin || 0;
+      for (const range of ranges) {
+        if (val >= range.min && val < range.max) { range.count++; break; }
+      }
+    });
+    stats.salaryDistribution = ranges;
+  }
+
+  // 城市分布 Top 10
+  const cityRows = await db.prepare(`
+    SELECT work_city as name, COUNT(*) as count
+    FROM sp_jobs GROUP BY work_city ORDER BY count DESC LIMIT 10
+  `).all() as any[];
+  stats.cityDistribution = cityRows.map((r: any) => ({
+    name: r.name, count: r.count,
+  }));
+
+  // 学历分布
+  const eduRows = await db.prepare(`
+    SELECT education_normalized, COUNT(*) as cnt
+    FROM sp_job_enrichments WHERE education_normalized IS NOT NULL
+    GROUP BY education_normalized ORDER BY cnt DESC
+  `).all() as any[];
+  stats.educationDistribution = eduRows.map((r: any) => ({
+    name: r.educationNormalized, count: r.cnt,
+  }));
+
+  // 经验要求分布
+  const expRows = await db.prepare(`
+    SELECT experience_years_min, experience_years_max, COUNT(*) as cnt
+    FROM sp_job_enrichments WHERE experience_years_min IS NOT NULL
+    GROUP BY experience_years_min, experience_years_max ORDER BY experience_years_min
+  `).all() as any[];
+  stats.experienceDistribution = expRows.map((r: any) => ({
+    min: r.experienceYearsMin,
+    max: r.experienceYearsMax,
+    count: r.cnt,
+  }));
+
+  // 职位分类分布 (L1)
+  const catRows = await db.prepare(`
+    SELECT job_category_l1, COUNT(*) as cnt
+    FROM sp_job_enrichments WHERE job_category_l1 IS NOT NULL
+    GROUP BY job_category_l1 ORDER BY cnt DESC
+  `).all() as any[];
+  stats.jobCategoryDistribution = catRows.map((r: any) => ({
+    name: r.jobCategoryL1, count: r.cnt,
+  }));
+
+  // Top L2 职位
+  const topJobRows = await db.prepare(`
+    SELECT job_category_l2, COUNT(*) as cnt
+    FROM sp_job_enrichments WHERE job_category_l2 IS NOT NULL
+    GROUP BY job_category_l2 ORDER BY cnt DESC LIMIT 15
+  `).all() as any[];
+  stats.topJobs = topJobRows.map((r: any) => ({
+    name: r.jobCategoryL2, count: r.cnt,
+  }));
+
+  // 热门技能 Top 20
+  const skillRows = await db.prepare(`
+    SELECT key_skills FROM sp_job_enrichments WHERE key_skills IS NOT NULL
+  `).all() as any[];
+  const skillCount: Record<string, number> = {};
+  skillRows.forEach((r: any) => {
+    let skills = r.keySkills;
+    if (typeof skills === 'string') {
+      try { skills = JSON.parse(skills); } catch { skills = []; }
+    }
+    if (Array.isArray(skills)) {
+      skills.forEach((s: string) => {
+        if (s) skillCount[s] = (skillCount[s] || 0) + 1;
+      });
+    }
+  });
+  stats.topSkills = Object.entries(skillCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([name, count]) => ({ name, count }));
+
+  // 行业分布
+  const industryRows = await db.prepare(`
+    SELECT company_industry, COUNT(*) as cnt,
+           ROUND(AVG((salary_monthly_min + salary_monthly_max) / 2.0)) as avg_salary
+    FROM sp_job_enrichments WHERE company_industry IS NOT NULL
+    GROUP BY company_industry ORDER BY cnt DESC
+  `).all() as any[];
+  stats.industryDistribution = industryRows.map((r: any) => ({
+    name: r.companyIndustry || r.company_industry,
+    count: r.cnt,
+    avgSalary: Number(r.avgSalary) || 0,
+  }));
+
+  // 工作模式分布
+  const workModeRows = await db.prepare(`
+    SELECT work_mode, COUNT(*) as cnt
+    FROM sp_job_enrichments WHERE work_mode IS NOT NULL
+    GROUP BY work_mode ORDER BY cnt DESC
+  `).all() as any[];
+  stats.workModeDistribution = workModeRows.map((r: any) => ({
+    name: r.workMode || r.work_mode, count: r.cnt,
+  }));
+
+  // 数据来源
+  const sourceRows = await db.prepare(`
+    SELECT data_source, COUNT(*) as cnt
+    FROM sp_jobs WHERE data_source IS NOT NULL
+    GROUP BY data_source ORDER BY cnt DESC
+  `).all() as any[];
+  stats.dataSourceDistribution = sourceRows.map((r: any) => ({
+    name: r.dataSource || r.data_source === 'zhilian' ? '智联招聘' : '前程无忧',
+    count: r.cnt,
+  }));
+
+  stats.dateRange = '全部任务汇总';
+
+  return stats;
+}
+
+export async function generateAllInsights(): Promise<MarketReport> {
+  console.log('[Insights] 开始构建全量统计数据...');
+
+  const stats = await buildAllStats();
+
+  console.log(`[Insights] 全量统计完成（${stats.totalJobs} 条职位），调用 AI 生成报告...`);
+
+  const result = await llmService.callLLM(
+    INSIGHTS_SYSTEM,
+    INSIGHTS_USER(stats),
+    {
+      taskType: 'insights',
+      temperature: 0.3,
+      maxTokens: 16384,
+    }
+  );
+
+  const rawContent = result.content || '';
+  if (!rawContent.trim()) {
+    throw new Error('LLM 返回空内容，全量报告生成失败');
+  }
+
+  console.log('[Insights] AI 报告生成完成，解析中...');
+
+  const parsed = extractJSON(rawContent);
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+
+  const safeChartsConfig = (parsed.chartsConfig || []).map((cfg: any) => {
+    delete cfg.echartsOption?._comment;
+    try { JSON.stringify(cfg.echartsOption); } catch { cfg.echartsOption = {}; }
+    return cfg;
+  });
+
+  await db.prepare(`
+    INSERT INTO sp_market_reports (id, file_id, task_id, report_type, title, content, summary, charts_config, model_used, created_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+  `).run(
+    id, '__all__', '__all__', 'overview_all',
+    parsed.title || '全量数据洞察报告',
+    JSON.stringify(parsed.sections || []),
+    parsed.summary || '',
+    JSON.stringify(safeChartsConfig),
+    result.model || '',
+    now
+  );
+
+  console.log(`[Insights] 全量报告保存完成: ${parsed.title || '全量数据洞察报告'}`);
+
+  return {
+    id,
+    fileId: '__all__',
+    reportType: 'overview_all',
+    title: parsed.title || '全量数据洞察报告',
+    content: JSON.stringify(parsed.sections || []),
+    summary: parsed.summary || '',
+    chartsConfig: safeChartsConfig,
+    modelUsed: result.model || '',
+    createdAt: now,
+  };
+}
+
+export async function getAllInsightsHistory(): Promise<MarketReport[]> {
+  const rows = await db.prepare(`
+    SELECT * FROM sp_market_reports
+    WHERE file_id='__all__'
+    ORDER BY created_at DESC LIMIT 10
+  `).all() as any[];
+
+  return rows.map((r: any) => ({
+    id: r.id,
+    fileId: r.fileId || r.file_id,
+    reportType: r.reportType || r.report_type,
+    title: r.title,
+    content: r.content,
+    summary: r.summary,
+    chartsConfig: typeof r.chartsConfig === 'string' ? JSON.parse(r.chartsConfig) : (r.chartsConfig || r.charts_config),
+    modelUsed: r.modelUsed || r.model_used,
+    createdAt: r.createdAt || r.created_at,
+  }));
+}
+
+// ==================== 通用（原有） ====================
+
 export async function getInsightsReport(reportId: string): Promise<MarketReport | null> {
   const r = await db.prepare('SELECT * FROM sp_market_reports WHERE id=$1').get(reportId) as any;
   if (!r) return null;

@@ -1262,7 +1262,37 @@ LIMIT $4;</code></pre>
   <li>如缺少模型，手动拉取：<code>ollama pull nomic-embed-text</code></li>
   <li>后端启动时也会自动检测并尝试拉取</li>
   <li>测试调用：<code>curl http://localhost:11434/api/embeddings -d '{"model":"nomic-embed-text","prompt":"测试文本"}'</code></li>
-</ol>`
+</ol>
+
+<h4>Q: 文本向量化的原理是什么？</h4>
+<p>文本向量化就是<strong>把一段文字映射成一个固定长度的数字数组（向量）</strong>，使得语义相近的文字在向量空间中的位置也相近。</p>
+
+<h4>模型如何工作（以 nomic-embed-text 为例）</h4>
+<p>核心是一个 <strong>Transformer 编码器</strong>，分三步：</p>
+<ol>
+  <li><strong>分词</strong>：将输入文本切分成 token（词元），如"Java开发工程师" → [Java, 开发, 工程师]</li>
+  <li><strong>编码</strong>：每个 token 映射为初始向量，经过多层<strong>自注意力机制（Self-Attention）</strong>反复计算，让每个 token 的向量融入上下文信息</li>
+  <li><strong>池化</strong>：将所有 token 的向量取平均（Mean Pooling），压缩成唯一的 <strong>768 维输出向量</strong>——这就是最终的 embedding</li>
+</ol>
+<pre><code>"Java开发工程师"  →  [0.12, -0.34, 0.78, ..., 0.45]  （768个数字）
+"Java程序员"      →  [0.11, -0.33, 0.76, ..., 0.43]  （向量很接近）
+"会计出纳"        →  [-0.52, 0.67, -0.21, ..., 0.88] （向量差很远）</code></pre>
+
+<h4>在项目中的应用场景</h4>
+<table>
+  <tr><th>步骤</th><th>说明</th></tr>
+  <tr><td>入库</td><td><code>buildJobText()</code> 将职位信息拼接为自然语言 → 调 embedding 转为 768 维向量 → 存入 pgvector IVFFlat 索引</td></tr>
+  <tr><td>查询</td><td>用户输入自然语言问题 → 同样转为 768 维向量 → 在 pgvector 中做余弦相似度检索 → 返回语义最接近的 N 条职位</td></tr>
+  <tr><td>交 LLM</td><td>将检索到的相关职位作为上下文，和用户问题一起发给大模型，让大模型基于真实数据回答</td></tr>
+</table>
+
+<h4>为什么用余弦相似度</h4>
+<p>两个向量之间的<strong>余弦相似度</strong>反映它们在空间中的夹角：</p>
+<ul>
+  <li><strong>夹角越小（cos → 1）</strong>→ 语义越相近</li>
+  <li><strong>夹角越大（cos → 0）</strong>→ 语义越无关</li>
+  <li>pgvector 的 <code>&lt;=&gt;</code> 运算符算的是余弦距离（= 1 - 余弦相似度），所以 <code>ORDER BY embedding &lt;=&gt; query_vector</code> 按相似度从高到低排序</li>
+</ul>`
   },
   'feat-proxy': {
     title: 'IP 代理池',

@@ -2,8 +2,14 @@
 import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import * as echarts from 'echarts';
 import 'echarts-wordcloud';
-import { Briefcase, Monitor, OfficeBuilding, Coin, TrendCharts } from '@element-plus/icons-vue';
+import { Briefcase, Monitor, OfficeBuilding, Coin, TrendCharts, MagicStick, Download, RefreshLeft, Loading } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import { fetchOverview, type DashboardOverview } from '@/api/dashboard';
+import {
+  generateDashboardInsights, getDashboardInsightsHistory,
+  getDashboardInsightReport, getDashboardInsightPdfUrl,
+  type InsightReport, type InsightSection,
+} from '@/api/dashboard';
 import { fetchRegionStats, type RegionStats } from '@/api/region';
 
 const loading = ref(true);
@@ -21,6 +27,11 @@ let geoJsonLoaded = false;
 let mapChart: echarts.ECharts | null = null;
 let barChart: echarts.ECharts | null = null;
 
+// ==================== AI 全量洞察 ====================
+const insightsLoading = ref(false);
+const generatingInsight = ref(false);
+const insightsHistory = ref<InsightReport[]>([]);
+const currentInsight = ref<InsightReport | null>(null);
 
 function formatSalary(val: number): string {
   return val >= 1000 ? `${(val / 1000).toFixed(0)}K` : String(val);
@@ -80,6 +91,94 @@ function renderAnalysisChart() {
 function resizeCharts() {
   mapChart?.resize();
   barChart?.resize();
+}
+
+// ==================== AI 全量洞察 ====================
+
+function parseContent(content: string): InsightSection[] {
+  if (!content) return [];
+  try {
+    if (typeof content === 'string') {
+      const parsed = JSON.parse(content);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    }
+    return Array.isArray(content) ? content : [content];
+  } catch {
+    return [{ heading: '', body: content }];
+  }
+}
+
+function renderMarkdown(text: string): string {
+  if (!text) return '';
+  let html = text;
+  html = html.replace(/((?:[|].+[|]\n)+)/g, (block) => {
+    const lines = block.trim().split('\n').filter(l => l.includes('|'));
+    if (lines.length < 2) return block;
+    const dataLines = lines.filter(l => !/^\|[\s\-:]+\|$/.test(l));
+    if (dataLines.length === 0) return block;
+    const headerCells = dataLines[0].split('|').filter(c => c.trim());
+    const bodyLines = dataLines.slice(1);
+    let tableHtml = '<table><thead><tr>';
+    headerCells.forEach(c => { tableHtml += `<th>${c.trim()}</th>`; });
+    tableHtml += '</tr></thead><tbody>';
+    bodyLines.forEach(line => {
+      const cells = line.split('|').filter(c => c.trim());
+      tableHtml += '<tr>';
+      cells.forEach((c) => { tableHtml += `<td>${c.trim()}</td>`; });
+      tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+    return tableHtml;
+  });
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+  html = html.replace(/^#### (.+)$/gm, '<h5>$1</h5>');
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+  html = html.replace(/\n\n/g, '<br/><br/>');
+  html = html.replace(/\n/g, '<br/>');
+  return html;
+}
+
+async function loadInsightsHistory() {
+  try {
+    const res = await getDashboardInsightsHistory();
+    insightsHistory.value = res;
+    if (res.length > 0) {
+      currentInsight.value = res[0];
+    }
+  } catch { /* ignore */ }
+}
+
+async function generateInsight() {
+  generatingInsight.value = true;
+  try {
+    const report = await generateDashboardInsights();
+    ElMessage.success('AI 洞察报告已生成');
+    insightsHistory.value.unshift(report);
+    currentInsight.value = report;
+  } catch (e: any) {
+    ElMessage.error(e.message || '报告生成失败');
+  } finally {
+    generatingInsight.value = false;
+  }
+}
+
+async function viewReport(reportId: string) {
+  try {
+    const report = await getDashboardInsightReport(reportId);
+    currentInsight.value = report;
+  } catch (e: any) {
+    ElMessage.error(e.message || '获取报告失败');
+  }
+}
+
+function downloadPdf(reportId: string) {
+  window.open(getDashboardInsightPdfUrl(reportId), '_blank');
 }
 
 async function load() {
@@ -221,8 +320,9 @@ async function loadRegion() {
 }
 
 onMounted(async () => {
-  await load();         // 等 dashboard 数据加载完、DOM 渲染后再加载区域地图
+  await load();
   loadRegion();
+  loadInsightsHistory();
   window.addEventListener('resize', resizeCharts);
 });
 
@@ -326,6 +426,81 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </template>
+
+      <!-- ==================== AI 全量洞察 ==================== -->
+      <div class="section-divider"><span>AI 全量洞察报告</span></div>
+
+      <div class="insights-toolbar">
+        <div class="insights-toolbar-left">
+          <el-select
+            v-if="insightsHistory.length > 0"
+            :model-value="currentInsight?.id"
+            size="small"
+            @change="viewReport"
+            placeholder="选择历史报告"
+            style="width: 320px;"
+          >
+            <el-option
+              v-for="r in insightsHistory"
+              :key="r.id"
+              :label="`${r.title} (${new Date(r.createdAt).toLocaleDateString('zh-CN')})`"
+              :value="r.id"
+            />
+          </el-select>
+          <span v-if="currentInsight" class="insights-model-tag">
+            <el-tag size="small" type="warning">{{ currentInsight.modelUsed }}</el-tag>
+          </span>
+        </div>
+        <div class="insights-toolbar-right">
+          <el-button
+            v-if="currentInsight"
+            type="success"
+            size="small"
+            :icon="Download"
+            @click="downloadPdf(currentInsight.id)"
+          >下载 PDF</el-button>
+          <el-button
+            type="primary"
+            size="small"
+            :loading="generatingInsight"
+            :icon="generatingInsight ? Loading : MagicStick"
+            @click="generateInsight"
+          >{{ generatingInsight ? '正在生成...' : '生成洞察报告' }}</el-button>
+        </div>
+      </div>
+
+      <!-- 报告生成中 -->
+      <div v-if="generatingInsight" class="insights-generating">
+        <el-icon class="is-loading" :size="20"><Loading /></el-icon>
+        <span>正在分析全量招聘数据，AI 生成洞察报告中，预计需要 30-60 秒...</span>
+      </div>
+
+      <!-- 报告内容 -->
+      <div v-if="currentInsight && !generatingInsight" class="insights-report">
+        <div v-if="currentInsight.summary" class="insights-summary">
+          <h3>摘要</h3>
+          <p>{{ currentInsight.summary }}</p>
+        </div>
+
+        <div v-if="currentInsight.content" class="insights-body">
+          <div v-for="(section, idx) in parseContent(currentInsight.content)" :key="idx" class="insight-section">
+            <h3 v-if="section.heading" class="insight-heading" v-html="renderMarkdown(section.heading)"></h3>
+            <div class="insight-body" v-html="renderMarkdown(section.body)"></div>
+            <div v-if="section.key_insight" class="insight-key-finding">
+              <strong>关键发现：</strong>{{ section.key_insight }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="currentInsight.createdAt" class="insights-footer">
+          报告生成时间：{{ new Date(currentInsight.createdAt).toLocaleString('zh-CN') }}
+        </div>
+      </div>
+
+      <!-- 空状态：没有报告也没有在生成 -->
+      <div v-if="!currentInsight && !generatingInsight" class="insights-empty">
+        <p>暂无洞察报告，点击"生成洞察报告"按钮，AI 将对所有招聘数据进行深度分析</p>
+      </div>
 
     </template>
   </div>
@@ -486,5 +661,162 @@ onBeforeUnmount(() => {
     height: auto;
   }
   .chart-panel { height: 360px; }
+}
+
+/* ==================== AI 全量洞察 ==================== */
+.insights-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.insights-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.insights-toolbar-right {
+  display: flex;
+  gap: 8px;
+}
+.insights-model-tag {
+  font-size: 12px;
+}
+
+.insights-generating {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px;
+  background: linear-gradient(135deg, rgba(102,126,234,0.04), rgba(118,75,162,0.04));
+  border-radius: 12px;
+  border: 1px solid #ebeef5;
+  margin-bottom: 16px;
+  color: #606266;
+  font-size: 14px;
+}
+
+.insights-report {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  border: 1px solid #f0f0f0;
+  margin-bottom: 16px;
+}
+
+.insights-summary {
+  background: linear-gradient(135deg, rgba(102,126,234,0.06), rgba(118,75,162,0.06));
+  padding: 16px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border-left: 4px solid #667eea;
+}
+.insights-summary h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  color: #667eea;
+}
+.insights-summary p {
+  margin: 0;
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.7;
+}
+
+.insights-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.insight-section h3.insight-heading {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  border-bottom: 1px solid #ebeef5;
+  padding-bottom: 8px;
+}
+.insight-section h3.insight-heading :deep(h2),
+.insight-section h3.insight-heading :deep(h3),
+.insight-section h3.insight-heading :deep(h4) {
+  margin: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+}
+
+.insight-body {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.8;
+}
+.insight-body :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.insight-body :deep(th) {
+  background: #f5f7fa;
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid #ebeef5;
+  font-weight: 600;
+}
+.insight-body :deep(td) {
+  padding: 8px 12px;
+  border: 1px solid #ebeef5;
+}
+.insight-body :deep(strong) {
+  color: #303133;
+}
+.insight-body :deep(ul) {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+.insight-body :deep(li) {
+  margin: 4px 0;
+}
+.insight-body :deep(code) {
+  background: #f0f2f5;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #e6a23c;
+}
+
+.insight-key-finding {
+  background: #fdf6ec;
+  padding: 10px 16px;
+  border-radius: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #e6a23c;
+  border-left: 3px solid #e6a23c;
+  line-height: 1.7;
+}
+
+.insights-footer {
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 12px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+
+.insights-empty {
+  text-align: center;
+  padding: 40px;
+  color: #909399;
+  font-size: 14px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #f0f0f0;
+  margin-bottom: 16px;
 }
 </style>

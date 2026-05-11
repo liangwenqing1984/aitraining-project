@@ -1,4 +1,4 @@
-import { LLMCallOptions, LLMCallResult, LLMConfig, LLMProvider, LLMTaskType } from '../../types';
+import { LLMCallOptions, LLMCallResult, LLMConfig, LLMProvider, LLMTaskType, EmbeddingResult } from '../../types';
 import { db } from '../../config/database';
 import { CloudProvider } from './providers/cloud';
 import { LocalProvider } from './providers/local';
@@ -42,6 +42,7 @@ function decrypt(encryptedText: string): string {
 export interface LLMProviderInterface {
   name: LLMProvider;
   call(modelName: string, systemPrompt: string, userPrompt: string, options: LLMCallOptions): Promise<LLMCallResult>;
+  embed?(text: string, modelName: string, options: { apiKey?: string; baseUrl?: string }): Promise<EmbeddingResult>;
   healthCheck(apiKey?: string, baseUrl?: string, modelName?: string): Promise<{ ok: boolean; models: string[]; latency: number; error?: string }>;
 }
 
@@ -77,7 +78,7 @@ export class LLMService {
     this.configCacheTime = Date.now();
   }
 
-  private async getConfigForTask(taskType: LLMTaskType): Promise<LLMConfig | null> {
+  async getConfigForTask(taskType: LLMTaskType): Promise<LLMConfig | null> {
     if (Date.now() - this.configCacheTime > 60000) {
       await this.refreshConfigCache();
     }
@@ -123,6 +124,31 @@ export class LLMService {
       ...result,
       duration: Date.now() - startTime,
     };
+  }
+
+  async embed(text: string): Promise<EmbeddingResult> {
+    const config = await this.getConfigForTask('embedding');
+    if (!config) {
+      throw new Error('没有配置向量化(embedding)模型，请在 AI 配置中添加 embedding 任务类型的模型');
+    }
+
+    const provider = this.providers.get(config.provider);
+    if (!provider) {
+      throw new Error(`不支持的向量化提供商: ${config.provider}`);
+    }
+
+    if (!provider.embed) {
+      throw new Error(`提供商 ${config.provider} 不支持 Embedding API`);
+    }
+
+    const apiKey = config.apiKeyEncrypted ? decrypt(config.apiKeyEncrypted) : undefined;
+
+    console.log(`[LLMService] 使用向量化模型: ${config.provider}/${config.modelName}`);
+
+    return provider.embed(text, config.modelName, {
+      apiKey,
+      baseUrl: config.baseUrl || undefined,
+    });
   }
 
   async healthCheck(provider: LLMProvider): Promise<{ ok: boolean; models: string[]; latency: number; error?: string }> {

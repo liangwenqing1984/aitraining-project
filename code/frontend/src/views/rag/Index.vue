@@ -225,17 +225,27 @@ async function loadTasks() {
   loadingTasks.value = true
   try {
     const res: any = await taskApi.getTasks({ page: 1, pageSize: 100 })
-    if (res.success && res.data) {
-      const tasks = (res.data.list || res.data || []).filter(
-        (t: any) => t.recordCount > 0
-      )
-      taskOptions.value = tasks.map((t: any) => ({
+    console.log('[RAG] getTasks 原始响应:', JSON.stringify(res).substring(0, 500))
+    if (res && res.data) {
+      const list = res.data.list || res.data || []
+      console.log('[RAG] 任务列表长度:', list.length)
+      if (list.length > 0) {
+        console.log('[RAG] 第一条样本:', JSON.stringify(list[0]))
+      }
+      // 不强制过滤 record_count，允许所有任务出现（包含 0 条也可以索引空数据）
+      taskOptions.value = list.map((t: any) => ({
         taskId: t.id,
-        count: t.recordCount || 0,
+        count: t.record_count || t.recordCount || 0,
         label: t.name || t.id,
       }))
+      console.log('[RAG] taskOptions 数量:', taskOptions.value.length)
+    } else {
+      console.warn('[RAG] getTasks 响应异常:', res)
     }
-  } catch { /* ignore */ }
+  } catch (e: any) {
+    console.error('[RAG] 加载任务列表失败:', e.message || e)
+    ElMessage.error('加载任务列表失败: ' + (e.response?.data?.error || e.message || '未知错误'))
+  }
   loadingTasks.value = false
 }
 

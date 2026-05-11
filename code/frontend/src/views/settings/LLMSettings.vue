@@ -34,13 +34,13 @@
             >
               <div class="card-icon">
                 <el-avatar :size="36" :style="{ background: card.color }">
-                  <span class="avatar-text">{{ card.label[0] }}</span>
+                  <span class="avatar-text">{{ (card.sublabel || card.label)[0] }}</span>
                 </el-avatar>
               </div>
               <div class="card-body">
                 <div class="card-title">{{ card.label }}</div>
                 <template v-if="card.configured">
-                  <div class="card-model">{{ card.config!.modelName }}</div>
+                  <div class="card-model">{{ card.sublabel }}</div>
                 </template>
                 <div v-else class="card-hint">点击配置</div>
               </div>
@@ -74,13 +74,13 @@
             >
               <div class="card-icon">
                 <el-avatar :size="36" :style="{ background: card.color }">
-                  <span class="avatar-text">{{ card.label[0] }}</span>
+                  <span class="avatar-text">{{ (card.sublabel || card.label)[0] }}</span>
                 </el-avatar>
               </div>
               <div class="card-body">
                 <div class="card-title">{{ card.label }}</div>
                 <template v-if="card.configured">
-                  <div class="card-model">{{ card.config!.modelName }}</div>
+                  <div class="card-model">{{ card.sublabel }}</div>
                 </template>
                 <div v-else class="card-hint">点击配置</div>
               </div>
@@ -305,7 +305,7 @@
 
           <div class="task-hint">
             <el-icon :size="14"><InfoFilled /></el-icon>
-            <span>本地模型推荐用于数据增强和反爬检测；云端模型推荐用于智能洞察和自然语言查询</span>
+            <span>本地模型推荐用于数据增强、反爬检测和文本向量化；云端模型推荐用于智能洞察和自然语言查询</span>
           </div>
         </div>
       </el-form>
@@ -388,7 +388,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import {
   Plus, Loading, Link, Edit, Delete, Search, Setting, Cpu,
   InfoFilled, Key, Switch, Check, CircleCheckFilled, CircleCloseFilled,
-  DataAnalysis, TrendCharts, ChatDotRound, Monitor,
+  DataAnalysis, TrendCharts, ChatDotRound, Monitor, Grid,
 } from '@element-plus/icons-vue'
 import {
   listLLMConfigs, saveLLMConfig, deleteLLMConfig, checkLLMHealth, fetchProviderModels,
@@ -450,6 +450,7 @@ const taskOptions = [
   { value: 'insights', label: '智能洞察', desc: '多维分析报告生成', icon: TrendCharts, color: '#67c23a', bg: '#f0f9eb' },
   { value: 'query', label: 'NL 查询', desc: '中文提问转 SQL 查询', icon: ChatDotRound, color: '#e6a23c', bg: '#fdf6ec' },
   { value: 'anti-crawl', label: '反爬检测', desc: '验证码识别与反爬对抗', icon: Monitor, color: '#f56c6c', bg: '#fef0f0' },
+  { value: 'embedding', label: '文本向量化', desc: '职位文本转向量(Embedding)', icon: Grid, color: '#9b59b6', bg: '#f5f0ff' },
 ]
 
 const taskLabelMap: Record<string, string> = {
@@ -457,6 +458,7 @@ const taskLabelMap: Record<string, string> = {
   'insights': '智能洞察',
   'query': 'NL查询',
   'anti-crawl': '反爬检测',
+  'embedding': '向量化',
 }
 
 function taskLabel(key: string): string {
@@ -468,6 +470,7 @@ const taskTagTypeMap: Record<string, string> = {
   'insights': 'success',
   'query': 'warning',
   'anti-crawl': 'danger',
+  'embedding': '',
 }
 
 function taskTagType(key: string): string {
@@ -503,32 +506,83 @@ const localCardDefs = [
 
 const remoteCards = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  return remoteCardDefs
-    .map(def => {
-      const config = configs.value.find(c => c.provider === def.provider && c.isActive)
-      return { ...def, configured: !!config, config: config || null }
-    })
-    .filter(card => {
+  const configuredProviders = new Set(
+    configs.value.filter(c => c.isActive).map(c => c.provider)
+  )
+
+  // 每条已配置的远程模型对应一张卡片
+  const configuredCards = configs.value
+    .filter(c => c.provider !== 'ollama' && c.isActive)
+    .filter(c => {
       if (!q) return true
-      return card.label.toLowerCase().includes(q)
-        || card.provider.toLowerCase().includes(q)
-        || card.config?.modelName?.toLowerCase().includes(q)
+      const def = remoteCardDefs.find(d => d.provider === c.provider)
+      const label = def?.label || c.provider
+      return label.toLowerCase().includes(q)
+        || c.provider.toLowerCase().includes(q)
+        || c.modelName.toLowerCase().includes(q)
     })
+    .map(c => {
+      const def = remoteCardDefs.find(d => d.provider === c.provider)
+      return {
+        provider: c.provider,
+        label: c.modelName,
+        sublabel: def?.label || c.provider,
+        configured: true as const,
+        config: c,
+        color: def?.color || '#667eea',
+      }
+    })
+
+  // 未配置的供应商显示为占位卡片
+  const placeholderCards = remoteCardDefs
+    .filter(def => !configuredProviders.has(def.provider))
+    .filter(def => {
+      if (!q) return true
+      return def.label.toLowerCase().includes(q)
+        || def.provider.toLowerCase().includes(q)
+    })
+    .map(def => ({
+      provider: def.provider,
+      label: def.label,
+      sublabel: '',
+      configured: false as const,
+      config: null,
+      color: def.color,
+    }))
+
+  return [...configuredCards, ...placeholderCards]
 })
 
 const localCards = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  return localCardDefs
-    .map(def => {
-      const config = configs.value.find(c => c.provider === def.provider && c.isActive)
-      return { ...def, configured: !!config, config: config || null }
-    })
-    .filter(card => {
-      if (!q) return true
-      return card.label.toLowerCase().includes(q)
-        || card.provider.toLowerCase().includes(q)
-        || card.config?.modelName?.toLowerCase().includes(q)
-    })
+  const ollamaConfigs = configs.value.filter(c => c.provider === 'ollama' && c.isActive)
+
+  if (ollamaConfigs.length > 0) {
+    return ollamaConfigs
+      .filter(c => {
+        if (!q) return true
+        return c.modelName.toLowerCase().includes(q)
+          || 'ollama'.includes(q)
+      })
+      .map(c => ({
+        provider: c.provider,
+        label: c.modelName,
+        sublabel: 'Ollama 本地',
+        configured: true as const,
+        config: c,
+        color: '#f59e0b',
+      }))
+  }
+
+  // 无配置时显示 Ollama 占位卡片
+  return [{
+    provider: 'ollama',
+    label: 'Ollama',
+    sublabel: '',
+    configured: false as const,
+    config: null,
+    color: '#f59e0b',
+  }]
 })
 
 const modelPresets: Record<string, string[]> = {

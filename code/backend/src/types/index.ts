@@ -101,7 +101,7 @@ export interface ProgressData {
 // ==================== LLM 相关类型 ====================
 
 export type LLMProvider = 'openai' | 'anthropic' | 'ollama' | 'deepseek' | 'zhipu';
-export type LLMTaskType = 'enrichment' | 'insights' | 'query' | 'anti-crawl';
+export type LLMTaskType = 'enrichment' | 'insights' | 'query' | 'anti-crawl' | 'embedding';
 
 export interface LLMConfig {
   id?: number;
@@ -122,6 +122,12 @@ export interface LLMCallOptions {
   stream?: boolean;
   signal?: AbortSignal;
   responseFormat?: 'text' | 'json';
+}
+
+export interface EmbeddingResult {
+  embedding: number[];
+  tokens: number;
+  duration: number;
 }
 
 export interface LLMCallResult {

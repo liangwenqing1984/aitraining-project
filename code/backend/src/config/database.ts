@@ -180,6 +180,11 @@ async function initDatabase() {
       )
     `);
 
+    // 移除 file_id 外键约束，支持全量报告（file_id='__all__' 不引用具体文件）
+    await client.query(`
+      ALTER TABLE sp_market_reports DROP CONSTRAINT IF EXISTS market_reports_file_id_fkey
+    `).catch(() => { /* 约束可能不存在 */ });
+
     // 创建 sp_saved_queries 表（自然语言查询历史）
     // 创建 sp_jobs 表（原始职位数据，与 Excel 同步入库）
     await client.query(`

@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
+import os from 'os';
+import path from 'path';
+import fs from 'fs';
 import { db } from '../config/database';
 import { ApiResponse } from '../types';
+import { generateAllInsights, getAllInsightsHistory, getInsightsReport } from '../services/llm/insights';
 
 export async function overview(_req: Request, res: Response) {
   try {
@@ -146,6 +150,137 @@ export async function overview(_req: Request, res: Response) {
       },
     } as ApiResponse);
   } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+// ==================== AI 全量洞察报告 ====================
+
+export async function generateInsight(_req: Request, res: Response) {
+  try {
+    console.log('[DashboardController] 开始生成全量洞察报告...');
+    const report = await generateAllInsights();
+    res.json({ success: true, data: report } as ApiResponse);
+  } catch (error: any) {
+    console.error('[DashboardController] 全量洞察生成失败:', error.message);
+    res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+export async function getInsightHistory(_req: Request, res: Response) {
+  try {
+    const reports = await getAllInsightsHistory();
+    res.json({ success: true, data: reports } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+export async function getInsightReportById(req: Request, res: Response) {
+  try {
+    const report = await getInsightsReport(req.params.reportId);
+    if (!report) {
+      return res.status(404).json({ success: false, error: '报告不存在' } as ApiResponse);
+    }
+    res.json({ success: true, data: report } as ApiResponse);
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+export async function downloadReportPdf(req: Request, res: Response) {
+  try {
+    const report = await getInsightsReport(req.params.reportId);
+    if (!report) {
+      return res.status(404).json({ success: false, error: '报告不存在' } as ApiResponse);
+    }
+
+    let sections: any[];
+    try {
+      sections = typeof report.content === 'string'
+        ? JSON.parse(report.content)
+        : report.content;
+    } catch {
+      sections = [{ heading: '报告内容', body: String(report.content) }];
+    }
+
+    // 构建 HTML 报告页面
+    const sectionsHtml = sections.map((s: any, i: number) => `
+      <div class="section">
+        <h2>${i + 1}. ${s.heading || '章节'}</h2>
+        <div class="body">${(s.body || '').replace(/\n/g, '<br>')}</div>
+        ${s.key_insight ? `<div class="insight">💡 关键发现：${s.key_insight}</div>` : ''}
+      </div>
+    `).join('\n');
+
+    const html = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>${report.title}</title>
+<style>
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; line-height: 1.8; }
+  .cover { text-align: center; padding: 60px 0; border-bottom: 2px solid #667eea; margin-bottom: 40px; }
+  .cover h1 { font-size: 28px; color: #667eea; margin: 0 0 16px; }
+  .cover .meta { color: #909399; font-size: 14px; }
+  .summary { background: linear-gradient(135deg, rgba(102,126,234,0.06), rgba(118,75,162,0.06)); padding: 20px 24px; border-radius: 8px; margin-bottom: 32px; border-left: 4px solid #667eea; }
+  .summary h3 { color: #667eea; margin: 0 0 8px; }
+  .section { margin-bottom: 28px; page-break-inside: avoid; }
+  .section h2 { font-size: 18px; color: #303133; border-bottom: 1px solid #ebeef5; padding-bottom: 8px; margin-bottom: 12px; }
+  .body { font-size: 14px; color: #4b5563; }
+  .insight { background: #fdf6ec; padding: 10px 16px; border-radius: 6px; margin-top: 12px; font-size: 13px; color: #e6a23c; border-left: 3px solid #e6a23c; }
+  .footer { text-align: center; color: #c0c4cc; font-size: 12px; margin-top: 40px; padding-top: 20px; border-top: 1px solid #ebeef5; }
+</style>
+</head>
+<body>
+<div class="cover">
+  <h1>${report.title}</h1>
+  <div class="meta">报告生成时间：${report.createdAt ? new Date(report.createdAt).toLocaleString('zh-CN') : ''} | 分析模型：${report.modelUsed || 'AI'}</div>
+</div>
+<div class="summary">
+  <h3>📊 摘要</h3>
+  <p>${report.summary || '暂无摘要'}</p>
+</div>
+${sectionsHtml}
+<div class="footer">本报告由 AI 自动生成，数据来源为系统全量招聘数据 | 生成时间 ${new Date().toLocaleString('zh-CN')}</div>
+</body>
+</html>`;
+
+    // 将 HTML 写入临时文件，用 Chrome 命令行直接生成 PDF（避免 puppeteer 版本兼容问题）
+    const { execFile } = (await import('child_process'));
+    const tmpDir = path.join(os.tmpdir(), 'pdf-report-' + Date.now());
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const htmlFile = path.join(tmpDir, 'report.html');
+    const pdfFile = path.join(tmpDir, 'report.pdf');
+    fs.writeFileSync(htmlFile, html, 'utf-8');
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const chromePath = 'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
+        execFile(chromePath, [
+          '--headless',
+          '--disable-gpu',
+          '--no-sandbox',
+          '--print-to-pdf=' + pdfFile,
+          '--no-pdf-header-footer',
+          'file:///' + htmlFile.replace(/\\/g, '/'),
+        ], { timeout: 30000 }, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      const pdfBuffer = fs.readFileSync(pdfFile);
+      console.log('[DashboardController] PDF 生成成功，大小:', (pdfBuffer.length / 1024).toFixed(1), 'KB');
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(report.title)}.pdf"`);
+      res.send(pdfBuffer);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  } catch (error: any) {
+    console.error('[DashboardController] PDF 生成失败:', error.message);
     res.status(500).json({ success: false, error: error.message } as ApiResponse);
   }
 }

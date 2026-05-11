@@ -1,4 +1,4 @@
-import { LLMCallOptions, LLMCallResult } from '../../../types';
+import { LLMCallOptions, LLMCallResult, EmbeddingResult } from '../../../types';
 
 export class LocalProvider {
   name = 'ollama' as const;
@@ -61,6 +61,40 @@ export class LocalProvider {
         total: (data.prompt_eval_count || 0) + (data.eval_count || 0),
       } : undefined,
       duration: 0,
+    };
+  }
+
+  async embed(
+    text: string,
+    modelName: string,
+    options: { apiKey?: string; baseUrl?: string }
+  ): Promise<EmbeddingResult> {
+    const baseUrl = options.baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    const start = Date.now();
+
+    const response = await fetch(`${baseUrl}/api/embeddings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: modelName, prompt: text }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '未知错误');
+      throw new Error(`Ollama Embedding API 错误 (${response.status}): ${errText.substring(0, 200)}`);
+    }
+
+    const data: any = await response.json();
+    const embedding = data.embedding as number[];
+
+    if (!embedding || embedding.length === 0) {
+      throw new Error('Ollama 返回空 embedding');
+    }
+
+    return {
+      embedding,
+      tokens: data.prompt_eval_count || 0,
+      duration: Date.now() - start,
     };
   }
 
