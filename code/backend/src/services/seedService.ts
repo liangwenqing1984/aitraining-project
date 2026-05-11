@@ -126,7 +126,7 @@ export async function runSeed(): Promise<void> {
     // Step 5: 创建管理员用户
     const adminUser = await userService.createUser({
       username: 'admin',
-      password: 'Admin@admin123',
+      password: 'admin123',
       realName: '系统管理员',
       email: 'admin@aitraining.local',
       status: true,
@@ -137,7 +137,7 @@ export async function runSeed(): Promise<void> {
     console.log('[Seed] ✅ 种子数据初始化完成');
     console.log('[Seed] ┌─────────────────────────────────────────────┐');
     console.log('[Seed] │  管理员账号: admin                          │');
-    console.log('[Seed] │  管理员密码: Admin@admin123                 │');
+    console.log('[Seed] │  管理员密码: admin123                 │');
     console.log('[Seed] │  登录方式:   账号登录（本地登录）            │');
     console.log('[Seed] └─────────────────────────────────────────────┘');
   } catch (error: any) {

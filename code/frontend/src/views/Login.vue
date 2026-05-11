@@ -121,7 +121,7 @@
               </el-form-item>
               <el-alert type="info" :closable="false" show-icon class="test-alert">
                 <template #default>
-                  <code>admin / Admin@admin123</code>
+                  <code>admin / admin123</code>
                 </template>
               </el-alert>
             </el-form>
