@@ -213,14 +213,20 @@ function goToDoc(section: string) {
 .highlight-card {
   cursor: pointer;
   border-radius: var(--radius-lg) !important;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
   height: 100%;
 }
 .highlight-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(64, 158, 255, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.highlight-card:hover :deep(.el-card__body) {
+  background: #ecf5ff;
+  border-radius: var(--radius-lg);
 }
 :deep(.highlight-card .el-card__body) {
   padding: 14px 16px;
+  transition: background 0.2s;
 }
 .highlight-top {
   display: flex;
