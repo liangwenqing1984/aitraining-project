@@ -211,6 +211,10 @@ function removeKeyword(index: number) {
   keywords.value.splice(index, 1)
 }
 
+function clearKeywords() {
+  keywords.value = []
+}
+
 function toggleCity(city: string) {
   const index = cities.value.indexOf(city)
   if (index > -1) {
@@ -442,6 +446,7 @@ function cancel() {
               >
                 {{ kw }}
               </el-tag>
+              <el-button type="danger" link size="small" @click="clearKeywords" style="margin-left: 8px">清空全部</el-button>
             </div>
           </div>
           <div class="form-tip">

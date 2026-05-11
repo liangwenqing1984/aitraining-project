@@ -251,6 +251,10 @@ function removeKeyword(index: number) {
   keywords.value.splice(index, 1)
 }
 
+function clearKeywords() {
+  keywords.value = []
+}
+
 // 添加企业
 function addCompany() {
   const comp = companyInput.value.trim()
@@ -268,6 +272,10 @@ function addCompany() {
 // 移除企业
 function removeCompany(index: number) {
   companies.value.splice(index, 1)
+}
+
+function clearCompanies() {
+  companies.value = []
 }
 
 // 省份变化处理
@@ -484,6 +492,7 @@ function cancel() {
               >
                 {{ kw }}
               </el-tag>
+              <el-button type="danger" link size="small" @click="clearKeywords" style="margin-left: 8px">清空全部</el-button>
             </div>
           </div>
           <div class="form-tip">提示：可以添加多个关键词，系统将依次爬取每个关键词的职位信息</div>
@@ -512,6 +521,7 @@ function cancel() {
               >
                 {{ comp }}
               </el-tag>
+              <el-button type="danger" link size="small" @click="clearCompanies" style="margin-left: 8px">清空全部</el-button>
             </div>
           </div>
           <div class="form-tip">提示：可以添加多个企业名称，用于精确匹配特定企业的职位</div>

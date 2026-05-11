@@ -189,6 +189,11 @@ function removeKeyword(index: number) {
   keywords.value.splice(index, 1)
 }
 
+// 清空全部关键词
+function clearKeywords() {
+  keywords.value = []
+}
+
 // 添加企业名称（支持批量添加）
 function addCompany() {
   const inputValue = companyInput.value.trim()
@@ -236,6 +241,11 @@ function addCompany() {
 // 删除企业名称
 function removeCompany(index: number) {
   companies.value.splice(index, 1)
+}
+
+// 清空全部企业名称
+function clearCompanies() {
+  companies.value = []
 }
 
 // 切换城市选择
@@ -444,6 +454,7 @@ function cancel() {
               >
                 {{ kw }}
               </el-tag>
+              <el-button type="danger" link size="small" @click="clearKeywords" style="margin-left: 8px">清空全部</el-button>
             </div>
           </div>
           <div class="form-tip">
@@ -474,6 +485,7 @@ function cancel() {
               >
                 {{ comp }}
               </el-tag>
+              <el-button type="danger" link size="small" @click="clearCompanies" style="margin-left: 8px">清空全部</el-button>
             </div>
           </div>
           <div class="form-tip">
