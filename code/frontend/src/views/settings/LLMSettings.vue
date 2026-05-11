@@ -658,6 +658,11 @@ function editConfig(row: LLMConfig) {
     isActive: row.isActive,
     taskRouting: [...(row.taskRouting || [])],
   }
+  if (row.provider === 'ollama') {
+    fetchOllamaModels()
+  } else {
+    providerModels.value = []
+  }
   formRef.value?.resetFields()
   dialogVisible.value = true
 }
