@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, shallowRef, computed, onMounted, markRaw } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getUserInfo, logout as authLogout } from '@/utils/auth'
 import {
@@ -29,43 +29,45 @@ interface MenuItem {
   path?: string; title: string; icon: any; children?: { path: string; title: string; icon?: any }[]
 }
 
+// 图标名称 → 组件映射（markRaw 避免 Vue 深度响应式包装）
+const namedIcons: Record<string, any> = {
+  HomeFilled: markRaw(HomeFilled), Monitor: markRaw(Monitor), Files: markRaw(Files),
+  TrendCharts: markRaw(TrendCharts), DataAnalysis: markRaw(DataAnalysis), Search: markRaw(Search),
+  Setting: markRaw(Setting), User: markRaw(User), UserFilled: markRaw(UserFilled),
+  Lock: markRaw(Lock), Menu: markRaw(MenuIcon), Document: markRaw(Document), InfoFilled: markRaw(InfoFilled),
+}
+
 // 默认菜单（API 故障时的兜底）
 const defaultMenuItems: MenuItem[] = [
-  { path: '/home', title: '首页', icon: HomeFilled },
-  { path: '/crawler', title: '数据采集', icon: Monitor },
-  { path: '/files', title: '数据管理', icon: Files },
-  { path: '/analysis', title: '智能分析', icon: TrendCharts },
-  { path: '/dashboard', title: '数据看板', icon: DataAnalysis },
-  { path: '/query', title: '智能查询', icon: TrendCharts },
-  { path: '/rag', title: '语义搜索', icon: Search },
+  { path: '/home', title: '首页', icon: namedIcons.HomeFilled },
+  { path: '/crawler', title: '数据采集', icon: namedIcons.Monitor },
+  { path: '/files', title: '数据管理', icon: namedIcons.Files },
+  { path: '/analysis', title: '智能分析', icon: namedIcons.TrendCharts },
+  { path: '/dashboard', title: '数据看板', icon: namedIcons.DataAnalysis },
+  { path: '/query', title: '智能查询', icon: namedIcons.TrendCharts },
+  { path: '/rag', title: '语义搜索', icon: namedIcons.Search },
   {
-    title: '系统管理', icon: Setting,
+    title: '系统管理', icon: namedIcons.Setting,
     children: [
-      { path: '/system/users', title: '用户管理', icon: User },
-      { path: '/system/roles', title: '角色管理', icon: UserFilled },
-      { path: '/system/permissions', title: '权限管理', icon: Lock },
-      { path: '/system/menus', title: '菜单管理', icon: MenuIcon },
-      { path: '/settings/llm', title: '模型配置', icon: Setting },
+      { path: '/system/users', title: '用户管理', icon: namedIcons.User },
+      { path: '/system/roles', title: '角色管理', icon: namedIcons.UserFilled },
+      { path: '/system/permissions', title: '权限管理', icon: namedIcons.Lock },
+      { path: '/system/menus', title: '菜单管理', icon: namedIcons.Menu },
+      { path: '/settings/llm', title: '模型配置', icon: namedIcons.Setting },
     ]
   },
-  { path: '/docs', title: '文档', icon: Document },
-  { path: '/about', title: '关于', icon: InfoFilled }
+  { path: '/docs', title: '文档', icon: namedIcons.Document },
+  { path: '/about', title: '关于', icon: namedIcons.InfoFilled }
 ]
 
-const menuItems = ref<MenuItem[]>(defaultMenuItems)
-
-// 图标名称 → 组件映射
-const namedIcons: Record<string, any> = {
-  HomeFilled, Monitor, Files, TrendCharts, DataAnalysis, Search,
-  Setting, User, UserFilled, Lock, Menu: MenuIcon, Document, InfoFilled,
-}
+const menuItems = shallowRef<MenuItem[]>(defaultMenuItems)
 
 // 将 API 返回的菜单树转换为侧边栏格式
 function buildMenuItems(menus: SystemMenu[]): MenuItem[] {
   return menus
     .filter(m => !m.hidden)
     .map(m => {
-      const icon = namedIcons[m.icon || ''] || MenuIcon
+      const icon = namedIcons[m.icon || ''] || namedIcons.Menu
       if (m.children && m.children.length > 0) {
         return {
           title: m.name,
@@ -188,7 +190,7 @@ onMounted(() => {
 
 // 获取当前页面标题
 const getCurrentPageTitle = () => {
-  const currentItem = menuItems.find(item => item.path === route.path || route.path.startsWith(item.path + '/'))
+  const currentItem = menuItems.value.find(item => item.path === route.path || route.path.startsWith(item.path + '/'))
   return currentItem?.title || ''
 }
 </script>
