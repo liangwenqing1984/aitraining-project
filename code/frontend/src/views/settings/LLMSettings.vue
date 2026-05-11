@@ -39,10 +39,7 @@
               </div>
               <div class="card-body">
                 <div class="card-title">{{ card.label }}</div>
-                <template v-if="card.configured">
-                  <div class="card-model">{{ card.sublabel }}</div>
-                </template>
-                <div v-else class="card-hint">点击配置</div>
+                <div class="card-hint">点击配置</div>
               </div>
               <div class="card-action">
                 <el-button
@@ -53,8 +50,7 @@
                   class="card-action-btn"
                 >
                   <el-icon :size="14">
-                    <Check v-if="card.configured" />
-                    <Plus v-else />
+                    <Plus />
                   </el-icon>
                 </el-button>
               </div>
@@ -79,10 +75,7 @@
               </div>
               <div class="card-body">
                 <div class="card-title">{{ card.label }}</div>
-                <template v-if="card.configured">
-                  <div class="card-model">{{ card.sublabel }}</div>
-                </template>
-                <div v-else class="card-hint">点击配置</div>
+                <div class="card-hint">点击配置</div>
               </div>
               <div class="card-action">
                 <el-button
@@ -93,8 +86,7 @@
                   class="card-action-btn"
                 >
                   <el-icon :size="14">
-                    <Check v-if="card.configured" />
-                    <Plus v-else />
+                    <Plus />
                   </el-icon>
                 </el-button>
               </div>
@@ -551,7 +543,7 @@ const modelPresets: Record<string, string[]> = {
   baidu:     ['ernie-4.5', 'ernie-4.0-turbo', 'ernie-3.5', 'ernie-speed'],
   bytedance: ['doubao-pro-256k', 'doubao-lite-32k', 'doubao-vision-pro'],
   moonshot:  ['kimi-k2', 'moonshot-v1-128k', 'moonshot-v1-32k', 'kimi-thinking'],
-  ollama:    ['qwen3:14b', 'qwen3:4b', 'llama3:8b', 'nomic-embed-text', 'mistral:7b', 'deepseek-r1:8b'],
+  ollama:    [], // 仅从 Ollama API 动态获取，不做预设
 }
 
 // 可用模型列表：Ollama 从 API 动态获取，云端模型用预设
@@ -570,7 +562,9 @@ async function fetchOllamaModels() {
     if ((res as any).success && Array.isArray((res as any).data)) {
       providerModels.value = (res as any).data
     }
-  } catch { /* ignore, fallback to presets */ }
+  } catch (e) {
+    console.error('[LLMSettings] 获取 Ollama 模型列表失败:', e)
+  }
   finally { loadingModels.value = false }
 }
 
