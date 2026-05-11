@@ -2,7 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getUserInfo, logout as authLogout } from '@/utils/auth'
-import * as ElementPlusIcons from '@element-plus/icons-vue'
+import {
+  HomeFilled, Monitor, Files, TrendCharts, DataAnalysis, Search,
+  Setting, User, UserFilled, Lock, Menu as MenuIcon, Document, InfoFilled,
+} from '@element-plus/icons-vue'
 import { getMenuTree, type SystemMenu } from '@/api/system'
 
 const route = useRoute()
@@ -22,26 +25,47 @@ const isSubPage = computed(() => {
   return route.path.startsWith('/crawler/') && route.path !== '/crawler'
 })
 
-// 图标名称 → 组件实例映射
-const iconMap: Record<string, any> = {}
-for (const [key, component] of Object.entries(ElementPlusIcons)) {
-  if (typeof component === 'object') {
-    iconMap[key] = component
-  }
-}
-
 interface MenuItem {
   path?: string; title: string; icon: any; children?: { path: string; title: string; icon?: any }[]
 }
 
-const menuItems = ref<MenuItem[]>([])
+// 默认菜单（API 故障时的兜底）
+const defaultMenuItems: MenuItem[] = [
+  { path: '/home', title: '首页', icon: HomeFilled },
+  { path: '/crawler', title: '数据采集', icon: Monitor },
+  { path: '/files', title: '数据管理', icon: Files },
+  { path: '/analysis', title: '智能分析', icon: TrendCharts },
+  { path: '/dashboard', title: '数据看板', icon: DataAnalysis },
+  { path: '/query', title: '智能查询', icon: TrendCharts },
+  { path: '/rag', title: '语义搜索', icon: Search },
+  {
+    title: '系统管理', icon: Setting,
+    children: [
+      { path: '/system/users', title: '用户管理', icon: User },
+      { path: '/system/roles', title: '角色管理', icon: UserFilled },
+      { path: '/system/permissions', title: '权限管理', icon: Lock },
+      { path: '/system/menus', title: '菜单管理', icon: MenuIcon },
+      { path: '/settings/llm', title: '模型配置', icon: Setting },
+    ]
+  },
+  { path: '/docs', title: '文档', icon: Document },
+  { path: '/about', title: '关于', icon: InfoFilled }
+]
+
+const menuItems = ref<MenuItem[]>(defaultMenuItems)
+
+// 图标名称 → 组件映射
+const namedIcons: Record<string, any> = {
+  HomeFilled, Monitor, Files, TrendCharts, DataAnalysis, Search,
+  Setting, User, UserFilled, Lock, Menu: MenuIcon, Document, InfoFilled,
+}
 
 // 将 API 返回的菜单树转换为侧边栏格式
 function buildMenuItems(menus: SystemMenu[]): MenuItem[] {
   return menus
     .filter(m => !m.hidden)
     .map(m => {
-      const icon = iconMap[m.icon || ''] || ElementPlusIcons.Menu
+      const icon = namedIcons[m.icon || ''] || MenuIcon
       if (m.children && m.children.length > 0) {
         return {
           title: m.name,
@@ -64,7 +88,7 @@ function buildMenuItems(menus: SystemMenu[]): MenuItem[] {
 onMounted(async () => {
   try {
     const res = await getMenuTree()
-    if (res?.data?.success && res.data.data) {
+    if (res?.data?.success && res.data.data?.length > 0) {
       menuItems.value = buildMenuItems(res.data.data)
     }
   } catch (e) {
