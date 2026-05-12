@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer';
 import axios from 'axios';
 import { JobData, TaskConfig } from '../../types';
 import { ZHILIAN_CITY_CODES, PROXY_POOL_CONFIG } from '../../config/constants';
+import { CHROME_PATH, getUserDataDir } from '../../config/chromePath';
 import { io } from '../../app';
 import { ProxyPool } from './proxyPool';
 import { db } from '../../config/database';
@@ -144,9 +145,9 @@ export class ZhilianCrawler {
       this.log('info', '[ZhilianCrawler] Proxy pool disabled, using direct mode');
     }
 
-    // 启动浏览器 - 使用自定义临时目录避免冲突
-    const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
-    const userDataDir = `C:\\Users\\Administrator\.cache\\puppeteer\\tmp\\zhilian_${Date.now()}`;
+    // 启动浏览器 - 使用自定义临时目录避免冲突（Chrome 路径自动检测）
+    const chromePath = CHROME_PATH;
+    const userDataDir = getUserDataDir('zhilian');
 
     this.log('info', `[ZhilianCrawler] Temporary dir: ${userDataDir}`);
 

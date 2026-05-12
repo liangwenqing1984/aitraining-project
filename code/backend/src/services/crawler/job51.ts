@@ -5,6 +5,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { JobData, TaskConfig } from '../../types';
 import { JOB51_CITY_CODES, PROXY_POOL_CONFIG } from '../../config/constants';
+import { CHROME_PATH, getUserDataDir } from '../../config/chromePath';
 import { classifyPage, suggestSelectors, recommendAction } from '../llm/antiCrawl';
 import { ProxyPool } from './proxyPool';
 import type { PageClassification } from '../llm/antiCrawl';
@@ -79,9 +80,9 @@ export class Job51Crawler {
       this.log('info', '[Job51Crawler] 代理池已禁用，使用直连模式');
     }
 
-    // 启动浏览器（使用 stealth 插件）
-    const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
-    const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\job51_${Date.now()}`;
+    // 启动浏览器（使用 stealth 插件 — Chrome 路径自动检测）
+    const chromePath = CHROME_PATH;
+    const userDataDir = getUserDataDir('job51');
 
     // 浏览器启动参数（直连模式 — 代理仅用于 axios 详情页请求）
     const launchArgs: string[] = [
