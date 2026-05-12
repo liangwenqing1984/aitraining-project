@@ -119,6 +119,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '数据看板', icon: 'DataAnalysis' }
       },
       {
+        path: 'daping',
+        name: 'Daping',
+        component: () => import('@/views/daping/Index.vue'),
+        meta: { title: '数据大屏', icon: 'Monitor' }
+      },
+      {
         path: 'docs',  // 🔧 添加文档页面路由
         name: 'Docs',
         component: () => import('@/views/Docs.vue'),

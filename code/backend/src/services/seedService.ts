@@ -62,9 +62,11 @@ export async function runSeed(): Promise<void> {
       { name: '首页', path: '/home', icon: 'HomeFilled', sortOrder: 1 },
       { name: '数据采集', path: '/crawler', icon: 'Monitor', sortOrder: 2 },
       { name: '数据管理', path: '/files', icon: 'Files', sortOrder: 3 },
-      { name: '智能分析', path: '/analysis', icon: 'TrendCharts', sortOrder: 4 },
-      { name: '智能查询', path: '/query', icon: 'TrendCharts', sortOrder: 5 },
-      { name: '语义搜索', path: '/rag', icon: 'Search', sortOrder: 6 },
+      { name: '智能分析', path: '/analysis', icon: 'PieChart', sortOrder: 4 },
+      { name: '数据大屏', path: '/daping', icon: 'Monitor', sortOrder: 5 },
+      { name: '数据看板', path: '/dashboard', icon: 'DataAnalysis', sortOrder: 6 },
+      { name: '智能查询', path: '/query', icon: 'ChatDotRound', sortOrder: 7 },
+      { name: '语义搜索', path: '/rag', icon: 'Search', sortOrder: 8 },
     ];
 
     const menuIds: Record<string, number> = {};
@@ -79,7 +81,7 @@ export async function runSeed(): Promise<void> {
 
     // Step 2: 创建系统管理父菜单 + 子菜单
     const sysMenu = await menuService.createMenu({
-      name: '系统管理', icon: 'Setting', sortOrder: 7, hidden: false,
+      name: '系统管理', icon: 'Setting', sortOrder: 9, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 系统管理 (id=${sysMenu.id})`);
 
@@ -102,10 +104,10 @@ export async function runSeed(): Promise<void> {
 
     // 剩余独立菜单
     await menuService.createMenu({
-      name: '文档', path: '/docs', icon: 'Document', sortOrder: 8, hidden: false,
+      name: '文档', path: '/docs', icon: 'Document', sortOrder: 10, hidden: false,
     } as any);
     await menuService.createMenu({
-      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 9, hidden: false,
+      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 11, hidden: false,
     } as any);
 
     // Step 3: 创建管理员角色

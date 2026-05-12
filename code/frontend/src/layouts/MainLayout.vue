@@ -26,6 +26,8 @@ const isSubPage = computed(() => {
   return route.path.startsWith('/crawler/') && route.path !== '/crawler'
 })
 
+const isFullScreen = computed(() => route.path === '/daping')
+
 interface MenuItem {
   path?: string; title: string; icon: any; children?: { path: string; title: string; icon?: any }[]
 }
@@ -46,6 +48,7 @@ const defaultMenuItems: MenuItem[] = [
   { path: '/files', title: '数据管理', icon: namedIcons.Files },
   { path: '/analysis', title: '智能分析', icon: namedIcons.PieChart },
   { path: '/dashboard', title: '数据看板', icon: namedIcons.DataAnalysis },
+  { path: '/daping', title: '数据大屏', icon: namedIcons.Monitor },
   { path: '/query', title: '智能查询', icon: namedIcons.ChatDotRound },
   { path: '/rag', title: '语义搜索', icon: namedIcons.Search },
   {
@@ -202,7 +205,7 @@ const getCurrentPageTitle = () => {
   <a href="#main-content" class="sr-only">跳到主内容</a>
   <el-container class="layout-container">
     <!-- 左侧菜单 - 美化版 -->
-    <el-aside :width="isCollapse ? '70px' : '240px'" class="sidebar">
+    <el-aside v-show="!isFullScreen" :width="isCollapse ? '70px' : '240px'" class="sidebar">
       <div class="logo">
         <div class="logo-icon">
           <svg viewBox="0 0 48 48" class="logo-svg" xmlns="http://www.w3.org/2000/svg">
@@ -274,8 +277,8 @@ const getCurrentPageTitle = () => {
 
     <!-- 右侧主内容区 -->
     <el-container class="main-container">
-      <!-- 顶栏 - 美化版 -->
-      <el-header class="header">
+      <!-- 顶栏 - 美化版（大屏模式下隐藏） -->
+      <el-header v-show="!isFullScreen" class="header">
         <div class="header-left">
           <el-button
             class="collapse-btn"
@@ -321,8 +324,8 @@ const getCurrentPageTitle = () => {
         </div>
       </el-header>
 
-      <!-- 主内容 -->
-      <el-main id="main-content" class="main">
+      <!-- 主内容（大屏模式下无 padding/overflow） -->
+      <el-main id="main-content" :class="['main', { 'main--fullscreen': isFullScreen }]">
         <router-view />
       </el-main>
     </el-container>
@@ -778,6 +781,12 @@ const getCurrentPageTitle = () => {
   background: transparent;
   position: relative;
   z-index: 1;
+}
+
+/* 大屏全屏模式：去除 padding 和 overflow */
+.main--fullscreen {
+  padding: 0;
+  overflow: hidden;
 }
 
 /* ===== 过渡动画 ===== */
