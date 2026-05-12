@@ -13,6 +13,7 @@ import authRoutes from './routes/authRoutes';
 import llmRoutes from './routes/llmRoutes';
 import ragRoutes from './routes/ragRoutes';
 import systemRoutes from './routes/systemRoutes';
+import chatRoutes from './routes/chatRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import regionRoutes from './routes/regionRoutes';
 
@@ -52,6 +53,7 @@ app.use('/api/rag', ragRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/region', regionRoutes);
 app.use('/api', systemRoutes);
+app.use('/api', chatRoutes);
 
 // 健康检查
 app.get('/api/health', (req, res) => {

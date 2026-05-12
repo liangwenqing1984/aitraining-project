@@ -102,19 +102,37 @@ export async function runSeed(): Promise<void> {
       console.log(`[Seed]   子菜单: ${child.name} (id=${m.id})`);
     }
 
-    // 剩余独立菜单
-    await menuService.createMenu({
-      name: '文档', path: '/docs', icon: 'Document', sortOrder: 10, hidden: false,
+    // Step 3: 创建系统帮助父菜单 + 子菜单
+    const helpMenu = await menuService.createMenu({
+      name: '系统帮助', icon: 'Headset', sortOrder: 10, hidden: false,
     } as any);
+    console.log(`[Seed] 菜单: 系统帮助 (id=${helpMenu.id})`);
+
+    const helpChildren = [
+      { name: '帮助文档', path: '/docs', icon: 'Document', sortOrder: 1 },
+      { name: '问答机器人', path: '/aibot', icon: 'ChatDotRound', sortOrder: 2 },
+    ];
+    const helpChildIds: number[] = [];
+    for (const child of helpChildren) {
+      const m = await menuService.createMenu({
+        name: child.name, path: child.path, icon: child.icon, parentId: helpMenu.id,
+        sortOrder: child.sortOrder, hidden: false,
+      } as any);
+      helpChildIds.push(m.id!);
+      console.log(`[Seed]   子菜单: ${child.name} (id=${m.id})`);
+    }
+
+    // 剩余独立菜单
     await menuService.createMenu({
       name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 11, hidden: false,
     } as any);
 
-    // Step 3: 创建管理员角色
+    // Step 4: 创建管理员角色
     const allMenuIds = Object.values(menuIds);
     allMenuIds.push(sysMenu.id!, ...sysChildIds);
-    // Also add docs and about (they're the last two menus)
-    const lastMenus = await db.prepare('SELECT id FROM sp_menus ORDER BY id DESC LIMIT 2').all() as any[];
+    allMenuIds.push(helpMenu.id!, ...helpChildIds);
+    // Also add 关于 (the last menu)
+    const lastMenus = await db.prepare('SELECT id FROM sp_menus ORDER BY id DESC LIMIT 1').all() as any[];
     for (const m of lastMenus) {
       if (!allMenuIds.includes(m.id)) allMenuIds.push(m.id);
     }

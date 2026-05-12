@@ -125,10 +125,16 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '数据大屏', icon: 'Monitor' }
       },
       {
-        path: 'docs',  // 🔧 添加文档页面路由
+        path: 'docs',
         name: 'Docs',
         component: () => import('@/views/Docs.vue'),
-        meta: { title: '文档', icon: 'Document' }
+        meta: { title: '帮助文档', parent: '系统帮助' }
+      },
+      {
+        path: 'aibot',
+        name: 'AiBot',
+        component: () => import('@/views/aibot/Index.vue'),
+        meta: { title: '问答机器人', parent: '系统帮助' }
       },
       {
         path: 'query',

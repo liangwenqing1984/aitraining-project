@@ -334,6 +334,46 @@ async function initDatabase() {
       )
     `);
 
+    // ==================== 问答机器人表 ====================
+
+    // 文档向量表（存储帮助文档的向量化片段）
+    if (pgvectorAvailable) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sp_doc_embeddings (
+          id SERIAL PRIMARY KEY,
+          section_id VARCHAR(100) NOT NULL,
+          section_title VARCHAR(200),
+          chunk_index INT DEFAULT 0,
+          text_content TEXT NOT NULL,
+          embedding vector(768),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(section_id, chunk_index)
+        )
+      `);
+    }
+
+    // 聊天会话表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_chat_sessions (
+        id SERIAL PRIMARY KEY,
+        title VARCHAR(200) DEFAULT '新对话',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // 聊天消息表
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_chat_messages (
+        id SERIAL PRIMARY KEY,
+        session_id INT REFERENCES sp_chat_sessions(id) ON DELETE CASCADE,
+        role VARCHAR(20) NOT NULL,
+        content TEXT NOT NULL,
+        sources JSONB,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // 创建索引
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_status ON sp_tasks(status)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON sp_tasks(created_at DESC)');
@@ -352,6 +392,13 @@ async function initDatabase() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_permissions_code ON sp_permissions(code)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_menus_parent_id ON sp_menus(parent_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_menus_sort_order ON sp_menus(sort_order)');
+    // 问答机器人索引
+    await client.query('CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON sp_chat_messages(session_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON sp_chat_messages(created_at)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON sp_chat_sessions(updated_at DESC)');
+    if (pgvectorAvailable) {
+      await client.query('CREATE INDEX IF NOT EXISTS idx_doc_embeddings_section ON sp_doc_embeddings(section_id)');
+    }
     if (pgvectorAvailable) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_job_embeddings_task ON sp_job_embeddings(task_id)');
       // pgvector IVFFlat 索引（加速近似最近邻搜索）

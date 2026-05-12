@@ -5,7 +5,7 @@ import { getUserInfo, logout as authLogout } from '@/utils/auth'
 import {
   HomeFilled, Monitor, Files, TrendCharts, DataAnalysis, Search,
   Setting, User, UserFilled, Lock, Menu as MenuIcon, Document, InfoFilled,
-  PieChart, ChatDotRound,
+  PieChart, ChatDotRound, Headset,
 } from '@element-plus/icons-vue'
 import { getMenuTree, type SystemMenu } from '@/api/system'
 
@@ -38,7 +38,7 @@ const namedIcons: Record<string, any> = {
   TrendCharts: markRaw(TrendCharts), DataAnalysis: markRaw(DataAnalysis), Search: markRaw(Search),
   Setting: markRaw(Setting), User: markRaw(User), UserFilled: markRaw(UserFilled),
   Lock: markRaw(Lock), Menu: markRaw(MenuIcon), Document: markRaw(Document), InfoFilled: markRaw(InfoFilled),
-  PieChart: markRaw(PieChart), ChatDotRound: markRaw(ChatDotRound),
+  PieChart: markRaw(PieChart), ChatDotRound: markRaw(ChatDotRound), Headset: markRaw(Headset),
 }
 
 // 默认菜单（API 故障时的兜底）
@@ -61,7 +61,13 @@ const defaultMenuItems: MenuItem[] = [
       { path: '/settings/llm', title: '模型配置', icon: namedIcons.Setting },
     ]
   },
-  { path: '/docs', title: '文档', icon: namedIcons.Document },
+  {
+    title: '系统帮助', icon: namedIcons.Headset,
+    children: [
+      { path: '/docs', title: '帮助文档', icon: namedIcons.Document },
+      { path: '/aibot', title: '问答机器人', icon: namedIcons.ChatDotRound },
+    ]
+  },
   { path: '/about', title: '关于', icon: namedIcons.InfoFilled }
 ]
 
