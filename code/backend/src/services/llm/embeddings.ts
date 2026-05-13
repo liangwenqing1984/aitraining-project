@@ -129,16 +129,28 @@ export function buildJobText(job: {
   return parts.join('; ');
 }
 
+// nomic-embed-text 上下文 8192 tokens，保守截断防止超长
+const MAX_EMBED_CHARS = 2000;
+
+function truncateForEmbedding(text: string): string {
+  if (text.length <= MAX_EMBED_CHARS) return text;
+  const truncated = text.substring(0, MAX_EMBED_CHARS);
+  console.log(`[Embedding] 文本过长截断: ${text.length} -> ${MAX_EMBED_CHARS} 字符`);
+  return truncated;
+}
+
 /**
  * 生成单个文本的 embedding（优先使用配置，回退到 Ollama 本地模型）
  */
 export async function generateEmbedding(text: string): Promise<EmbeddingResult> {
+  const safeText = truncateForEmbedding(text);
+
   try {
     const config = await llmService.getConfigForTask('embedding');
     if (config) {
       console.log(`[Embedding] 使用模型: ${config.provider}/${config.modelName}`);
       return await Promise.race([
-        llmService.embed(text),
+        llmService.embed(safeText),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('embedding 请求超时（60s）')), 60000)
         ),
@@ -149,7 +161,7 @@ export async function generateEmbedding(text: string): Promise<EmbeddingResult> 
   }
 
   console.log(`[Embedding] 回退到默认模型: ${FALLBACK_MODEL}`);
-  return fallbackOllamaEmbedding(text);
+  return fallbackOllamaEmbedding(safeText);
 }
 
 /**

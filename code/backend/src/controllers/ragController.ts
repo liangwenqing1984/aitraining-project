@@ -20,9 +20,6 @@ const upload = multer({
   },
 });
 
-// nomic-embed-text 上下文 8192 tokens，保守取 3000 字符防止超长
-const MAX_EMBED_TEXT_LENGTH = 3000;
-
 /**
  * POST /api/rag/index/:taskId
  * 启动职位向量化索引（异步执行，返回前检查增强数据是否存在）
@@ -220,13 +217,8 @@ export async function matchResume(req: Request, res: Response) {
 
     const trimmedText = resumeText.trim();
 
-    // 截断超长文本防止超出 embedding 模型上下文
-    const embedText = trimmedText.length > MAX_EMBED_TEXT_LENGTH
-      ? trimmedText.substring(0, MAX_EMBED_TEXT_LENGTH)
-      : trimmedText;
-
-    // 生成简历向量
-    const { embedding } = await generateEmbedding(embedText);
+    // 生成简历向量（generateEmbedding 内部自动截断超长文本）
+    const { embedding } = await generateEmbedding(trimmedText);
     const vectorStr = `[${embedding.join(',')}]`;
 
     // 余弦相似度搜索（占位符顺序: vector, minSimilarity, vector, limit）
@@ -248,7 +240,7 @@ export async function matchResume(req: Request, res: Response) {
       LIMIT ?
     `).all(vectorStr, minSimilarity, vectorStr, limit) as any[];
 
-    console.log(`[RAG] 简历匹配: 文本长度=${trimmedText.length}, embed=${embedText.length}, 匹配到 ${rows.length} 个职位`);
+    console.log(`[RAG] 简历匹配: 文本长度=${trimmedText.length}, 匹配到 ${rows.length} 个职位`);
 
     res.json({
       success: true,
@@ -297,13 +289,8 @@ export const uploadAndMatch = [
 
       console.log(`[RAG] 简历文件解析: ${file.originalname}, 提取文本 ${resumeText.length} 字符`);
 
-      // 截断超长文本防止超出 embedding 模型上下文
-      const embedText = resumeText.length > MAX_EMBED_TEXT_LENGTH
-        ? resumeText.substring(0, MAX_EMBED_TEXT_LENGTH)
-        : resumeText;
-
-      // 生成向量
-      const { embedding } = await generateEmbedding(embedText);
+      // 生成向量（generateEmbedding 内部自动截断超长文本）
+      const { embedding } = await generateEmbedding(resumeText);
       const vectorStr = `[${embedding.join(',')}]`;
 
       // 余弦相似度搜索
@@ -325,7 +312,7 @@ export const uploadAndMatch = [
         LIMIT ?
       `).all(vectorStr, minSimilarity, vectorStr, limit) as any[];
 
-      console.log(`[RAG] 简历文件匹配: ${file.originalname}, embed=${embedText.length}, 匹配到 ${rows.length} 个职位`);
+      console.log(`[RAG] 简历文件匹配: ${file.originalname}, 匹配到 ${rows.length} 个职位`);
 
       res.json({
         success: true,
