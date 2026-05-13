@@ -557,7 +557,8 @@ export async function getDocIndexStats(): Promise<{
 
   const sourceBreakdown: Record<string, number> = {};
   for (const r of breakdownRows) {
-    if (r.source_type) sourceBreakdown[r.source_type] = Number(r.cnt);
+    const st = r.source_type || 'doc_section';
+    sourceBreakdown[st] = (sourceBreakdown[st] || 0) + Number(r.cnt);
   }
 
   return {

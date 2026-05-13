@@ -308,6 +308,17 @@ const getCurrentPageTitle = () => {
         </div>
 
         <div class="header-right">
+          <!-- 数据大屏快捷入口 -->
+          <el-button
+            class="daping-btn"
+            :type="route.path === '/daping' ? 'primary' : 'default'"
+            :icon="Monitor"
+            size="default"
+            round
+            @click="router.push('/daping')"
+          >
+            可视化大屏
+          </el-button>
           <el-dropdown trigger="click" @command="handleCommand">
             <div class="user-info">
               <el-avatar :size="36" :src="userInfo.avatar" class="user-avatar">
@@ -691,8 +702,30 @@ const getCurrentPageTitle = () => {
 .header-right {
   display: flex;
   align-items: center;
+  gap: 16px;
   position: relative;
   z-index: 1;
+}
+
+/* 数据大屏快捷按钮 */
+.daping-btn {
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  transition: all var(--transition-base);
+  border: none;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+}
+
+.daping-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.25);
+}
+
+.daping-btn.el-button--primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: transparent;
 }
 
 /* 用户信息区域 */

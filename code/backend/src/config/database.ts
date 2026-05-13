@@ -362,6 +362,12 @@ async function initDatabase() {
       } catch (e: any) {
         if (e.code !== '42701') console.warn('[Database] file_path migration:', e.message);
       }
+      // 回填历史数据的 source_type NULL → 'doc_section'
+      try {
+        await client.query(`UPDATE sp_doc_embeddings SET source_type = 'doc_section' WHERE source_type IS NULL`);
+      } catch (e: any) {
+        console.warn('[Database] source_type 回填失败:', e.message);
+      }
     }
 
     // 聊天会话表
