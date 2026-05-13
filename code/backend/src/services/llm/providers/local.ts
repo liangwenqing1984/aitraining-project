@@ -75,7 +75,7 @@ export class LocalProvider {
     const response = await fetch(`${baseUrl}/api/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: modelName, prompt: text }),
+      body: JSON.stringify({ model: modelName, prompt: text, truncate: true }),
       signal: AbortSignal.timeout(30000),
     });
 

@@ -57,7 +57,7 @@ async function fallbackOllamaEmbedding(text: string): Promise<EmbeddingResult> {
   const response = await fetch(`${FALLBACK_OLLAMA_URL}/api/embeddings`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: FALLBACK_MODEL, prompt: text }),
+    body: JSON.stringify({ model: FALLBACK_MODEL, prompt: text, truncate: true }),
     signal: AbortSignal.timeout(30000),
   });
 

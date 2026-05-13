@@ -21,7 +21,10 @@ router.get('/stats', ragController.stats);
 // 职位向量列表（管理页用）
 router.get('/index/records', ragController.listJobEmbeddings);
 
-// 简历匹配职位
+// 简历文本匹配职位
 router.post('/resume/match', ragController.matchResume);
+
+// 上传简历文件 + 匹配职位
+router.post('/resume/upload', ...ragController.uploadAndMatch);
 
 export default router;
