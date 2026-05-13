@@ -66,7 +66,7 @@ export async function listDocEmbeddings(req: Request, res: Response) {
     ).get(...params) as any;
 
     const rows = await db.prepare(
-      `SELECT id, section_id, section_title, source_type, file_path, chunk_index, embedding_model, char_count, created_at, updated_at FROM sp_doc_embeddings ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`
+      `SELECT id, section_id, section_title, source_type, file_path, chunk_index, created_at FROM sp_doc_embeddings ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
     ).all(...params, ps, offset) as any[];
 
     return res.json({

@@ -34,9 +34,9 @@
         <el-table :data="jobRecords" stripe v-loading="jobLoading" row-key="id">
           <el-table-column prop="taskId" label="任务ID" width="140" show-overflow-tooltip />
           <el-table-column prop="jobId" label="职位ID" width="140" show-overflow-tooltip />
-          <el-table-column prop="textPreview" label="内容摘要" min-width="280" show-overflow-tooltip />
-          <el-table-column prop="embeddingModel" label="向量模型" width="160" show-overflow-tooltip />
-          <el-table-column prop="createdAt" label="创建时间" width="170" />
+          <el-table-column prop="jobName" label="职位名称" width="160" show-overflow-tooltip />
+          <el-table-column prop="companyName" label="公司名称" width="160" show-overflow-tooltip />
+          <el-table-column prop="textPreview" label="内容摘要" min-width="240" show-overflow-tooltip />
           <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ row }">
               <el-popconfirm title="确定删除该条向量索引？" confirm-button-text="删除" @confirm="handleDeleteJobRecord(row)">
@@ -108,7 +108,6 @@
           </el-table-column>
           <el-table-column prop="filePath" label="文件路径" width="200" show-overflow-tooltip />
           <el-table-column prop="chunkIndex" label="片段索引" width="80" />
-          <el-table-column prop="charCount" label="字符数" width="80" />
           <el-table-column prop="createdAt" label="创建时间" width="170" />
           <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ row }">

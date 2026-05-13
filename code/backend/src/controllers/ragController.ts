@@ -127,7 +127,7 @@ export async function listJobEmbeddings(req: Request, res: Response) {
     ).get(...params) as any;
 
     const rows = await db.prepare(
-      `SELECT je.id, je.task_id, je.job_id, je.embedding_model, SUBSTRING(je.text_content, 1, 200) as text_preview, je.created_at, je.updated_at FROM sp_job_embeddings je ${where} ORDER BY je.created_at DESC LIMIT ? OFFSET ?`
+      `SELECT je.id, je.task_id, je.job_id, je.job_name, je.company_name, je.job_category_l1, je.job_category_l2, je.work_city, SUBSTRING(je.text_content, 1, 200) as text_preview FROM sp_job_embeddings je ${where} ORDER BY je.job_id DESC LIMIT ? OFFSET ?`
     ).all(...params, ps, offset) as any[];
 
     res.json({
