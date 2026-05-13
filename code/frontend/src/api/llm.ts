@@ -227,3 +227,13 @@ export function deleteEnrichmentsByTask(taskId: string): Promise<ApiResponse<{ t
 export function deleteEnrichment(taskId: string, jobId: string): Promise<ApiResponse<any>> {
   return api.delete(`/llm/enrich/${encodeURIComponent(taskId)}/${encodeURIComponent(jobId)}`)
 }
+
+// ==================== 简历筛选 ====================
+
+// 简历文本匹配职位
+export function matchResume(resumeText: string, options?: {
+  limit?: number
+  minSimilarity?: number
+}): Promise<ApiResponse<{ resumeText: string; results: RAGSearchResult[]; count: number }>> {
+  return api.post('/rag/resume/match', { resumeText, ...options })
+}

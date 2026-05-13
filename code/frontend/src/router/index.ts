@@ -146,7 +146,13 @@ const routes: RouteRecordRaw[] = [
         path: 'rag',
         name: 'RAGSearch',
         component: () => import('@/views/rag/Index.vue'),
-        meta: { title: '语义搜索', icon: 'Search' }
+        meta: { title: '职位搜索', icon: 'Search' }
+      },
+      {
+        path: 'rag/resume',
+        name: 'ResumeScreening',
+        component: () => import('@/views/rag/ResumeScreening.vue'),
+        meta: { title: '简历筛选', icon: 'User' }
       },
       {
         path: 'settings/llm',

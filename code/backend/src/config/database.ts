@@ -431,6 +431,24 @@ async function initDatabase() {
       });
     }
 
+    // 种子菜单项：将现有"语义搜索"从叶子改为父菜单（清空 path），再新增子菜单
+    await client.query(`
+      UPDATE sp_menus SET path = NULL
+      WHERE name = '语义搜索' AND parent_id IS NULL AND path IS NOT NULL
+    `);
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '职位搜索', '/rag', 'Search', m.id, 1, NULL, false
+      FROM sp_menus m WHERE m.name = '语义搜索' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '职位搜索')
+    `);
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '简历筛选', '/rag/resume', 'User', m.id, 2, NULL, false
+      FROM sp_menus m WHERE m.name = '语义搜索' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '简历筛选')
+    `);
+
     // 种子菜单项：系统管理下新增"增强数据管理"和"文本向量管理"
     await client.query(`
       INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)

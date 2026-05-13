@@ -50,7 +50,13 @@ const defaultMenuItems: MenuItem[] = [
   { path: '/dashboard', title: '数据看板', icon: namedIcons.DataAnalysis },
   { path: '/daping', title: '数据大屏', icon: namedIcons.Monitor },
   { path: '/query', title: '智能查询', icon: namedIcons.ChatDotRound },
-  { path: '/rag', title: '语义搜索', icon: namedIcons.Search },
+  {
+    title: '语义搜索', icon: namedIcons.Search,
+    children: [
+      { path: '/rag', title: '职位搜索', icon: namedIcons.Search },
+      { path: '/rag/resume', title: '简历筛选', icon: namedIcons.User },
+    ]
+  },
   {
     title: '系统管理', icon: namedIcons.Setting,
     children: [

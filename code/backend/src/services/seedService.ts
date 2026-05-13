@@ -66,7 +66,7 @@ export async function runSeed(): Promise<void> {
       { name: '数据大屏', path: '/daping', icon: 'Monitor', sortOrder: 5 },
       { name: '数据看板', path: '/dashboard', icon: 'DataAnalysis', sortOrder: 6 },
       { name: '智能查询', path: '/query', icon: 'ChatDotRound', sortOrder: 7 },
-      { name: '语义搜索', path: '/rag', icon: 'Search', sortOrder: 8 },
+      { name: '智能查询', path: '/query', icon: 'ChatDotRound', sortOrder: 7 },
     ];
 
     const menuIds: Record<string, number> = {};
@@ -79,7 +79,27 @@ export async function runSeed(): Promise<void> {
       console.log(`[Seed] 菜单: ${m.name} (id=${menu.id})`);
     }
 
-    // Step 2: 创建系统管理父菜单 + 子菜单
+    // Step 2: 创建语义搜索父菜单 + 子菜单
+    const ragMenu = await menuService.createMenu({
+      name: '语义搜索', icon: 'Search', sortOrder: 8, hidden: false,
+    } as any);
+    console.log(`[Seed] 菜单: 语义搜索 (id=${ragMenu.id})`);
+
+    const ragChildren = [
+      { name: '职位搜索', path: '/rag', icon: 'Search', sortOrder: 1 },
+      { name: '简历筛选', path: '/rag/resume', icon: 'User', sortOrder: 2 },
+    ];
+    const ragChildIds: number[] = [];
+    for (const child of ragChildren) {
+      const m = await menuService.createMenu({
+        name: child.name, path: child.path, icon: child.icon, parentId: ragMenu.id,
+        sortOrder: child.sortOrder, hidden: false,
+      } as any);
+      ragChildIds.push(m.id!);
+      console.log(`[Seed]   子菜单: ${child.name} (id=${m.id})`);
+    }
+
+    // Step 3: 创建系统管理父菜单 + 子菜单
     const sysMenu = await menuService.createMenu({
       name: '系统管理', icon: 'Setting', sortOrder: 9, hidden: false,
     } as any);
@@ -129,6 +149,7 @@ export async function runSeed(): Promise<void> {
 
     // Step 4: 创建管理员角色
     const allMenuIds = Object.values(menuIds);
+    allMenuIds.push(ragMenu.id!, ...ragChildIds);
     allMenuIds.push(sysMenu.id!, ...sysChildIds);
     allMenuIds.push(helpMenu.id!, ...helpChildIds);
     // Also add 关于 (the last menu)

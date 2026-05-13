@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../config/database';
 import { indexJobEmbeddings, semanticSearch, getEmbeddingStats } from '../services/llm/rag';
+import { generateEmbedding } from '../services/llm/embeddings';
 import { io } from '../app';
 
 /**
@@ -181,6 +182,63 @@ export async function stats(req: Request, res: Response) {
     res.json({ success: true, data });
   } catch (e: any) {
     console.error('[RAG] stats error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+}
+
+/**
+ * POST /api/rag/resume/match
+ * 简历文本 → 向量化 → 与职位向量做余弦相似度匹配
+ * Body: { resumeText: string, limit?: number, minSimilarity?: number }
+ */
+export async function matchResume(req: Request, res: Response) {
+  try {
+    const { resumeText, limit = 20, minSimilarity = 0.3 } = req.body;
+
+    if (!resumeText || typeof resumeText !== 'string' || resumeText.trim().length < 10) {
+      return res.status(400).json({ success: false, error: '简历文本内容太短（至少10个字符）' });
+    }
+
+    const trimmedText = resumeText.trim();
+
+    // 生成简历向量
+    const { embedding } = await generateEmbedding(trimmedText);
+    const vectorStr = `[${embedding.join(',')}]`;
+
+    // 余弦相似度搜索（占位符顺序: vector, minSimilarity, vector, limit）
+    const rows = await db.prepare(`
+      SELECT
+        je.job_id,
+        je.job_name,
+        je.company_name,
+        je.job_category_l1,
+        je.job_category_l2,
+        je.company_industry,
+        je.work_city,
+        je.task_id,
+        je.text_content,
+        1 - (je.embedding <=> ?::vector) AS similarity
+      FROM sp_job_embeddings je
+      WHERE 1 - (je.embedding <=> ?::vector) >= ?
+      ORDER BY je.embedding <=> ?::vector
+      LIMIT ?
+    `).all(vectorStr, minSimilarity, vectorStr, limit) as any[];
+
+    console.log(`[RAG] 简历匹配: 文本长度=${trimmedText.length}, 匹配到 ${rows.length} 个职位`);
+
+    res.json({
+      success: true,
+      data: {
+        resumeText: trimmedText.substring(0, 500),
+        results: rows.map(r => ({
+          ...r,
+          similarity: Number(r.similarity),
+        })),
+        count: rows.length,
+      },
+    });
+  } catch (e: any) {
+    console.error('[RAG] matchResume error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 }
