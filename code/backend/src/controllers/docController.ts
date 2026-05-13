@@ -44,9 +44,9 @@ export async function getIndexStatus(req: Request, res: Response) {
 // GET /api/docs/index/records — 分页列表
 export async function listDocEmbeddings(req: Request, res: Response) {
   try {
-    const { sourceType, keyword, page = '1', pageSize = '20' } = req.query;
+    const { sourceType, keyword, page = '1', pageSize = '10' } = req.query;
     const pg = Math.max(1, parseInt(page as string) || 1);
-    const ps = Math.min(100, Math.max(1, parseInt(pageSize as string) || 20));
+    const ps = Math.min(100, Math.max(1, parseInt(pageSize as string) || 10));
     const offset = (pg - 1) * ps;
 
     let where = 'WHERE 1=1';

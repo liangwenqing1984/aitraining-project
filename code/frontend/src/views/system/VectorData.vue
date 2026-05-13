@@ -171,7 +171,7 @@ function sourceTypeTag(st: string) { return SOURCE_TAGS[st] || '' }
 const jobRecords = ref<any[]>([])
 const jobLoading = ref(false)
 const jobPage = ref(1)
-const jobPageSize = ref(20)
+const jobPageSize = ref(10)
 const jobTotal = ref(0)
 const jobSearch = reactive({ taskId: '', keyword: '' })
 
@@ -217,7 +217,7 @@ async function handleDeleteJobByTask() {
 const docRecords = ref<any[]>([])
 const docLoading = ref(false)
 const docPage = ref(1)
-const docPageSize = ref(20)
+const docPageSize = ref(10)
 const docTotal = ref(0)
 const docSearch = reactive({ sourceType: '', keyword: '' })
 
