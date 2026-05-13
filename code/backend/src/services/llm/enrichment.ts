@@ -122,19 +122,36 @@ export async function startEnrichment(taskId: string): Promise<void> {
     }
 
     // Process in batches
+    let consecutiveAuthFailures = 0;
     for (let i = 0; i < rowsToProcess.length; i += BATCH_SIZE) {
       const batch = rowsToProcess.slice(i, i + BATCH_SIZE);
       const batchResults = await Promise.allSettled(
         batch.map((row) => enrichSingleJob(taskId, row))
       );
 
+      let batchAuthErrors = 0;
       for (const result of batchResults) {
         if (result.status === 'fulfilled') {
           completed++;
         } else {
           failed++;
+          const errMsg = (result.reason?.message || '').toLowerCase();
+          if (/401|403|authentication|invalid.*api|unauthorized/i.test(errMsg)) {
+            batchAuthErrors++;
+          }
           console.error(`[Enrichment] 单条增强失败: ${taskId}`, result.reason?.message);
         }
+      }
+
+      // 整批都是认证错误 → 累计，2连批则中止
+      if (batchAuthErrors === batch.length) {
+        consecutiveAuthFailures++;
+        const abortMsg = `增强中止：连续 ${consecutiveAuthFailures} 批全部认证失败（API Key 无效）。请检查 AI 模型配置中的 API Key 是否正确。`;
+        emitProgress(abortMsg, total);
+        console.error(`[Enrichment] ${abortMsg}`);
+        throw new Error(abortMsg);
+      } else if (batchAuthErrors > 0) {
+        consecutiveAuthFailures = 0;
       }
 
       emitProgress(`处理中... (第 ${Math.min(i + BATCH_SIZE, rowsToProcess.length)}/${rowsToProcess.length} 条)`, total);
@@ -263,6 +280,13 @@ async function enrichSingleJob(
       return await saveEnrichmentResult(taskId, jobId, parsed, result.model);
     } catch (e: any) {
       lastError = e;
+      // 永久性错误不重试：认证失败、权限不足、模型不存在等
+      const msg = (e.message || '').toLowerCase();
+      const isPermanent = /401|403|404|authentication|invalid.*api|api.*invalid|unauthorized|forbidden|not found/i.test(msg);
+      if (isPermanent) {
+        console.error(`[Enrichment] 永久性错误，跳过重试 (${jobId}): ${e.message}`);
+        throw e;
+      }
       if (attempt < 2) {
         console.warn(`[Enrichment] 第 ${attempt + 1} 次尝试失败 (${jobId})，重试中...`, e.message);
         await new Promise(r => setTimeout(r, 1000));
