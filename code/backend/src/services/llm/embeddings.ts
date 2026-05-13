@@ -137,7 +137,12 @@ export async function generateEmbedding(text: string): Promise<EmbeddingResult> 
     const config = await llmService.getConfigForTask('embedding');
     if (config) {
       console.log(`[Embedding] 使用模型: ${config.provider}/${config.modelName}`);
-      return await llmService.embed(text);
+      return await Promise.race([
+        llmService.embed(text),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('embedding 请求超时（60s）')), 60000)
+        ),
+      ]);
     }
   } catch (e: any) {
     console.warn(`[Embedding] 配置模型调用失败，回退到 Ollama ${FALLBACK_MODEL}: ${e.message}`);

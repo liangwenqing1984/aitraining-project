@@ -89,6 +89,11 @@ export async function indexJobEmbeddings(
   let skipped = 0;
   let errors = 0;
 
+  const pendingCount = rows.length - alreadyIndexed.size;
+  if (pendingCount > 0) {
+    emit(`准备向量化 ${pendingCount} 条新记录（${alreadyIndexed.size} 条已跳过）`);
+  }
+
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const jobId = row.jobId || row.job_id;
@@ -96,7 +101,16 @@ export async function indexJobEmbeddings(
     // 跳过已索引的记录
     if (alreadyIndexed.has(jobId)) {
       skipped++;
+      // 每 50 条跳过输出一次进度
+      if (skipped % 50 === 0) {
+        emit(`去重检查 ${i + 1}/${rows.length}（已跳过 ${skipped}，新增 ${indexed}，错误 ${errors}）`);
+      }
       continue;
+    }
+
+    // 第一条新记录时明确提示
+    if (indexed === 0 && skipped > 0) {
+      emit(`开始向量化新记录（第 ${i + 1}/${rows.length}）...`);
     }
 
     try {
@@ -117,7 +131,12 @@ export async function indexJobEmbeddings(
         workMode: row.workMode,
       });
 
-      const { embedding } = await generateEmbedding(textContent);
+      const { embedding } = await Promise.race([
+        generateEmbedding(textContent),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('embedding 请求超时（60s）')), 60000)
+        ),
+      ]);
 
       // pgvector 存储格式：逗号分隔的浮点数数组
       const vectorStr = `[${embedding.join(',')}]`;
@@ -152,7 +171,7 @@ export async function indexJobEmbeddings(
       );
 
       indexed++;
-      if (i % 10 === 0) {
+      if (i % 10 === 0 || indexed % 10 === 0) {
         emit(`向量化进度 ${i + 1}/${rows.length}（已索引 ${indexed}，跳过 ${skipped}，错误 ${errors}）`);
       }
 
