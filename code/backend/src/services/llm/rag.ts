@@ -48,7 +48,23 @@ export async function indexJobEmbeddings(
 
   emit(`找到 ${rows.length} 条增强数据，开始向量化...`);
 
-  // 从 sp_jobs 表读取原始职位数据 (job_name, company_name, work_city)
+  // 查询已索引的 job_id（去重）
+  const alreadyIndexed = new Set<string>();
+  try {
+    const existingRows = await db.prepare(
+      'SELECT job_id FROM sp_job_embeddings WHERE task_id = $1'
+    ).all(taskId) as any[];
+    for (const r of existingRows) {
+      alreadyIndexed.add(r.jobId || r.job_id);
+    }
+    if (alreadyIndexed.size > 0) {
+      emit(`已有 ${alreadyIndexed.size} 条已索引，将跳过`);
+    }
+  } catch (e: any) {
+    console.warn('[RAG] 查询已索引记录失败:', e.message);
+  }
+
+  // 从 sp_jobs 表读取原始职位数据
   const rawDataMap = new Map<string, { jobName: string; companyName: string; workCity: string }>();
   try {
     const jobRows = await db.prepare(
@@ -76,6 +92,12 @@ export async function indexJobEmbeddings(
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const jobId = row.jobId || row.job_id;
+
+    // 跳过已索引的记录
+    if (alreadyIndexed.has(jobId)) {
+      skipped++;
+      continue;
+    }
 
     try {
       // 从 Excel 原始数据获取缺失字段
@@ -141,8 +163,11 @@ export async function indexJobEmbeddings(
     } catch (e: any) {
       errors++;
       console.error(`[RAG] 向量化失败 jobId=${jobId}:`, e.message);
-      if (errors > 10) {
-        throw new Error(`向量化错误过多（>10），已中止。最后错误: ${e.message}`);
+      if (errors > 50) {
+        const msg = `向量化错误过多（>50），已中止。最后错误: ${e.message}`;
+        console.error(`[RAG] ${msg}`);
+        emit(msg);
+        throw new Error(msg);
       }
     }
   }

@@ -211,6 +211,7 @@ const taskOptions = ref<{ taskId: string; count: number; label?: string }[]>([])
 
 const enrichmentChecked = ref(false)
 const hasEnrichment = ref(false)
+const enrichmentTotal = ref(0)
 const checkingEnrichment = ref(false)
 
 const exampleQueries = [
@@ -311,6 +312,7 @@ async function onIndexTaskChange(taskId: string) {
   if (!taskId) {
     enrichmentChecked.value = false
     hasEnrichment.value = false
+    enrichmentTotal.value = 0
     return
   }
   checkingEnrichment.value = true
@@ -319,8 +321,10 @@ async function onIndexTaskChange(taskId: string) {
     const res: any = await getEnrichmentStatus(taskId)
     if (res.success && res.data) {
       hasEnrichment.value = res.data.exists && (res.data.total || 0) > 0
+      enrichmentTotal.value = res.data.total || 0
     } else {
       hasEnrichment.value = false
+      enrichmentTotal.value = 0
     }
   } catch {
     hasEnrichment.value = false
@@ -340,18 +344,38 @@ async function doIndex() {
     if (res.success) {
       ElMessage.success('向量化索引已启动，请等待完成通知')
       indexProgress.value = '索引进行中，可点击刷新查看进度...'
-      // 轮询等待完成
+      // 轮询等待完成，直到 count >= 预期总数 或 进度不再增长
+      const targetCount = enrichmentTotal.value
+      let lastCount = -1
+      let stallCount = 0
       const pollTimer = setInterval(async () => {
         try {
           const statsRes: any = await getRAGStats(indexTaskId.value)
           if (statsRes.success && statsRes.data) {
             const data = Array.isArray(statsRes.data) ? statsRes.data[0] : statsRes.data
-            if (data && data.count > 0) {
-              indexProgress.value = `已完成：${data.count} 条向量化`
-              clearInterval(pollTimer)
-              await loadStats()
-              ElMessage.success(`向量化索引完成：${data.count} 条`)
-              indexing.value = false
+            if (data) {
+              const currentCount = data.count || 0
+              indexProgress.value = `索引中... ${currentCount} / ${targetCount} 条`
+              // 达到目标数量 或 连续3次无增长视为完成
+              if (currentCount >= targetCount) {
+                clearInterval(pollTimer)
+                await loadStats()
+                ElMessage.success(`向量化索引完成：${currentCount} 条`)
+                indexing.value = false
+                indexProgress.value = ''
+              } else if (currentCount === lastCount) {
+                stallCount++
+                if (stallCount >= 3) {
+                  clearInterval(pollTimer)
+                  await loadStats()
+                  ElMessage.warning(`索引可能已结束：${currentCount} / ${targetCount} 条（${targetCount - currentCount} 条失败）`)
+                  indexing.value = false
+                  indexProgress.value = ''
+                }
+              } else {
+                stallCount = 0
+                lastCount = currentCount
+              }
             }
           }
         } catch { /* ignore */ }

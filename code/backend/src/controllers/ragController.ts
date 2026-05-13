@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../config/database';
 import { indexJobEmbeddings, semanticSearch, getEmbeddingStats } from '../services/llm/rag';
+import { io } from '../app';
 
 /**
  * POST /api/rag/index/:taskId
@@ -29,10 +30,15 @@ export async function indexTask(req: Request, res: Response) {
     // 异步执行，立即返回
     res.json({ success: true, data: { taskId, status: 'started', message: `向量化索引已启动（${enrichCount}条增强数据）` } });
 
-    // 后台异步索引
-    indexJobEmbeddings(taskId).catch(e => {
-      console.error('[RAG] 索引任务失败:', e.message);
-    });
+    // 后台异步索引，通过 WebSocket 推送完成/失败事件
+    indexJobEmbeddings(taskId)
+      .then(result => {
+        io.emit('rag:indexCompleted', { taskId, ...result, timestamp: Date.now() });
+      })
+      .catch(e => {
+        console.error('[RAG] 索引任务失败:', e.message);
+        io.emit('rag:indexFailed', { taskId, error: e.message, timestamp: Date.now() });
+      });
   } catch (e: any) {
     console.error('[RAG] indexTask error:', e.message);
     if (!res.headersSent) {
