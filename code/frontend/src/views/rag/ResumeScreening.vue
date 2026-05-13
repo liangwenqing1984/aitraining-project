@@ -119,12 +119,12 @@
 
           <div
             v-for="(item, idx) in matchResult.results"
-            :key="item.job_id"
+            :key="item.jobId"
             class="result-card"
             :style="{ animationDelay: idx * 0.05 + 's' }"
           >
             <div class="card-header">
-              <span class="card-title">{{ item.job_name || '未知职位' }}</span>
+              <span class="card-title">{{ item.jobName || '未知职位' }}</span>
               <el-tag
                 :type="item.similarity > 0.8 ? 'success' : item.similarity > 0.6 ? 'warning' : 'info'"
                 size="small"
@@ -132,17 +132,17 @@
                 匹配度 {{ (item.similarity * 100).toFixed(0) }}%
               </el-tag>
             </div>
-            <div class="card-company" v-if="item.company_name">
-              <el-icon><OfficeBuilding /></el-icon> {{ item.company_name }}
+            <div class="card-company" v-if="item.companyName">
+              <el-icon><OfficeBuilding /></el-icon> {{ item.companyName }}
             </div>
             <div class="card-tags">
-              <el-tag v-if="item.job_category_l1" size="small" effect="plain">{{ item.job_category_l1 }}</el-tag>
-              <el-tag v-if="item.job_category_l2" size="small" effect="plain">{{ item.job_category_l2 }}</el-tag>
-              <el-tag v-if="item.company_industry" size="small" effect="plain" type="success">{{ item.company_industry }}</el-tag>
-              <el-tag v-if="item.work_city" size="small" effect="plain" type="warning">{{ item.work_city }}</el-tag>
+              <el-tag v-if="item.jobCategoryL1" size="small" effect="plain">{{ item.jobCategoryL1 }}</el-tag>
+              <el-tag v-if="item.jobCategoryL2" size="small" effect="plain">{{ item.jobCategoryL2 }}</el-tag>
+              <el-tag v-if="item.companyIndustry" size="small" effect="plain" type="success">{{ item.companyIndustry }}</el-tag>
+              <el-tag v-if="item.workCity" size="small" effect="plain" type="warning">{{ item.workCity }}</el-tag>
             </div>
-            <div class="card-text" v-if="item.text_content">
-              {{ truncateText(item.text_content, 200) }}
+            <div class="card-text" v-if="item.textContent">
+              {{ truncateText(item.textContent, 200) }}
             </div>
           </div>
 
