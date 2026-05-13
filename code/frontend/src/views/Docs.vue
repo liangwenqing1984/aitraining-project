@@ -1699,7 +1699,46 @@ def freeProxy01():
 │    --proxy-server=http://39.102.208.189:8081                       │
 │    目标站看到的来源 IP = 39.102.208.189（非本机 IP）               │
 └──────────────────────────────────────────────────────────────────┘</code></pre>
-<p><strong>核心问题</strong>：站大爷的代理本质是<strong>网友公开分享的免费 IP</strong>，不是付费 API 的结构化数据。一个 IP 被帖子公开后，全世界爬虫都会用，几分钟内就失效。如果要接入站大爷的付费 API（如 <code>http://open.zdaye.com/ShortProxy/GetIP/</code>），需参照"扩展付费代理"章节新增一个 <code>@staticmethod</code> 方法。</p>`
+<p><strong>核心问题</strong>：站大爷的代理本质是<strong>网友公开分享的免费 IP</strong>，不是付费 API 的结构化数据。一个 IP 被帖子公开后，全世界爬虫都会用，几分钟内就失效。如果要接入站大爷的付费 API（如 <code>http://open.zdaye.com/ShortProxy/GetIP/</code>），需参照"扩展付费代理"章节新增一个 <code>@staticmethod</code> 方法。</p>
+
+<h4>Q8: Redis 在本系统中起什么作用？</h4>
+<p>Redis 在本系统中<strong>只有一个用途</strong>：作为 <strong>IP 代理池（jhao104/proxy_pool）的后端存储数据库</strong>。</p>
+<h5>架构关系</h5>
+<pre><code>Node.js 爬虫 (zhilian.ts / job51.ts)
+    → HTTP GET http://127.0.0.1:5010/get/
+    → proxy_pool Python 项目 (API 端口 5010)
+    → Redis (端口 6379，密码 pwd)</code></pre>
+<ul>
+  <li><strong>Redis</strong> 存储代理池采集到的 IP 列表、可用性评分（score）、历史状态等数据</li>
+  <li><strong>proxy_pool</strong>（<a href="https://github.com/jhao104/proxy_pool" target="_blank">jhao104/proxy_pool</a>）是独立的 Python 项目，负责采集/验证/调度代理，以 Redis 作为数据库</li>
+  <li><strong>Node.js 后端不直接连接 Redis</strong>，它通过 HTTP API（<code>127.0.0.1:5010</code>）从代理池获取代理</li>
+</ul>
+<h5>Redis 存储格式</h5>
+<p>代理数据以 <strong>Hash 表</strong> 形式存储在 Redis 中：</p>
+<pre><code># Redis key: use_proxy
+# Field: "39.102.208.189:8081"  → Value: {"score": 7, "https": false}
+# Field: "117.68.54.22:3128"    → Value: {"score": 5, "https": false}</code></pre>
+<h5>验证流程中的位置</h5>
+<pre><code>freeProxy 采集 → RawProxyCheck 多线程验证 → pass → 存入 Redis
+                                                      ↓
+                                              GET /get/ API (:5010)
+                                                      ↓
+                                              本项目 ProxyPool.getProxy()
+                                                      ↓
+                                              checkHealth() 二次实时验证
+                                                      ↓
+                                              浏览器 --proxy-server=...</code></pre>
+<h5>Redis 启动方式</h5>
+<p>Redis 在 <code>start-dev.bat</code> 或 <code>start-proxy-pool.bat</code> 中自动启动：</p>
+<pre><code>start "Redis-Server" /MIN "C:\Program Files\Redis\redis-server.exe" "C:\Program Files\Redis\redis.windows.conf"</code></pre>
+<p>配置文件 <code>redis.windows.conf</code> 中设定了密码 <code>requirepass pwd</code>。</p>
+<h5>如果 Redis 不可用</h5>
+<ul>
+  <li>代理池 API（端口 5010）无法启动 → <code>ProxyPool.isAvailable()</code> 返回 <code>false</code></li>
+  <li>爬虫自动降级为<strong>直连模式</strong>（<code>PROXY_POOL_CONFIG.enabled = false</code>），不经过代理直接访问目标站</li>
+  <li>不会导致爬虫崩溃，但缺少 IP 轮换能力后更容易触发目标站的反爬封禁</li>
+</ul>
+<p><strong>总结</strong>：Redis 在本系统中不是通用缓存层，而是代理池的专属存储引擎。即使 Redis 挂了，系统核心功能（认证、数据采集、AI 增强等）仍可正常运行，只是失去 IP 代理轮换能力。</p>`
   },
 
   // ========== 技术栈 ==========
