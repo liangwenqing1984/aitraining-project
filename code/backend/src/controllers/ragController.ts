@@ -221,7 +221,7 @@ export async function matchResume(req: Request, res: Response) {
     const { embedding } = await generateEmbedding(trimmedText);
     const vectorStr = `[${embedding.join(',')}]`;
 
-    // 余弦相似度搜索（占位符顺序: vector, minSimilarity, vector, limit）
+    // 余弦相似度搜索（占位符顺序: SELECT vector, WHERE vector, minSimilarity, ORDER vector, limit）
     const rows = await db.prepare(`
       SELECT
         je.job_id,
@@ -238,7 +238,7 @@ export async function matchResume(req: Request, res: Response) {
       WHERE 1 - (je.embedding <=> ?::vector) >= ?
       ORDER BY je.embedding <=> ?::vector
       LIMIT ?
-    `).all(vectorStr, minSimilarity, vectorStr, limit) as any[];
+    `).all(vectorStr, vectorStr, minSimilarity, vectorStr, limit) as any[];
 
     console.log(`[RAG] 简历匹配: 文本长度=${trimmedText.length}, 匹配到 ${rows.length} 个职位`);
 
@@ -310,7 +310,7 @@ export const uploadAndMatch = [
         WHERE 1 - (je.embedding <=> ?::vector) >= ?
         ORDER BY je.embedding <=> ?::vector
         LIMIT ?
-      `).all(vectorStr, minSimilarity, vectorStr, limit) as any[];
+      `).all(vectorStr, vectorStr, minSimilarity, vectorStr, limit) as any[];
 
       console.log(`[RAG] 简历文件匹配: ${file.originalname}, 匹配到 ${rows.length} 个职位`);
 
