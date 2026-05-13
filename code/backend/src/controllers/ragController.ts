@@ -221,20 +221,21 @@ export async function matchResume(req: Request, res: Response) {
     const { embedding } = await generateEmbedding(trimmedText);
     const vectorStr = `[${embedding.join(',')}]`;
 
-    // 余弦相似度搜索（占位符顺序: SELECT vector, WHERE vector, minSimilarity, ORDER vector, limit）
+    // 余弦相似度搜索（LEFT JOIN sp_jobs 兜底 job_name/company_name）
     const rows = await db.prepare(`
       SELECT
         je.job_id,
-        je.job_name,
-        je.company_name,
+        COALESCE(NULLIF(je.job_name, ''), j.job_name, '未知职位') AS job_name,
+        COALESCE(NULLIF(je.company_name, ''), j.company_name, '') AS company_name,
         je.job_category_l1,
         je.job_category_l2,
         je.company_industry,
-        je.work_city,
+        COALESCE(NULLIF(je.work_city, ''), j.work_city, '') AS work_city,
         je.task_id,
         je.text_content,
         1 - (je.embedding <=> ?::vector) AS similarity
       FROM sp_job_embeddings je
+      LEFT JOIN sp_jobs j ON je.job_id = j.job_id AND je.task_id = j.task_id
       WHERE 1 - (je.embedding <=> ?::vector) >= ?
       ORDER BY je.embedding <=> ?::vector
       LIMIT ?
@@ -293,20 +294,21 @@ export const uploadAndMatch = [
       const { embedding } = await generateEmbedding(resumeText);
       const vectorStr = `[${embedding.join(',')}]`;
 
-      // 余弦相似度搜索
+      // 余弦相似度搜索（LEFT JOIN sp_jobs 兜底 job_name/company_name）
       const rows = await db.prepare(`
         SELECT
           je.job_id,
-          je.job_name,
-          je.company_name,
+          COALESCE(NULLIF(je.job_name, ''), j.job_name, '未知职位') AS job_name,
+          COALESCE(NULLIF(je.company_name, ''), j.company_name, '') AS company_name,
           je.job_category_l1,
           je.job_category_l2,
           je.company_industry,
-          je.work_city,
+          COALESCE(NULLIF(je.work_city, ''), j.work_city, '') AS work_city,
           je.task_id,
           je.text_content,
           1 - (je.embedding <=> ?::vector) AS similarity
         FROM sp_job_embeddings je
+        LEFT JOIN sp_jobs j ON je.job_id = j.job_id AND je.task_id = j.task_id
         WHERE 1 - (je.embedding <=> ?::vector) >= ?
         ORDER BY je.embedding <=> ?::vector
         LIMIT ?
