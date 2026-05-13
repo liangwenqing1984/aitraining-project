@@ -28,7 +28,25 @@ const sessions = ref<ChatSession[]>([])
 const currentSessionId = ref<number | undefined>()
 const chatContainer = ref<HTMLElement>()
 const indexing = ref(false)
-const indexStatus = ref<{ sectionCount: number; chunkCount: number }>({ sectionCount: 0, chunkCount: 0 })
+const indexStatus = ref<{ sectionCount: number; chunkCount: number; sourceBreakdown?: Record<string, number> }>({ sectionCount: 0, chunkCount: 0 })
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  doc_section: '帮助文档',
+  user_doc: '用户手册',
+  diagnostic: '诊断文档',
+  design_doc: '设计文档',
+  backend_source: '后端源代码',
+  frontend_source: '前端源代码',
+}
+
+const SOURCE_TYPE_COLORS: Record<string, string> = {
+  doc_section: '',
+  user_doc: 'success',
+  diagnostic: 'warning',
+  design_doc: '',
+  backend_source: 'danger',
+  frontend_source: 'info',
+}
 
 const quickQuestions = [
   '系统支持哪些招聘平台？',
@@ -227,7 +245,15 @@ onMounted(() => {
         <div class="index-info">
           <el-icon :size="14"><Document /></el-icon>
           <span v-if="indexStatus.sectionCount > 0">
-            已索引 {{ indexStatus.sectionCount }} 章节
+            已索引 {{ indexStatus.chunkCount }} 片段
+            <el-tooltip v-if="indexStatus.sourceBreakdown" placement="top">
+              <template #content>
+                <div v-for="(count, type) in indexStatus.sourceBreakdown" :key="type" style="line-height: 1.6">
+                  {{ SOURCE_TYPE_LABELS[type] || type }}：{{ count }} 章节
+                </div>
+              </template>
+              <span class="breakdown-hint">（{{ Object.keys(indexStatus.sourceBreakdown).length }} 类源）</span>
+            </el-tooltip>
           </span>
           <span v-else class="not-indexed">文档未索引</span>
         </div>
@@ -287,9 +313,12 @@ onMounted(() => {
                 v-for="src in msg.sources"
                 :key="src.sectionId"
                 size="small"
-                type="info"
+                :type="(SOURCE_TYPE_COLORS[src.sourceType || ''] as any) || 'info'"
                 class="source-tag"
               >
+                <template v-if="src.sourceType">
+                  <span class="source-type-badge">{{ SOURCE_TYPE_LABELS[src.sourceType] || src.sourceType }}</span>
+                </template>
                 {{ src.sectionTitle }}
               </el-tag>
             </div>
@@ -636,6 +665,23 @@ onMounted(() => {
 
 .source-tag {
   cursor: default;
+}
+
+.source-type-badge {
+  font-weight: 600;
+}
+
+.source-type-badge::after {
+  content: ' · ';
+  font-weight: 400;
+  color: #c0c4cc;
+}
+
+.breakdown-hint {
+  font-size: 11px;
+  color: #409eff;
+  cursor: pointer;
+  margin-left: 2px;
 }
 
 /* 思考动画 */

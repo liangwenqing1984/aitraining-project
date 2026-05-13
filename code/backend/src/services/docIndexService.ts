@@ -1,10 +1,14 @@
 import { db, pgvectorAvailable } from '../config/database';
 import { generateEmbedding } from './llm/embeddings';
+import { SourceType, scanFiles, generateSectionId, type ScannedFile } from './docSourceScanner';
+import * as path from 'path';
 
 interface DocSection {
   sectionId: string;
   title: string;
   content: string; // HTML content
+  sourceType?: SourceType;
+  filePath?: string;
 }
 
 function stripHtml(html: string): string {
@@ -31,6 +35,48 @@ function splitLongText(text: string, maxLen: number = 3000): string[] {
     remaining = remaining.substring(splitAt).trim();
   }
   if (remaining.length > 0) chunks.push(remaining);
+  return chunks;
+}
+
+/** Markdown 分块：优先按 ## 标题分割，超长按句号二次分割 */
+function splitMarkdown(text: string, maxLen: number = 3000): string[] {
+  // 按 ## 标题分割
+  const sections = text.split(/\n(?=## )/).filter(s => s.trim().length > 0);
+  if (sections.length <= 1) return splitLongText(text, maxLen);
+
+  const chunks: string[] = [];
+  for (const sec of sections) {
+    if (sec.length <= maxLen) {
+      chunks.push(sec.trim());
+    } else {
+      chunks.push(...splitLongText(sec.trim(), maxLen));
+    }
+  }
+  return chunks;
+}
+
+/** 源代码分块：优先按双空行分割，再按导出边界分割，超长按换行截断 */
+function splitSourceCode(text: string, maxLen: number = 3000): string[] {
+  // 按双空行优先分割（函数/类之间的自然分隔）
+  const blocks = text.split(/\n\n\n+/).filter(b => b.trim().length > 0);
+  if (blocks.length <= 1) return splitLongText(text, maxLen);
+
+  const chunks: string[] = [];
+  for (const block of blocks) {
+    if (block.length <= maxLen) {
+      chunks.push(block.trim());
+    } else {
+      // 按 export function / export class / export const 边界继续分割
+      const subBlocks = block.split(/\n(?=export\s+(?:function|class|const|interface|type|enum|async\s+function))/);
+      for (const sub of subBlocks) {
+        if (sub.trim().length <= maxLen) {
+          chunks.push(sub.trim());
+        } else {
+          chunks.push(...splitLongText(sub.trim(), maxLen));
+        }
+      }
+    }
+  }
   return chunks;
 }
 
@@ -175,7 +221,17 @@ export const DOC_SECTIONS: DocSection[] = [
   {
     sectionId: 'diagnostics',
     title: '系统诊断手册',
-    content: `<p>项目docs/diagnostics/目录下收录了83份诊断文档，按时间顺序记录了系统开发过程中的所有关键问题分析、根因定位和修复方案。涵盖主题：认证登录/OAuth2/分析模块、爬虫基础配置+日志持久化、任务进度问题分析、智联招聘解析器深度修复、诊断日志补丁完善、并发/浏览器崩溃/反爬修复等。</p>`
+    content: `<p>项目docs/diagnostics/目录下收录了146份诊断文档，按时间顺序记录了系统开发过程中的所有关键问题分析、根因定位和修复方案。涵盖主题：认证登录/OAuth2/分析模块、爬虫基础配置+日志持久化、任务进度问题分析、智联招聘解析器深度修复、诊断日志补丁完善、并发/浏览器崩溃/反爬修复等。</p>`
+  },
+  {
+    sectionId: 'api-analysis',
+    title: '数据分析 API（5 个端点）',
+    content: `<p><strong>Base:</strong> <code>/api/analysis</code></p><table><tr><th>方法</th><th>路径</th><th>说明</th></tr><tr><td>POST</td><td><code>/analyze</code></td><td>分析 CSV/Excel 文件</td></tr><tr><td>GET</td><td><code>/salary/:fileId</code></td><td>薪资区间分布</td></tr><tr><td>GET</td><td><code>/city/:fileId</code></td><td>城市分布 Top 10</td></tr><tr><td>GET</td><td><code>/education/:fileId</code></td><td>学历要求分布</td></tr><tr><td>GET</td><td><code>/experience/:fileId</code></td><td>经验要求分布</td></tr></table>`
+  },
+  {
+    sectionId: 'api-dashboard',
+    title: '数据看板 API（2 个端点）',
+    content: `<p>汇总全库数据提供看板统计，不依赖单文件查询。</p><table><tr><th>方法</th><th>路径</th><th>说明</th></tr><tr><td>GET</td><td><code>/api/dashboard/overview</code></td><td>全库概览统计（总职位/任务/企业/薪资 + 6 维度分布 + 技能词云）</td></tr><tr><td>GET</td><td><code>/api/regions/stats?dim=city</code></td><td>黑龙江省区域分布统计</td></tr></table>`
   },
   {
     sectionId: 'faq',
@@ -185,7 +241,8 @@ export const DOC_SECTIONS: DocSection[] = [
 ];
 
 export async function indexAllDocs(
-  onProgress?: (message: string) => void
+  onProgress?: (message: string) => void,
+  sourceTypes?: SourceType[]
 ): Promise<{ total: number; indexed: number; skipped: number; errors: number }> {
   if (!pgvectorAvailable) {
     throw new Error('pgvector 扩展未安装，无法进行文档向量化');
@@ -196,69 +253,134 @@ export async function indexAllDocs(
     onProgress?.(msg);
   };
 
-  emit(`开始索引 ${DOC_SECTIONS.length} 个文档章节...`);
+  const INSERT_SQL = `
+    INSERT INTO sp_doc_embeddings (section_id, section_title, chunk_index, text_content, embedding, source_type, file_path)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (section_id, chunk_index) DO UPDATE SET
+      embedding = EXCLUDED.embedding,
+      text_content = EXCLUDED.text_content,
+      source_type = EXCLUDED.source_type,
+      file_path = EXCLUDED.file_path
+  `;
+
+  async function indexSource(
+    sectionId: string,
+    title: string,
+    rawText: string,
+    sourceType: SourceType,
+    filePath?: string,
+    isHtml?: boolean
+  ): Promise<{ idx: number; sk: number; chunks: number }> {
+    const plainText = isHtml ? stripHtml(rawText) : rawText;
+
+    const existing = await db.prepare(
+      'SELECT COUNT(*) as cnt FROM sp_doc_embeddings WHERE section_id = $1'
+    ).get(sectionId) as any;
+
+    if (existing?.cnt > 0) {
+      emit(`跳过已索引: ${title} (已有 ${existing.cnt} 个片段)`);
+      return { idx: 0, sk: 1, chunks: 0 };
+    }
+
+    // 根据类型选择分块策略
+    let chunks: string[];
+    if (isHtml || sourceType === SourceType.DOC_SECTION) {
+      chunks = splitLongText(plainText, 3000);
+    } else if (sourceType === SourceType.BACKEND_SOURCE || sourceType === SourceType.FRONTEND_SOURCE) {
+      chunks = splitSourceCode(plainText, 3000);
+    } else {
+      chunks = splitMarkdown(plainText, 3000);
+    }
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      if (chunk.length < 50) continue;
+
+      try {
+        const { embedding } = await generateEmbedding(chunk);
+        const vectorStr = `[${embedding.join(',')}]`;
+        await db.prepare(INSERT_SQL).run(
+          sectionId, title, i, chunk, vectorStr, sourceType, filePath || null
+        );
+      } catch (embedErr: any) {
+        console.error(`[DocIndex] 向量化失败 ${sectionId}[${i}]:`, embedErr.message);
+        throw embedErr;
+      }
+
+      if (i < chunks.length - 1) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
+    emit(`已索引: ${title} (${chunks.length} 个片段)`);
+    return { idx: 1, sk: 0, chunks: chunks.length };
+  }
+
+  // ========== Phase 1: DOC_SECTIONS ==========
+  const wantDocs = !sourceTypes || sourceTypes.includes(SourceType.DOC_SECTION);
 
   let indexed = 0;
   let skipped = 0;
   let errors = 0;
   let totalChunks = 0;
 
-  for (const section of DOC_SECTIONS) {
-    try {
-      const plainText = stripHtml(section.content);
+  if (wantDocs) {
+    emit(`开始索引 ${DOC_SECTIONS.length} 个帮助文档章节...`);
 
-      // 检查是否已索引
-      const existing = await db.prepare(
-        'SELECT COUNT(*) as cnt FROM sp_doc_embeddings WHERE section_id = $1'
-      ).get(section.sectionId) as any;
-
-      if (existing?.cnt > 0) {
-        emit(`跳过已索引: ${section.title} (已有 ${existing.cnt} 个片段)`);
-        skipped++;
-        continue;
+    for (const section of DOC_SECTIONS) {
+      try {
+        const result = await indexSource(
+          section.sectionId,
+          section.title,
+          section.content,
+          SourceType.DOC_SECTION,
+          undefined,
+          true
+        );
+        indexed += result.idx;
+        skipped += result.sk;
+        totalChunks += result.chunks;
+      } catch (e: any) {
+        errors++;
+        console.error(`[DocIndex] 章节 ${section.sectionId} 索引失败:`, e.message);
+        if (errors > 5) throw new Error('向量化错误过多（>5），已中止');
       }
-
-      // 分割长文本
-      const chunks = splitLongText(plainText, 3000);
-      totalChunks += chunks.length;
-
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-        if (chunk.length < 50) continue; // 跳过过短片段
-
-        try {
-          const { embedding } = await generateEmbedding(chunk);
-          const vectorStr = `[${embedding.join(',')}]`;
-
-          await db.prepare(`
-            INSERT INTO sp_doc_embeddings (section_id, section_title, chunk_index, text_content, embedding)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (section_id, chunk_index) DO UPDATE SET
-              embedding = EXCLUDED.embedding,
-              text_content = EXCLUDED.text_content
-          `).run(section.sectionId, section.title, i, chunk, vectorStr);
-        } catch (embedErr: any) {
-          console.error(`[DocIndex] 向量化失败 ${section.sectionId}[${i}]:`, embedErr.message);
-          errors++;
-          if (errors > 5) throw new Error(`向量化错误过多（>5），已中止`);
-        }
-
-        // 避免 Ollama 过载
-        if (i < chunks.length - 1) {
-          await new Promise(r => setTimeout(r, 300));
-        }
-      }
-
-      indexed++;
-      emit(`已索引: ${section.title} (${chunks.length} 个片段)`);
-    } catch (e: any) {
-      errors++;
-      console.error(`[DocIndex] 章节 ${section.sectionId} 索引失败:`, e.message);
     }
   }
 
-  emit(`文档索引完成：章节 ${indexed}，跳过 ${skipped}，错误 ${errors}，总片段 ${totalChunks}`);
-  return { total: DOC_SECTIONS.length, indexed, skipped, errors };
+  // ========== Phase 2: 文件源 ==========
+  const wantFiles = !sourceTypes || sourceTypes.some(s => s !== SourceType.DOC_SECTION);
+
+  if (wantFiles) {
+    const fileSourceTypes = sourceTypes?.filter(s => s !== SourceType.DOC_SECTION);
+    const scannedFiles = scanFiles(fileSourceTypes?.length ? fileSourceTypes : undefined);
+    emit(`发现 ${scannedFiles.length} 个源文件待索引...`);
+
+    for (const file of scannedFiles) {
+      try {
+        const sectionId = generateSectionId(file);
+        const result = await indexSource(
+          sectionId,
+          file.title,
+          file.content,
+          file.sourceType,
+          file.filePath,
+          false
+        );
+        indexed += result.idx;
+        skipped += result.sk;
+        totalChunks += result.chunks;
+      } catch (e: any) {
+        errors++;
+        console.error(`[DocIndex] 文件 ${file.filePath} 索引失败:`, e.message);
+        if (errors > 10) throw new Error('文件索引错误过多（>10），已中止');
+      }
+    }
+  }
+
+  const totalDocs = wantDocs ? DOC_SECTIONS.length : 0;
+  emit(`文档索引完成：索引 ${indexed}，跳过 ${skipped}，错误 ${errors}，总片段 ${totalChunks}`);
+  return { total: totalDocs + (wantFiles ? 1 : 0), indexed, skipped, errors };
 }
 
 export interface DocSearchResult {
@@ -267,6 +389,8 @@ export interface DocSearchResult {
   chunkIndex: number;
   textContent: string;
   similarity: number;
+  sourceType: string;
+  filePath?: string;
 }
 
 // 文档搜索关键词扩展映射（中文查询术语 → 文档章节关键词）
@@ -325,6 +449,7 @@ export async function searchDocs(
 
     const sql = `
       SELECT section_id, section_title, chunk_index, text_content,
+             source_type, file_path,
              1 - (embedding <=> $1::vector) AS similarity
       FROM sp_doc_embeddings
       WHERE 1 - (embedding <=> $1::vector) >= $2
@@ -334,12 +459,14 @@ export async function searchDocs(
 
     const rows = await db.prepare(sql).all(vectorStr, minSimilarity, topK) as any[];
 
-    const results = rows.map((r: any) => ({
+    const results: DocSearchResult[] = rows.map((r: any) => ({
       sectionId: r.sectionId || r.section_id,
       sectionTitle: r.sectionTitle || r.section_title,
       chunkIndex: r.chunkIndex || r.chunk_index || 0,
       textContent: r.textContent || r.text_content,
       similarity: Math.round((r.similarity || 0) * 10000) / 10000,
+      sourceType: r.source_type || 'doc_section',
+      filePath: r.file_path || undefined,
     }));
 
     // 如果向量搜索结果不足，用关键词搜索补充
@@ -392,7 +519,7 @@ async function keywordSearch(query: string, limit: number = 5): Promise<DocSearc
   const params = keywords.map(k => `%${k}%`);
 
   const sql = `
-    SELECT section_id, section_title, chunk_index, text_content, 0.5 AS similarity
+    SELECT section_id, section_title, chunk_index, text_content, source_type, file_path, 0.5 AS similarity
     FROM sp_doc_embeddings
     WHERE ${conditions.join(' OR ')}
     ORDER BY section_id, chunk_index
@@ -402,26 +529,41 @@ async function keywordSearch(query: string, limit: number = 5): Promise<DocSearc
   params.push(String(limit));
   const rows = await db.prepare(sql).all(...params) as any[];
 
-  return rows.map((r: any) => ({
+  const results: DocSearchResult[] = rows.map((r: any) => ({
     sectionId: r.sectionId || r.section_id,
     sectionTitle: r.sectionTitle || r.section_title,
     chunkIndex: r.chunkIndex || r.chunk_index || 0,
     textContent: r.textContent || r.text_content,
     similarity: 0.5,
+    sourceType: r.source_type || 'doc_section',
+    filePath: r.file_path || undefined,
   }));
+  return results;
 }
 
 export async function getDocIndexStats(): Promise<{
   sectionCount: number;
   chunkCount: number;
   lastIndexed: string | null;
+  sourceBreakdown?: Record<string, number>;
 }> {
   const row = await db.prepare(
     'SELECT COUNT(DISTINCT section_id) as sc, COUNT(*) as cc, MAX(created_at) as li FROM sp_doc_embeddings'
   ).get() as any;
+
+  const breakdownRows = await db.prepare(
+    'SELECT source_type, COUNT(DISTINCT section_id) as cnt FROM sp_doc_embeddings GROUP BY source_type'
+  ).all() as any[];
+
+  const sourceBreakdown: Record<string, number> = {};
+  for (const r of breakdownRows) {
+    if (r.source_type) sourceBreakdown[r.source_type] = Number(r.cnt);
+  }
+
   return {
     sectionCount: row?.sc || 0,
     chunkCount: row?.cc || 0,
     lastIndexed: row?.li || null,
+    sourceBreakdown,
   };
 }

@@ -4,9 +4,10 @@ import { ApiResponse } from '../types';
 
 export async function indexDocs(req: Request, res: Response) {
   try {
+    const { sourceTypes } = req.body;
     const result = await docIndexService.indexAllDocs((msg) => {
       console.log(`[DocController] ${msg}`);
-    });
+    }, sourceTypes);
 
     return res.json({
       success: true,

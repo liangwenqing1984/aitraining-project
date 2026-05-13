@@ -11,6 +11,7 @@ export interface DocSource {
   sectionId: string
   sectionTitle: string
   similarity: number
+  sourceType?: string
 }
 
 export interface ChatMessage {
@@ -31,6 +32,7 @@ export interface DocIndexStatus {
   sectionCount: number
   chunkCount: number
   lastIndexed: string | null
+  sourceBreakdown?: Record<string, number>
 }
 
 export function sendMessage(message: string, sessionId?: number) {
@@ -49,8 +51,8 @@ export function deleteSession(sessionId: number) {
   return api.delete(`/chat/sessions/${sessionId}`) as Promise<{ success: boolean; error?: string }>
 }
 
-export function triggerDocIndex() {
-  return api.post('/docs/index') as Promise<{ success: boolean; data: { total: number; indexed: number; skipped: number; errors: number }; error?: string }>
+export function triggerDocIndex(sourceTypes?: string[]) {
+  return api.post('/docs/index', { sourceTypes }) as Promise<{ success: boolean; data: { total: number; indexed: number; skipped: number; errors: number }; error?: string }>
 }
 
 export function getDocIndexStatus() {

@@ -350,6 +350,18 @@ async function initDatabase() {
           UNIQUE(section_id, chunk_index)
         )
       `);
+
+      // 迁移：添加 source_type 和 file_path 列
+      try {
+        await client.query(`ALTER TABLE sp_doc_embeddings ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) DEFAULT 'doc_section'`);
+      } catch (e: any) {
+        if (e.code !== '42701') console.warn('[Database] source_type migration:', e.message);
+      }
+      try {
+        await client.query(`ALTER TABLE sp_doc_embeddings ADD COLUMN IF NOT EXISTS file_path VARCHAR(1000)`);
+      } catch (e: any) {
+        if (e.code !== '42701') console.warn('[Database] file_path migration:', e.message);
+      }
     }
 
     // 聊天会话表
@@ -398,6 +410,7 @@ async function initDatabase() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_chat_sessions_updated ON sp_chat_sessions(updated_at DESC)');
     if (pgvectorAvailable) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_doc_embeddings_section ON sp_doc_embeddings(section_id)');
+      await client.query('CREATE INDEX IF NOT EXISTS idx_doc_embeddings_source_type ON sp_doc_embeddings(source_type)');
     }
     if (pgvectorAvailable) {
       await client.query('CREATE INDEX IF NOT EXISTS idx_job_embeddings_task ON sp_job_embeddings(task_id)');

@@ -23,22 +23,32 @@ export interface ChatResponse {
   message: ChatMessage;
 }
 
-const RAG_SYSTEM_PROMPT = `你是AI培训系统的智能助手，专门回答关于本系统的使用问题。
+const RAG_SYSTEM_PROMPT = `你是AI培训系统的智能助手，专门回答关于本系统的各类问题。
+
+## 知识范围
+你可以根据以下类型的内容回答用户问题：
+- 帮助文档：系统功能说明、API参考、使用指南
+- 用户手册：系统安装部署、配置指南、常见问题
+- 诊断文档：历史问题诊断、根因分析、修复方案
+- 设计文档：项目需求、技术架构、功能设计、测试用例
+- 后端源代码：TypeScript实现细节（服务层/控制器/路由）
+- 前端源代码：Vue组件逻辑、API封装、状态管理
 
 ## 你的职责
-1. 仅根据提供的帮助文档内容回答问题，不要编造不存在的信息
-2. 如果文档中没有相关信息，诚实告知用户"文档中暂无相关内容"，不要猜测
-3. 回答要简洁清晰，适合非技术用户阅读
-4. 当涉及API端点、配置参数等细节时，给出准确信息
-5. 使用中文回答
+1. 优先根据提供的参考内容回答问题
+2. 如果多种来源都有相关信息，综合回答并注明来源类型
+3. 如果所有参考内容中都没有相关信息，诚实告知用户"文档和代码中暂无相关内容"，不要猜测或编造
+4. 回答要简洁清晰，适合技术人员阅读
+5. 当涉及API端点、配置参数、代码实现等细节时，给出准确信息
+6. 使用中文回答
 
-## 帮助文档内容
+## 参考内容
 {context}
 
 ## 用户问题
 {question}
 
-请根据以上文档内容回答用户问题。如果文档内容不足以回答问题，请说明。`;
+请根据以上参考内容回答用户问题。如果内容不足以回答问题，请说明。`;
 
 // 内存级关键词兜底匹配（不依赖 pgvector，确保总能找到文档）
 function fallbackSearch(query: string, topK: number = 5): DocSearchResult[] {
@@ -80,6 +90,8 @@ function fallbackSearch(query: string, topK: number = 5): DocSearchResult[] {
     chunkIndex: 0,
     textContent: s.section.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000),
     similarity: Math.min(s.score / 20, 0.99),
+    sourceType: 'doc_section',
+    filePath: undefined,
   }));
 }
 
@@ -111,9 +123,21 @@ export async function sendMessage(
   // 限制最多 6 个章节
   docResults = docResults.slice(0, 6);
 
-  // 3. 构建上下文
+  // 3. 构建上下文（带来源类型标签）
+  const SOURCE_LABELS: Record<string, string> = {
+    doc_section: '帮助文档',
+    user_doc: '用户手册',
+    diagnostic: '诊断文档',
+    design_doc: '设计文档',
+    backend_source: '后端源代码',
+    frontend_source: '前端源代码',
+  };
   const context = docResults.length > 0
-    ? docResults.map((d, i) => `### ${d.sectionTitle}\n${d.textContent}`).join('\n\n')
+    ? docResults.map((d, i) => {
+        const label = SOURCE_LABELS[d.sourceType] || d.sourceType;
+        const prefix = label ? `[${label}] ` : '';
+        return `### ${prefix}${d.sectionTitle}\n${d.textContent}`;
+      }).join('\n\n')
     : '暂无相关文档内容';
 
   // 3. 构建 prompt
@@ -171,6 +195,8 @@ export async function sendMessage(
         sectionId: d.sectionId,
         sectionTitle: d.sectionTitle,
         similarity: d.similarity,
+        sourceType: d.sourceType,
+        filePath: d.filePath,
       })))
     : null;
 
