@@ -270,7 +270,7 @@ export async function indexAllDocs(
     sourceType: SourceType,
     filePath?: string,
     isHtml?: boolean
-  ): Promise<{ idx: number; sk: number; chunks: number }> {
+  ): Promise<{ idx: number; sk: number; chunks: number; chunkErrs: number }> {
     const plainText = isHtml ? stripHtml(rawText) : rawText;
 
     const existing = await db.prepare(
@@ -279,7 +279,7 @@ export async function indexAllDocs(
 
     if (existing?.cnt > 0) {
       emit(`跳过已索引: ${title} (已有 ${existing.cnt} 个片段)`);
-      return { idx: 0, sk: 1, chunks: 0 };
+      return { idx: 0, sk: 1, chunks: 0, chunkErrs: 0 };
     }
 
     // 根据类型选择分块策略
@@ -292,6 +292,7 @@ export async function indexAllDocs(
       chunks = splitMarkdown(plainText, 3000);
     }
 
+    let errs = 0;
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       if (chunk.length < 50) continue;
@@ -304,7 +305,8 @@ export async function indexAllDocs(
         );
       } catch (embedErr: any) {
         console.error(`[DocIndex] 向量化失败 ${sectionId}[${i}]:`, embedErr.message);
-        throw embedErr;
+        errs++;
+        continue;
       }
 
       if (i < chunks.length - 1) {
@@ -313,7 +315,7 @@ export async function indexAllDocs(
     }
 
     emit(`已索引: ${title} (${chunks.length} 个片段)`);
-    return { idx: 1, sk: 0, chunks: chunks.length };
+    return { idx: 1, sk: 0, chunks: chunks.length, chunkErrs: errs };
   }
 
   // ========== Phase 1: DOC_SECTIONS ==========
@@ -340,10 +342,11 @@ export async function indexAllDocs(
         indexed += result.idx;
         skipped += result.sk;
         totalChunks += result.chunks;
+        errors += result.chunkErrs;
       } catch (e: any) {
         errors++;
         console.error(`[DocIndex] 章节 ${section.sectionId} 索引失败:`, e.message);
-        if (errors > 5) throw new Error('向量化错误过多（>5），已中止');
+        if (errors > 15) throw new Error('向量化错误过多（>15），已中止');
       }
     }
   }
@@ -370,10 +373,11 @@ export async function indexAllDocs(
         indexed += result.idx;
         skipped += result.sk;
         totalChunks += result.chunks;
+        errors += result.chunkErrs;
       } catch (e: any) {
         errors++;
         console.error(`[DocIndex] 文件 ${file.filePath} 索引失败:`, e.message);
-        if (errors > 10) throw new Error('文件索引错误过多（>10），已中止');
+        if (errors > 50) throw new Error('文件索引错误过多（>50），已中止');
       }
     }
   }
