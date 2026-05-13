@@ -24,7 +24,7 @@
               <el-option
                 v-for="t in tasks"
                 :key="t.id"
-                :label="`${t.name} (${t.source}, ${t.recordCount}条)`"
+                :label="`${t.name} (${t.source}, ${t.recordCount || 0}条, ${t.status})`"
                 :value="t.id"
               />
             </el-select>
@@ -261,8 +261,8 @@ const previewSamples = ref<any[]>([])
 async function loadTasks() {
   try {
     const api = (await import('@/api/index')).default
-    const res = await api.get('/tasks')
-    tasks.value = (res?.data?.list || res?.data || []).filter((t: any) => t.status === 'completed')
+    const res = await api.get('/tasks', { params: { pageSize: 200 } })
+    tasks.value = res?.data?.list || res?.data || []
   } catch {}
 }
 
