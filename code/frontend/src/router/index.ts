@@ -179,6 +179,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '菜单管理', parent: '系统管理' }
       },
       {
+        path: 'system/enrichment',
+        name: 'SystemEnrichment',
+        component: () => import('@/views/system/EnrichmentData.vue'),
+        meta: { title: '增强数据管理', parent: '系统管理' }
+      },
+      {
+        path: 'system/vectors',
+        name: 'SystemVectors',
+        component: () => import('@/views/system/VectorData.vue'),
+        meta: { title: '文本向量管理', parent: '系统管理' }
+      },
+      {
         path: 'about',
         name: 'About',
         component: () => import('@/views/About.vue'),

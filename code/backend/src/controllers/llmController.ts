@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ApiResponse, LLMConfig, LLMProvider } from '../types';
+import { db } from '../config/database';
 import { llmService } from '../services/llm';
 import { startEnrichment, getEnrichmentStatus, getEnrichmentResults } from '../services/llm/enrichment';
 import { generateInsights, getInsightsHistory, getInsightsReport } from '../services/llm/insights';
@@ -343,6 +344,120 @@ export async function recommendActionAction(req: Request, res: Response) {
 
     const recommendation = await recommendAction(classification);
     return res.json({ success: true, data: recommendation } as ApiResponse);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+// ==================== 增强数据管理 CRUD ====================
+
+// GET /api/llm/enrich — 分页列表
+export async function listEnrichments(req: Request, res: Response) {
+  try {
+    const { taskId, keyword, page = '1', pageSize = '20' } = req.query;
+    const pg = Math.max(1, parseInt(page as string) || 1);
+    const ps = Math.min(100, Math.max(1, parseInt(pageSize as string) || 20));
+    const offset = (pg - 1) * ps;
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (taskId) {
+      where += ' AND e.task_id = ?';
+      params.push(taskId);
+    }
+    if (keyword) {
+      where += ' AND (j.company_name ILIKE ? OR j.job_name ILIKE ? OR e.job_id ILIKE ?)';
+      params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+    }
+
+    const countSql = `SELECT COUNT(*) as total FROM sp_job_enrichments e LEFT JOIN sp_jobs j ON e.task_id = j.task_id AND e.job_id = j.job_id ${where}`;
+    const countRow = await db.prepare(countSql).get(...params) as any;
+
+    const dataSql = `SELECT e.*, j.company_name, j.job_name, j.work_city, j.salary_range FROM sp_job_enrichments e LEFT JOIN sp_jobs j ON e.task_id = j.task_id AND e.job_id = j.job_id ${where} ORDER BY e.enriched_at DESC LIMIT ? OFFSET ?`;
+    const rows = await db.prepare(dataSql).all(...params, ps, offset) as any[];
+
+    return res.json({
+      success: true,
+      data: { list: rows, total: countRow?.total || 0, page: pg, pageSize: ps },
+    } as ApiResponse);
+  } catch (error: any) {
+    console.error('[LLMController] listEnrichments 失败:', error.message);
+    return res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+// GET /api/llm/enrich/:taskId/:jobId — 获取单条
+export async function getEnrichment(req: Request, res: Response) {
+  try {
+    const { taskId, jobId } = req.params;
+    const row = await db.prepare(
+      'SELECT e.*, j.company_name, j.job_name FROM sp_job_enrichments e LEFT JOIN sp_jobs j ON e.task_id = j.task_id AND e.job_id = j.job_id WHERE e.task_id = ? AND e.job_id = ?'
+    ).get(taskId, jobId) as any;
+
+    if (!row) {
+      return res.status(404).json({ success: false, error: '未找到该增强记录' } as ApiResponse);
+    }
+    return res.json({ success: true, data: row } as ApiResponse);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+// PUT /api/llm/enrich/:taskId/:jobId — 更新单条
+export async function updateEnrichment(req: Request, res: Response) {
+  try {
+    const { taskId, jobId } = req.params;
+    const { salary_monthly_min, salary_monthly_max, salary_annual_estimate,
+      job_category_l1, job_category_l2, company_industry,
+      key_skills, required_skills, preferred_skills,
+      education_normalized, experience_years_min, experience_years_max,
+      benefits, work_mode } = req.body;
+
+    await db.prepare(
+      `UPDATE sp_job_enrichments SET
+        salary_monthly_min = ?, salary_monthly_max = ?, salary_annual_estimate = ?,
+        job_category_l1 = ?, job_category_l2 = ?, company_industry = ?,
+        key_skills = ?, required_skills = ?, preferred_skills = ?,
+        education_normalized = ?, experience_years_min = ?, experience_years_max = ?,
+        benefits = ?, work_mode = ?, enriched_at = CURRENT_TIMESTAMP
+      WHERE task_id = ? AND job_id = ?`
+    ).run(
+      salary_monthly_min ?? null, salary_monthly_max ?? null, salary_annual_estimate ?? null,
+      job_category_l1 ?? null, job_category_l2 ?? null, company_industry ?? null,
+      JSON.stringify(key_skills || []), JSON.stringify(required_skills || []), JSON.stringify(preferred_skills || []),
+      education_normalized ?? null, experience_years_min ?? null, experience_years_max ?? null,
+      JSON.stringify(benefits || []), work_mode ?? null,
+      taskId, jobId
+    );
+
+    return res.json({ success: true, message: '增强记录已更新' } as ApiResponse);
+  } catch (error: any) {
+    console.error('[LLMController] updateEnrichment 失败:', error.message);
+    return res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+// DELETE /api/llm/enrich/:taskId — 删除某任务全部增强记录
+export async function deleteEnrichmentsByTask(req: Request, res: Response) {
+  try {
+    const { taskId } = req.params;
+    const result = await db.prepare('DELETE FROM sp_job_enrichments WHERE task_id = ?').run(taskId);
+    return res.json({ success: true, data: { taskId, deletedCount: result.changes }, message: `已删除 ${result.changes} 条增强记录` } as ApiResponse);
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message } as ApiResponse);
+  }
+}
+
+// DELETE /api/llm/enrich/:taskId/:jobId — 删除单条增强记录
+export async function deleteEnrichment(req: Request, res: Response) {
+  try {
+    const { taskId, jobId } = req.params;
+    const row = await db.prepare('DELETE FROM sp_job_enrichments WHERE task_id = ? AND job_id = ?').run(taskId, jobId);
+    if (row.changes === 0) {
+      return res.status(404).json({ success: false, error: '未找到该增强记录' } as ApiResponse);
+    }
+    return res.json({ success: true, data: { deleted: true }, message: '增强记录已删除' } as ApiResponse);
   } catch (error: any) {
     return res.status(500).json({ success: false, error: error.message } as ApiResponse);
   }

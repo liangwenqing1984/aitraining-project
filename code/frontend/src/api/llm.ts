@@ -200,3 +200,30 @@ export function getRAGStats(taskId?: string): Promise<ApiResponse<any>> {
 export function deleteRAGIndex(taskId: string): Promise<ApiResponse<{ taskId: string; deletedCount: number }>> {
   return api.delete(`/rag/index/${taskId}`)
 }
+
+// 职位向量列表（管理页用）
+export function listJobEmbeddings(params?: { taskId?: string; keyword?: string; page?: number; pageSize?: number }): Promise<ApiResponse<{ list: any[]; total: number }>> {
+  return api.get('/rag/index/records', { params })
+}
+
+// ==================== 增强数据管理 CRUD ====================
+
+export function listEnrichments(params?: { taskId?: string; keyword?: string; page?: number; pageSize?: number }): Promise<ApiResponse<{ list: any[]; total: number; page: number; pageSize: number }>> {
+  return api.get('/llm/enrich', { params })
+}
+
+export function getEnrichment(taskId: string, jobId: string): Promise<ApiResponse<any>> {
+  return api.get(`/llm/enrich/${encodeURIComponent(taskId)}/${encodeURIComponent(jobId)}`)
+}
+
+export function updateEnrichment(taskId: string, jobId: string, data: any): Promise<ApiResponse<any>> {
+  return api.put(`/llm/enrich/${encodeURIComponent(taskId)}/${encodeURIComponent(jobId)}`, data)
+}
+
+export function deleteEnrichmentsByTask(taskId: string): Promise<ApiResponse<{ taskId: string; deletedCount: number }>> {
+  return api.delete(`/llm/enrich/${encodeURIComponent(taskId)}`)
+}
+
+export function deleteEnrichment(taskId: string, jobId: string): Promise<ApiResponse<any>> {
+  return api.delete(`/llm/enrich/${encodeURIComponent(taskId)}/${encodeURIComponent(jobId)}`)
+}

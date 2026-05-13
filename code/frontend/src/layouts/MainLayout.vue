@@ -58,6 +58,8 @@ const defaultMenuItems: MenuItem[] = [
       { path: '/system/roles', title: '角色管理', icon: namedIcons.UserFilled },
       { path: '/system/permissions', title: '权限管理', icon: namedIcons.Lock },
       { path: '/system/menus', title: '菜单管理', icon: namedIcons.Menu },
+      { path: '/system/enrichment', title: '增强数据管理', icon: namedIcons.DataAnalysis },
+      { path: '/system/vectors', title: '文本向量管理', icon: namedIcons.Search },
       { path: '/settings/llm', title: '模型配置', icon: namedIcons.Setting },
     ]
   },

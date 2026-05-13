@@ -18,4 +18,7 @@ router.delete('/index/:taskId', ragController.deleteIndex);
 // 向量化统计
 router.get('/stats', ragController.stats);
 
+// 职位向量列表（管理页用）
+router.get('/index/records', ragController.listJobEmbeddings);
+
 export default router;

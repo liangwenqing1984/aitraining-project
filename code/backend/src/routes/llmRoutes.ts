@@ -22,6 +22,13 @@ router.post('/enrich/:taskId', llmController.enrichTask);
 router.get('/enrich/:taskId/status', llmController.getEnrichStatus);
 router.get('/enrich/:taskId/result', llmController.getEnrichResults);
 
+// 增强数据管理（CRUD）
+router.get('/enrich', llmController.listEnrichments);
+router.get('/enrich/:taskId/:jobId', llmController.getEnrichment);
+router.put('/enrich/:taskId/:jobId', llmController.updateEnrichment);
+router.delete('/enrich/:taskId', llmController.deleteEnrichmentsByTask);
+router.delete('/enrich/:taskId/:jobId', llmController.deleteEnrichment);
+
 // 市场洞察
 router.post('/insights/:fileId', llmController.generateInsight);
 router.get('/insights/:fileId/history', llmController.getInsightHistory);

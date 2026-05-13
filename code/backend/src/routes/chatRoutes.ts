@@ -14,4 +14,9 @@ router.delete('/chat/sessions/:id', chatController.deleteSession);
 router.post('/docs/index', docController.indexDocs);
 router.get('/docs/index/status', docController.getIndexStatus);
 
+// 文档向量管理
+router.get('/docs/index/records', docController.listDocEmbeddings);
+router.delete('/docs/index/source/:sourceType', docController.deleteDocBySourceType);
+router.delete('/docs/index/:sectionId', docController.deleteDocBySection);
+
 export default router;

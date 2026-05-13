@@ -100,6 +100,47 @@ export async function search(req: Request, res: Response) {
 }
 
 /**
+ * GET /api/rag/index/records
+ * 分页列出职位向量索引记录
+ */
+export async function listJobEmbeddings(req: Request, res: Response) {
+  try {
+    const { taskId, keyword, page = '1', pageSize = '20' } = req.query;
+    const pg = Math.max(1, parseInt(page as string) || 1);
+    const ps = Math.min(100, Math.max(1, parseInt(pageSize as string) || 20));
+    const offset = (pg - 1) * ps;
+
+    let where = 'WHERE 1=1';
+    const params: any[] = [];
+
+    if (taskId) {
+      where += ' AND je.task_id = ?';
+      params.push(taskId);
+    }
+    if (keyword) {
+      where += ' AND (je.job_id ILIKE ? OR je.text_content ILIKE ?)';
+      params.push(`%${keyword}%`, `%${keyword}%`);
+    }
+
+    const countRow = await db.prepare(
+      `SELECT COUNT(*) as total FROM sp_job_embeddings je ${where}`
+    ).get(...params) as any;
+
+    const rows = await db.prepare(
+      `SELECT je.id, je.task_id, je.job_id, je.embedding_model, SUBSTRING(je.text_content, 1, 200) as text_preview, je.created_at, je.updated_at FROM sp_job_embeddings je ${where} ORDER BY je.created_at DESC LIMIT ? OFFSET ?`
+    ).all(...params, ps, offset) as any[];
+
+    res.json({
+      success: true,
+      data: { list: rows, total: countRow?.total || 0, page: pg, pageSize: ps },
+    });
+  } catch (e: any) {
+    console.error('[RAG] listJobEmbeddings error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+}
+
+/**
  * DELETE /api/rag/index/:taskId
  * 删除指定任务的向量索引数据
  */

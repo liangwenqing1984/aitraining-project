@@ -58,3 +58,17 @@ export function triggerDocIndex(sourceTypes?: string[]) {
 export function getDocIndexStatus() {
   return api.get('/docs/index/status') as Promise<{ success: boolean; data: DocIndexStatus; error?: string }>
 }
+
+// ==================== 文档向量管理 ====================
+
+export function listDocEmbeddings(params?: { sourceType?: string; keyword?: string; page?: number; pageSize?: number }) {
+  return api.get('/docs/index/records', { params }) as Promise<{ success: boolean; data: { list: any[]; total: number; page: number; pageSize: number }; error?: string }>
+}
+
+export function deleteDocBySourceType(sourceType: string) {
+  return api.delete(`/docs/index/source/${encodeURIComponent(sourceType)}`) as Promise<{ success: boolean; data: { sourceType: string; deletedCount: number }; error?: string }>
+}
+
+export function deleteDocBySection(sectionId: string) {
+  return api.delete(`/docs/index/${encodeURIComponent(sectionId)}`) as Promise<{ success: boolean; data: { sectionId: string; deletedCount: number }; error?: string }>
+}
