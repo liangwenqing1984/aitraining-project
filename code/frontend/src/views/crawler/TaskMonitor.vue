@@ -79,12 +79,39 @@ onMounted(async () => {
   crawlerStore.connectSocket()
   crawlerStore.subscribeTask(taskId)
   await crawlerStore.loadTasks()
-  
+
   // 确保 tasks.value 是数组后再调用 find
-  const task = Array.isArray(crawlerStore.tasks) 
-    ? crawlerStore.tasks.find(t => t.id === taskId) || null 
+  let task = Array.isArray(crawlerStore.tasks)
+    ? crawlerStore.tasks.find(t => t.id === taskId) || null
     : null
-  
+
+  // 如果 loadTasks 加载的是不同分页找不到任务，直接通过 API 获取
+  if (!task) {
+    console.log('[TaskMonitor] loadTasks 分页中未找到，尝试单条查询 taskId:', taskId)
+    try {
+      const taskRes: any = await taskApi.getTask(taskId)
+      if (taskRes.success && taskRes.data) {
+        task = {
+          id: taskId,
+          name: taskRes.data.name || '',
+          source: taskRes.data.source || taskRes.data.platform || '',
+          status: taskRes.data.status || 'unknown',
+          progress: taskRes.data.progress || 0,
+          current: taskRes.data.current || 0,
+          comboProgress: 0,
+          recordCount: taskRes.data.recordCount || taskRes.data.record_count || 0,
+          comboRecords: 0,
+          createdAt: taskRes.data.createdAt || taskRes.data.created_at || '',
+          startTime: taskRes.data.startTime || taskRes.data.start_time || '',
+          endTime: taskRes.data.endTime || taskRes.data.end_time || '',
+          config: taskRes.data.config || null,
+        }
+      }
+    } catch (e: any) {
+      console.error('[TaskMonitor] 单条查询也失败:', e.message)
+    }
+  }
+
   console.log('[TaskMonitor] onMounted - 找到的任务对象:', task)
   console.log('[TaskMonitor] onMounted - taskLogs Map大小:', crawlerStore.taskLogs.size)
   console.log('[TaskMonitor] onMounted - taskLogs Map keys:', Array.from(crawlerStore.taskLogs.keys()))
