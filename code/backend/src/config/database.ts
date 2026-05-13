@@ -431,6 +431,20 @@ async function initDatabase() {
       });
     }
 
+    // 种子菜单项：系统管理下新增"增强数据管理"和"文本向量管理"
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '增强数据管理', '/system/enrichment', 'DataAnalysis', m.id, 5, NULL, false
+      FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '增强数据管理')
+    `);
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '文本向量管理', '/system/vectors', 'Search', m.id, 6, NULL, false
+      FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '文本向量管理')
+    `);
+
     console.log('✅ PostgreSQL数据库表初始化完成');
   } catch (error) {
     console.error('❌ 数据库初始化失败:', error);
