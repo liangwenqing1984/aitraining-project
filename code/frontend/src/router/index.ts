@@ -197,6 +197,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '文本向量管理', parent: '系统管理' }
       },
       {
+        path: 'system/training',
+        name: 'SystemTraining',
+        component: () => import('@/views/system/ModelTraining.vue'),
+        meta: { title: '模型训练', parent: '系统管理' }
+      },
+      {
         path: 'about',
         name: 'About',
         component: () => import('@/views/About.vue'),

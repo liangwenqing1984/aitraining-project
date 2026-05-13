@@ -370,6 +370,29 @@ async function initDatabase() {
       }
     }
 
+    // 训练任务表（语义模型微调）
+    if (pgvectorAvailable) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sp_training_jobs (
+          id SERIAL PRIMARY KEY,
+          name VARCHAR(200) NOT NULL,
+          dataset_config JSONB NOT NULL,
+          base_model VARCHAR(100) NOT NULL,
+          params JSONB NOT NULL,
+          status VARCHAR(20) DEFAULT 'pending',
+          progress REAL DEFAULT 0,
+          metrics JSONB,
+          dataset_path TEXT,
+          model_output_path TEXT,
+          log TEXT,
+          started_at TIMESTAMP,
+          finished_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+
     // 聊天会话表
     await client.query(`
       CREATE TABLE IF NOT EXISTS sp_chat_sessions (
@@ -461,6 +484,12 @@ async function initDatabase() {
       SELECT '文本向量管理', '/system/vectors', 'Search', m.id, 6, NULL, false
       FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
       AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '文本向量管理')
+    `);
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '模型训练', '/system/training', 'TrendCharts', m.id, 7, NULL, false
+      FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '模型训练')
     `);
 
     console.log('✅ PostgreSQL数据库表初始化完成');

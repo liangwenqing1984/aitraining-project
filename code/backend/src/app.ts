@@ -16,6 +16,7 @@ import systemRoutes from './routes/systemRoutes';
 import chatRoutes from './routes/chatRoutes';
 import dashboardRoutes from './routes/dashboardRoutes';
 import regionRoutes from './routes/regionRoutes';
+import trainingRoutes from './routes/trainingRoutes';
 
 // 中间件
 import { errorHandler } from './middleware/errorHandler';
@@ -52,6 +53,7 @@ app.use('/api/llm', llmRoutes);
 app.use('/api/rag', ragRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/region', regionRoutes);
+app.use('/api/training', trainingRoutes);
 app.use('/api', systemRoutes);
 app.use('/api', chatRoutes);
 

@@ -66,6 +66,7 @@ const defaultMenuItems: MenuItem[] = [
       { path: '/system/menus', title: '菜单管理', icon: namedIcons.Menu },
       { path: '/system/enrichment', title: '增强数据管理', icon: namedIcons.DataAnalysis },
       { path: '/system/vectors', title: '文本向量管理', icon: namedIcons.Search },
+      { path: '/system/training', title: '模型训练', icon: namedIcons.TrendCharts },
       { path: '/settings/llm', title: '模型配置', icon: namedIcons.Setting },
     ]
   },
