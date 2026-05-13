@@ -3,6 +3,7 @@ import { ApiResponse, LLMConfig, LLMProvider } from '../types';
 import { llmService } from '../services/llm';
 import { startEnrichment, getEnrichmentStatus, getEnrichmentResults } from '../services/llm/enrichment';
 import { generateInsights, getInsightsHistory, getInsightsReport } from '../services/llm/insights';
+import { io } from '../app';
 import { executeNLQuery, getQueryHistory, deleteQuery } from '../services/llm/query';
 import { classifyPage, suggestSelectors, recommendAction } from '../services/llm/antiCrawl';
 
@@ -163,10 +164,15 @@ export async function enrichTask(req: Request, res: Response) {
       return res.status(400).json({ success: false, error: '请提供 taskId' } as ApiResponse);
     }
 
-    // 异步启动增强，立即返回
-    startEnrichment(taskId).catch((e) => {
-      console.error(`[LLMController] 增强任务 ${taskId} 失败:`, e.message);
-    });
+    // 异步启动增强，立即返回；通过 WebSocket 推送完成/失败事件
+    startEnrichment(taskId)
+      .then(() => {
+        io.emit('enrichment:completed', { taskId, timestamp: Date.now() });
+      })
+      .catch((e) => {
+        console.error(`[LLMController] 增强任务 ${taskId} 失败:`, e.message);
+        io.emit('enrichment:failed', { taskId, error: e.message, timestamp: Date.now() });
+      });
 
     return res.json({
       success: true,

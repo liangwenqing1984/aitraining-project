@@ -237,15 +237,20 @@ async function enrichSingleJob(
   const tokenLimits = [16384, 32768, 49152];
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const result = await llmService.callLLM(
-        ENRICHMENT_SYSTEM,
-        ENRICHMENT_USER(jobData),
-        {
-          taskType: 'enrichment',
-          temperature: attempt === 0 ? 0.1 : 0.3,
-          maxTokens: tokenLimits[attempt],
-        }
-      );
+      const result = await Promise.race([
+        llmService.callLLM(
+          ENRICHMENT_SYSTEM,
+          ENRICHMENT_USER(jobData),
+          {
+            taskType: 'enrichment',
+            temperature: attempt === 0 ? 0.1 : 0.3,
+            maxTokens: tokenLimits[attempt],
+          }
+        ),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('LLM 增强请求超时（120s）')), 120000)
+        ),
+      ]);
 
       const rawContent = result.content || '';
       if (!rawContent.trim()) {

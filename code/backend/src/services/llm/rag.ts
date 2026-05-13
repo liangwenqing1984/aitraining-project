@@ -48,6 +48,19 @@ export async function indexJobEmbeddings(
 
   emit(`找到 ${rows.length} 条增强数据，开始向量化...`);
 
+  // 检查增强数据是否完整：对比 sp_jobs 记录数
+  try {
+    const jobCountRow = await db.prepare(
+      'SELECT COUNT(*) as cnt FROM sp_jobs WHERE task_id = $1'
+    ).get(taskId) as any;
+    const jobCount = jobCountRow?.cnt || 0;
+    if (jobCount > 0 && rows.length < jobCount) {
+      emit(`⚠️ 增强数据不完整：sp_jobs 有 ${jobCount} 条，sp_job_enrichments 仅有 ${rows.length} 条（缺口 ${jobCount - rows.length} 条）。请重新执行 AI 增强后再向量化。`);
+    }
+  } catch (e: any) {
+    console.warn('[RAG] 检查增强完整性失败:', e.message);
+  }
+
   // 查询已索引的 job_id（去重）
   const alreadyIndexed = new Set<string>();
   try {

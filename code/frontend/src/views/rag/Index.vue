@@ -95,6 +95,18 @@
                 请先在任务列表对该任务执行<strong>"AI增强"</strong>，完成后再进行向量化索引。
               </template>
             </el-alert>
+            <el-alert
+              v-if="indexTaskId && enrichmentChecked && hasEnrichment && enrichmentTotal < jobRecordCount"
+              title="增强数据不完整"
+              type="warning"
+              :closable="false"
+              show-icon
+              style="margin-top: 8px"
+            >
+              <template #default>
+                任务共 <strong>{{ jobRecordCount }}</strong> 条记录，仅 <strong>{{ enrichmentTotal }}</strong> 条已完成AI增强（缺口 {{ jobRecordCount - enrichmentTotal }} 条）。建议重新执行<strong>"AI增强"</strong>后再向量化。
+              </template>
+            </el-alert>
             <el-button
               type="warning"
               size="small"
@@ -212,6 +224,7 @@ const taskOptions = ref<{ taskId: string; count: number; label?: string }[]>([])
 const enrichmentChecked = ref(false)
 const hasEnrichment = ref(false)
 const enrichmentTotal = ref(0)
+const jobRecordCount = ref(0)
 const checkingEnrichment = ref(false)
 
 const exampleQueries = [
@@ -313,8 +326,12 @@ async function onIndexTaskChange(taskId: string) {
     enrichmentChecked.value = false
     hasEnrichment.value = false
     enrichmentTotal.value = 0
+    jobRecordCount.value = 0
     return
   }
+  // 从 taskOptions 获取任务记录总数
+  const opt = taskOptions.value.find(t => t.taskId === taskId)
+  jobRecordCount.value = opt?.count || 0
   checkingEnrichment.value = true
   enrichmentChecked.value = false
   try {
@@ -328,6 +345,7 @@ async function onIndexTaskChange(taskId: string) {
     }
   } catch {
     hasEnrichment.value = false
+    enrichmentTotal.value = 0
   }
   enrichmentChecked.value = true
   checkingEnrichment.value = false
