@@ -130,9 +130,11 @@ export async function listJobEmbeddings(req: Request, res: Response) {
       `SELECT je.id, je.task_id, je.job_id, je.job_name, je.company_name, je.job_category_l1, je.job_category_l2, je.work_city, SUBSTRING(je.text_content, 1, 200) as text_preview FROM sp_job_embeddings je ${where} ORDER BY je.job_id DESC LIMIT ? OFFSET ?`
     ).all(...params, ps, offset) as any[];
 
+    console.log(`[RAG] listJobEmbeddings: page=${pg}, pageSize=${ps}, offset=${offset}, found=${rows.length}, total=${countRow?.total}`);
+
     res.json({
       success: true,
-      data: { list: rows, total: countRow?.total || 0, page: pg, pageSize: ps },
+      data: { list: rows, total: Number(countRow?.total) || 0, page: pg, pageSize: ps },
     });
   } catch (e: any) {
     console.error('[RAG] listJobEmbeddings error:', e.message);

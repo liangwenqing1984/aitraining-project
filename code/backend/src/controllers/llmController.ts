@@ -377,9 +377,11 @@ export async function listEnrichments(req: Request, res: Response) {
     const dataSql = `SELECT e.*, j.company_name, j.job_name, j.work_city, j.salary_range FROM sp_job_enrichments e LEFT JOIN sp_jobs j ON e.task_id = j.task_id AND e.job_id = j.job_id ${where} ORDER BY e.enriched_at DESC LIMIT ? OFFSET ?`;
     const rows = await db.prepare(dataSql).all(...params, ps, offset) as any[];
 
+    console.log(`[LLMController] listEnrichments: page=${pg}, pageSize=${ps}, offset=${offset}, found=${rows.length}, total=${countRow?.total}`);
+
     return res.json({
       success: true,
-      data: { list: rows, total: countRow?.total || 0, page: pg, pageSize: ps },
+      data: { list: rows, total: Number(countRow?.total) || 0, page: pg, pageSize: ps },
     } as ApiResponse);
   } catch (error: any) {
     console.error('[LLMController] listEnrichments 失败:', error.message);

@@ -69,9 +69,11 @@ export async function listDocEmbeddings(req: Request, res: Response) {
       `SELECT id, section_id, section_title, source_type, file_path, chunk_index, created_at FROM sp_doc_embeddings ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`
     ).all(...params, ps, offset) as any[];
 
+    console.log(`[DocController] listDocEmbeddings: page=${pg}, pageSize=${ps}, offset=${offset}, found=${rows.length}, total=${countRow?.total}`);
+
     return res.json({
       success: true,
-      data: { list: rows, total: countRow?.total || 0, page: pg, pageSize: ps },
+      data: { list: rows, total: Number(countRow?.total) || 0, page: pg, pageSize: ps },
     } as ApiResponse);
   } catch (error: any) {
     console.error('[DocController] listDocEmbeddings 失败:', error.message);
