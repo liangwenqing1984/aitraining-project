@@ -276,10 +276,13 @@ export const uploadAndMatch = [
       const limit = Math.min(50, Math.max(1, parseInt(req.body.limit) || 20));
       const minSimilarity = Math.min(0.9, Math.max(0.1, parseFloat(req.body.minSimilarity) || 0.3));
 
+      // multer 对中文文件名可能错误解码为 Latin-1，修复回 UTF-8
+      const fileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
       // 解析文件提取文本
       let resumeText: string;
       try {
-        resumeText = await extractResumeText(file.buffer, file.mimetype, file.originalname);
+        resumeText = await extractResumeText(file.buffer, file.mimetype, fileName);
       } catch (parseErr: any) {
         return res.status(400).json({ success: false, error: `文件解析失败: ${parseErr.message}` });
       }
@@ -288,7 +291,7 @@ export const uploadAndMatch = [
         return res.status(400).json({ success: false, error: '解析出的简历文本内容太短（至少10个字符）' });
       }
 
-      console.log(`[RAG] 简历文件解析: ${file.originalname}, 提取文本 ${resumeText.length} 字符`);
+      console.log(`[RAG] 简历文件解析: ${fileName}, 提取文本 ${resumeText.length} 字符`);
 
       // 生成向量（generateEmbedding 内部自动截断超长文本）
       const { embedding } = await generateEmbedding(resumeText);
@@ -314,12 +317,12 @@ export const uploadAndMatch = [
         LIMIT ?
       `).all(vectorStr, vectorStr, minSimilarity, vectorStr, limit) as any[];
 
-      console.log(`[RAG] 简历文件匹配: ${file.originalname}, 匹配到 ${rows.length} 个职位`);
+      console.log(`[RAG] 简历文件匹配: ${fileName}, 匹配到 ${rows.length} 个职位`);
 
       res.json({
         success: true,
         data: {
-          fileName: file.originalname,
+          fileName,
           resumeText: resumeText.substring(0, 500),
           fullTextLength: resumeText.length,
           results: rows.map(r => ({ ...r, similarity: Number(r.similarity) })),
