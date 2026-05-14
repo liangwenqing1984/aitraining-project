@@ -173,7 +173,7 @@
       </el-card>
 
       <!-- 日志对话框 -->
-      <el-dialog v-model="logVisible" title="训练日志" width="800px" destroy-on-close>
+      <el-dialog v-model="logVisible" title="训练日志" width="800px" destroy-on-close @closed="if (logRefreshTimer) { clearInterval(logRefreshTimer); logRefreshTimer = null } logJobId = null">
         <el-input
           v-model="logContent"
           type="textarea"
@@ -251,7 +251,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay } from '@element-plus/icons-vue'
 import {
@@ -348,7 +348,9 @@ const jobPageSize = ref(10)
 const jobTotal = ref(0)
 const logVisible = ref(false)
 const logContent = ref('')
+const logJobId = ref<number | null>(null)
 let pollingTimer: ReturnType<typeof setInterval> | null = null
+let logRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 async function loadTrainingJobs() {
   loadingJobs.value = true
@@ -421,8 +423,20 @@ async function handleStopJob(row: TrainingJob) {
 }
 
 function handleViewLog(row: TrainingJob) {
+  logJobId.value = row.id
   logContent.value = row.log || '暂无日志'
   logVisible.value = true
+  // 打开日志后每秒刷新，保证日志实时显示
+  if (logRefreshTimer) clearInterval(logRefreshTimer)
+  logRefreshTimer = setInterval(async () => {
+    if (!logVisible.value || !logJobId.value) { clearInterval(logRefreshTimer!); logRefreshTimer = null; return }
+    try {
+      const res: any = await getTrainingStatus(logJobId.value)
+      if (res.success && res.data) {
+        logContent.value = res.data.log || '暂无日志'
+      }
+    } catch {}
+  }, 2000)
 }
 
 async function handleDeleteJob(row: TrainingJob) {
@@ -513,6 +527,11 @@ onMounted(() => {
   loadDatasets()
   loadTrainingJobs()
   loadModels()
+})
+
+onUnmounted(() => {
+  if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
+  if (logRefreshTimer) { clearInterval(logRefreshTimer); logRefreshTimer = null }
 })
 </script>
 

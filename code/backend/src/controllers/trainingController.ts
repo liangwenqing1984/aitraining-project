@@ -132,6 +132,7 @@ async function runPythonTraining(
 
   const env = {
     ...process.env,
+    PYTHONIOENCODING: 'utf-8',
     HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com',
     HF_HUB_ENABLE_HF_XET: '0',
   };
@@ -150,10 +151,13 @@ async function runPythonTraining(
   // 清理 tqdm 进度条字符和回车控制符，避免日志乱码
   function sanitizeLog(text: string): string {
     return text
-      .replace(/\r/g, '\n')           // tqdm 回车 → 换行
-      .replace(/[▀-▟]+/g, '') // 删除 Unicode 块字符（▀ ▄ █ ▌ 等）
-      .replace(/\|[\s\d/]*\|\s*\d+\/\d+\s*\[[\d<>,?its ]+\]/g, '') // 删除 tqdm 进度条
-      .replace(/\n{3,}/g, '\n\n');     // 压缩多余空行
+      .replace(/\r/g, '\n')
+      // 删除 tqdm 进度条模式: |fill| N/M [time_info]
+      .replace(/\|[\s\u{2580}-\u{259f}]*\|\s*\d+([.,]\d+)?[kMG]?\/\d+([.,]\d+)?[kMG]?\s*\[[^\]]*\]/gu, '')
+      // 删除残留的 Unicode 块字符 (U+2580-U+259F)
+      .replace(/[\u{2580}-\u{259f}]+/gu, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
   }
 
   // 每隔 2 秒把最新日志刷入 DB，避免只有 PROGRESS 行才更新
