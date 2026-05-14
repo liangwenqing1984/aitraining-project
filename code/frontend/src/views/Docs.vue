@@ -2400,7 +2400,201 @@ npm run dev
   <tr><td>数据构建</td><td>从增强数据提取对比学习训练对（正/负样本）</td></tr>
   <tr><td>模型微调</td><td>Python sentence-transformers 微调 Embedding 模型</td></tr>
   <tr><td>Ollama 部署</td><td>生成 Modelfile → Ollama create 部署领域专用模型</td></tr>
-</table>`
+</table>
+
+<h4>常见问题</h4>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q1：基于基座模型训练的原理是什么？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;"><strong>为什么不从零训练？</strong>从头训练一个 embedding 模型需要海量数据（数十亿条）和巨量算力（数百 GPU/周）。基座模型（如 <code>nomic-embed-text-v1.5</code>）已经用互联网级语料学会了语言的基本理解能力——断句、词义、区分"Java工程师"和"销售经理"。我们要做的只是在它已有的语言能力上微调一小步，让它更理解"什么职位算同类"。</p>
+<p style="margin: 6px 0;"><strong>微调改了什么？</strong>基座模型加载后有 1.37 亿个参数。每个 step 做的事情：输入 anchor + positive → 编码为向量 → 计算 loss → 反向传播 → 权重微调（幅度 = LR ≈ 0.00002）。形象理解：基座模型是读了万卷书的大学生（通用语言能力），微调相当于让他去招聘部门实习几天（426 对职位数据 × 3 轮），出来后就能精准区分职位相似度。</p>
+<p style="margin: 6px 0;"><strong>参数冻结策略：</strong>并非全部参数都在动。底层 Transformer 层冻结不动（保留通用语言能力），仅微调上层和池化层（调整向量投影方向），通常只更新约 10%~30% 的参数。这样既保留通用能力，又学会领域判断。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q2：多少训练数据才够？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;"><strong>500 条可用，但离"好"还有距离。</strong>当前 426 条训练 / 107 条评估是典型小样本微调场景，能学会基本的行业/职能区分（Java vs 销售没问题），但细粒度区分（Java 后端 vs Java 架构）还不够。</p>
+<table style="margin: 10px 0;">
+  <tr style="background:#f5f7fa;"><th style="padding:4px 10px;text-align:left;">规模</th><th style="padding:4px 10px;text-align:left;">训练对数</th><th style="padding:4px 10px;text-align:left;">预期效果</th></tr>
+  <tr><td style="padding:3px 10px;">起步</td><td style="padding:3px 10px;">200~500</td><td style="padding:3px 10px;">基本行业/职能区分 OK</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;">可用</td><td style="padding:3px 10px;">1,000~3,000</td><td style="padding:3px 10px;">二级分类（Java后端 vs 前端）能区分</td></tr>
+  <tr><td style="padding:3px 10px;">良好</td><td style="padding:3px 10px;">5,000~10,000</td><td style="padding:3px 10px;">细粒度职级/方向区分</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;">优秀</td><td style="padding:3px 10px;">10,000+</td><td style="padding:3px 10px;">接近或超过通用基座模型在岗位领域的表现</td></tr>
+</table>
+<p style="margin: 6px 0;"><strong>比数量更重要的因素：</strong></p>
+<ul style="margin: 4px 0;">
+  <li><strong>覆盖度</strong>：数据覆盖了多少行业/职能？500 条全是 IT 岗，模型就只会招 IT</li>
+  <li><strong>正样本质量</strong>：同一岗位不同 JD 写法差异大才是好正样本（两条几乎一样的 JD 学不到东西）</li>
+  <li><strong>类别平衡</strong>：每个职能方向至少 30~50 对，太少的方向会被模型忽略</li>
+</ul>
+<p style="margin: 6px 0;"><strong>务实建议：</strong>当前 500 条先跑通流程验证 pipeline，确认没问题后扩充到 2,000~3,000 条覆盖更多行业和职能，Top-1 Accuracy 有望提升到 80%+。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q3：训练数据长什么样？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">本系统使用 <strong>(anchor, positive) 三元组</strong>进行对比学习训练：</p>
+<ul style="margin: 4px 0;">
+  <li><strong>anchor</strong>（锚点）：一个职位描述，如"Java开发工程师，负责后端系统设计和开发..."</li>
+  <li><strong>positive</strong>（正样本）：与 anchor 同类的职位，如"高级Java工程师，5年以上Spring Boot经验..."</li>
+  <li><strong>negative</strong>（负样本）：与 anchor 不同类的职位，如"销售经理，负责团队管理和客户拓展..."</li>
+</ul>
+<p style="margin: 6px 0;">训练目标：让 anchor 和 positive 的向量越近越好。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q4：Epoch（训练轮数）是什么意思？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">一个 epoch = 把所有训练数据都过一遍。系统默认 <code>epochs=3</code>，即同样的数据反复学习 3 轮。多轮训练让模型逐步优化参数，但太多轮会导致<strong>过拟合</strong>（死记硬背训练集，泛化能力反而下降）。Embedding 微调通常设 3~5 轮。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q5：Batch Size（批大小）是什么意思？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">一次喂给模型多少条数据，默认 <code>batch_size=16</code>。Sentence-Transformers 采用 <strong>in-batch negatives</strong> 策略：同一个 batch 内的其他正样本自动作为负样本使用。所以 batch 越大 → 负样本越丰富 → 对比学习效果越好，但显存消耗也越大。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q6：Step（训练步数）是什么意思？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">一个 step = 处理一个 batch 的数据（前向传播 → 计算损失 → 反向传播更新参数）。举例：426 条训练数据 ÷ batch_size 16 ≈ 27 steps/epoch，3 个 epoch 合计 81 steps。进度条中 <code>27/27</code> 表示当前 epoch 的 27 步已全部完成。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q7：LR（学习率）是什么意思？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;"><strong>LR = Learning Rate（学习率）</strong>，控制模型参数每次更新的步长。可以理解为"蒙眼下山时每一步迈多大"：</p>
+<ul style="margin: 4px 0;">
+  <li><strong>太大</strong>（如 <code>1e-3</code>）：一步跨太远，在最优解附近震荡，难以收敛</li>
+  <li><strong>太小</strong>（如 <code>1e-7</code>）：小碎步挪，训练极慢，容易卡在局部最优</li>
+  <li><strong>合适</strong>：Embedding 微调默认 <code>2e-5</code>（0.00002）是业界经验值，步子够小不会冲坏预训练权重，又能有效学习</li>
+</ul>
+<p style="margin: 6px 0;">系统默认 <code>2e-5</code>，配合 warmup 策略前 10% 步数从 0 线性爬到目标值，一般无需调整。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q8：Warmup Steps（预热步数）是什么？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">训练初期，学习率从 0 线性增长到目标值（如 <code>2e-5</code>），预热步数 = 总步数 × 10%。目的是避免训练初期梯度剧烈震荡，把预训练权重冲坏。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q9：训练完成后如何评估效果？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">评估数据来自训练集划分时预留的 <strong>107 对 eval 数据</strong>（训练 426 对 + 评估 107 对），评估过程不会用于训练，确保指标客观。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">Pearson 相关系数</h5>
+<p style="margin: 6px 0;">把 107 对 eval 数据的 anchor 和 positive 分别编码成向量 → 计算每一对的余弦相似度 → 得到一个 107 个值的序列。理想情况下每对相似度都应该是 1.0（完全匹配），但实际上有高有低。<strong>Pearson 相关系数衡量的是"模型给的相似度排名"和"理想排名（全 1.0）"之间的线性相关程度</strong>，越接近 1.0 说明模型越能稳定判断"这对更像 vs 那对不太像"。</p>
+<p style="margin: 6px 0; color: #909399; font-size: 12px;">注意：如果 eval 集合太小或数据过于相似，可能出现 scipy 的 ConstantInputWarning 警告（常量输入导致相关系数无定义），此时 Pearson 会显示为 0。这是 eval 数据质量问题，不是训练失败。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">Top-1 Accuracy（检索首项准确率）</h5>
+<p style="margin: 6px 0;">模拟真实检索场景：对每个 anchor，把它和 <strong>1 个正确 positive + 10 个随机干扰项</strong> 混在一起编码 → 计算所有候选项与 anchor 的余弦相似度 → 看排名第一的是不是正确的 positive。例如 107 对中 85 对的 positive 排第一，Top-1 Accuracy = 85/107 ≈ 79.4%。</p>
+<p style="margin: 6px 0;"><strong>这个指标直接回答"用户搜一个职位，最相关的排在第一的概率有多大"</strong>，比 Pearson 更直观易懂。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">如何解读</h5>
+<table style="margin: 10px 0;">
+  <tr style="background:#f5f7fa;"><th style="padding:4px 10px;text-align:left;">Pearson</th><th style="padding:4px 10px;text-align:left;">Top-1 Acc</th><th style="padding:4px 10px;text-align:left;">模型质量</th></tr>
+  <tr><td style="padding:3px 10px;">> 0.8</td><td style="padding:3px 10px;">> 85%</td><td style="padding:3px 10px;">优秀，可直接用于生产</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;">0.6~0.8</td><td style="padding:3px 10px;">70%~85%</td><td style="padding:3px 10px;">良好，可用但建议扩充数据提升</td></tr>
+  <tr><td style="padding:3px 10px;">0.4~0.6</td><td style="padding:3px 10px;">55%~70%</td><td style="padding:3px 10px;">一般，需增加训练数据或调整超参</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;">< 0.4</td><td style="padding:3px 10px;">< 55%</td><td style="padding:3px 10px;">较差，检查数据质量或训练是否崩溃</td></tr>
+</table>
+<p style="margin: 6px 0;">简单记：<strong>Pearson 看区分能力稳不稳定，Top-1 看实际搜索准不准</strong>，两个都高才是好模型。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q10：系统用什么损失函数训练？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;"><strong>MultipleNegativesRankingLoss</strong>。核心原理：在 batch 内将其他样本的 positive 当作当前样本的 negative，无需显式标注负样本。配合 in-batch negatives 策略，batch 越大效果越好。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q11：训练完成的模型文件存放在哪里？什么格式？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">模型文件存放在 <code>code/backend/data/models/model_{任务ID}/</code> 目录，典型结构如下：</p>
+<pre style="margin: 8px 0; padding: 10px; background: #2d2d2d; color: #e6e6e6; border-radius: 4px; font-size: 12px; line-height: 1.6;">
+data/models/model_3/
+├── config.json              ← 模型架构配置
+├── model.safetensors        ← 微调后的权重（核心文件）
+├── tokenizer.json           ← 分词器
+├── special_tokens_map.json
+├── sentence_bert_config.json
+├── modules.json
+├── 1_Pooling/               ← 池化层配置
+├── Modelfile                ← Ollama 部署描述文件
+└── metrics.json             ← 评估指标
+</pre>
+<table style="margin: 10px 0;">
+  <tr style="background:#f5f7fa;"><th style="padding:4px 10px;text-align:left;">文件</th><th style="padding:4px 10px;text-align:left;">格式</th><th style="padding:4px 10px;text-align:left;">说明</th></tr>
+  <tr><td style="padding:3px 10px;"><code>model.safetensors</code></td><td style="padding:3px 10px;">safetensors</td><td style="padding:3px 10px;">微调后的 1.37 亿参数权重，比 .bin 格式更安全</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;"><code>config.json</code></td><td style="padding:3px 10px;">JSON</td><td style="padding:3px 10px;">模型架构配置，记录向量维度等信息</td></tr>
+  <tr><td style="padding:3px 10px;"><code>Modelfile</code></td><td style="padding:3px 10px;">纯文本</td><td style="padding:3px 10px;">Ollama 部署描述文件，指向基座模型并标注微调来源</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;"><code>metrics.json</code></td><td style="padding:3px 10px;">JSON</td><td style="padding:3px 10px;">评估结果，含 Pearson、Top-1 Accuracy、训练对数等</td></tr>
+</table>
+<p style="margin: 6px 0;">部署时系统读取 Modelfile 调用 <code>ollama create</code>，将模型注册到 Ollama 供语义搜索使用。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q12：训练程序在哪？如何启动的？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">Python 训练脚本</h5>
+<p style="margin: 6px 0;">位置：<code>code/backend/scripts/train_embedding.py</code>，约 230 行。</p>
+<p style="margin: 6px 0;">核心流程：<strong>加载数据 → 划分训练/评估集 → 下载基座模型 → SentenceTransformer 微调 → 评估 → 保存</strong>。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">Node.js 启动器</h5>
+<p style="margin: 6px 0;">位置：<code>code/backend/src/controllers/trainingController.ts</code> 的 <code>runPythonTraining()</code> 函数。</p>
+<p style="margin: 6px 0;">前端点击"开始训练" → <code>POST /api/training/start</code> → <code>startTraining()</code> 插入数据库记录 → 立即返回响应 → <strong>后台异步</strong>用 <code>spawn()</code> 启动 Python 子进程：</p>
+<pre style="margin: 8px 0; padding: 10px; background: #2d2d2d; color: #e6e6e6; border-radius: 4px; font-size: 12px; line-height: 1.6;">
+spawn('python', [
+  'train_embedding.py',
+  '--dataset', datasetPath,
+  '--base-model', baseModel,
+  '--output', modelOutputDir,
+  '--epochs', '3',
+  '--batch-size', '16',
+  '--lr', '2e-5',
+], {
+  env: {
+    PYTHONUNBUFFERED: '1',       ← 强制无缓冲，日志实时输出
+    PYTHONIOENCODING: 'utf-8',   ← 避免 Windows GBK 乱码
+    HF_ENDPOINT: 'https://hf-mirror.com', ← 国内镜像
+    HF_HUB_ENABLE_HF_XET: '0',   ← 禁用 XetHub
+  }
+})
+</pre>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">完整链路</h5>
+<pre style="margin: 8px 0; padding: 10px; background: #2d2d2d; color: #e6e6e6; border-radius: 4px; font-size: 12px; line-height: 1.6;">
+前端「开始训练」
+  → POST /api/training/start
+    → DB INSERT sp_training_jobs (status='running')
+    → res.json({ jobId }) 立即返回
+    → spawn('python', ['train_embedding.py', ...])
+      → Python 输出 PROGRESS:xx 和日志
+        → Node stdout.on('data') 捕获
+          → sanitizeLog() 清理 tqdm 乱码
+            → 每 2 秒 UPDATE DB (progress, log)
+              → 前端 GET /api/training/status/:id 轮询展示
+                → Python 退出
+                  → Node 写最终状态 (completed/failed)
+                    → 模型文件保存到 data/models/model_{id}/
+</pre>
+</div>`
   },
   'feat-dashboard': {
     title: '数据看板与大屏',

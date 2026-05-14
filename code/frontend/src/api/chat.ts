@@ -36,7 +36,7 @@ export interface DocIndexStatus {
 }
 
 export function sendMessage(message: string, sessionId?: number) {
-  return api.post('/chat/send', { message, sessionId }) as Promise<{ success: boolean; data: SendMessageResponse; error?: string }>
+  return api.post('/chat/send', { message, sessionId }, { timeout: 120000 }) as Promise<{ success: boolean; data: SendMessageResponse; error?: string }>
 }
 
 export function listSessions() {

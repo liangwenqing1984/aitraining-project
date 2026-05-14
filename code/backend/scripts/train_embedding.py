@@ -171,7 +171,7 @@ def main():
         evaluation_steps=0,  # 由 EvaluatorCallback 负责评估，避免 Trainer 内置 eval 需要 eval_dataset
         output_path=args.output,
         optimizer_params={"lr": args.lr},
-        show_progress_bar=False,
+        show_progress_bar=True,
     )
 
     print("PROGRESS:85")
@@ -179,9 +179,22 @@ def main():
     # Evaluate
     metrics = {}
     if evaluator is not None:
-        eval_result = evaluator(model, output_path=args.output)
-        metrics["eval_pearson"] = float(eval_result) if eval_result is not None else 0.0
-        print(f"Eval Pearson correlation: {metrics['eval_pearson']:.4f}")
+        try:
+            eval_result = evaluator(model, output_path=args.output)
+            # sentence-transformers 3.x 返回 dict，2.x 返回 float
+            if isinstance(eval_result, dict):
+                # 取 pearson_cosine 或 job-eval_pearson_cosine，回退到第一个可用值
+                pearson_key = next((k for k in eval_result if 'pearson' in k.lower()), None)
+                metrics["eval_pearson"] = float(eval_result[pearson_key]) if pearson_key else 0.0
+                # 同时保存完整评估结果
+                metrics["eval_details"] = {k: float(v) if v is not None else 0.0 for k, v in eval_result.items()}
+                print(f"Eval results: {metrics['eval_details']}")
+            else:
+                metrics["eval_pearson"] = float(eval_result) if eval_result is not None else 0.0
+                print(f"Eval Pearson correlation: {metrics['eval_pearson']:.4f}")
+        except Exception as e:
+            print(f"WARNING: Evaluation failed ({e}), eval set may be too small or embeddings collapsed", file=sys.stderr)
+            metrics["eval_pearson"] = 0.0
 
     # Also evaluate ranking accuracy on eval set
     if len(eval_pairs) > 0:

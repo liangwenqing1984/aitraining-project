@@ -30,6 +30,7 @@ export interface TrainingModel {
   metrics: any
   hasModelfile: boolean
   createdAt: string
+  sizeMB: number
 }
 
 // 数据集

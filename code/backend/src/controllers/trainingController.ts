@@ -132,6 +132,7 @@ async function runPythonTraining(
 
   const env = {
     ...process.env,
+    PYTHONUNBUFFERED: '1',
     PYTHONIOENCODING: 'utf-8',
     HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com',
     HF_HUB_ENABLE_HF_XET: '0',
@@ -170,27 +171,42 @@ async function runPythonTraining(
     }
   }, 2000);
 
-  child.stdout.on('data', (data: Buffer) => {
-    const text = data.toString();
+  // 统一处理 stdout/stderr 输出，解析进度
+  function processOutput(text: string) {
     log += text;
     logDirty = true;
 
-    // 解析 PROGRESS:xx 行
-    const progressMatch = text.match(/PROGRESS:(\d+(?:\.\d+)?)/);
-    if (progressMatch) {
-      lastProgress = parseFloat(progressMatch[1]);
-      // 进度更新立即刷入 DB
+    // 解析 PROGRESS:xx 行 — 立即刷新
+    const pm = text.match(/PROGRESS:(\d+(?:\.\d+)?)/);
+    if (pm) {
+      lastProgress = parseFloat(pm[1]);
       db.prepare(
         'UPDATE sp_training_jobs SET progress = $1, log = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3'
       ).run(lastProgress, sanitizeLog(log), jobId).catch(() => {});
       logDirty = false;
+      return;
     }
-  });
 
-  child.stderr.on('data', (data: Buffer) => {
-    log += data.toString();
-    logDirty = true;
-  });
+    // 解析 tqdm 训练进度百分比（stderr 输出），映射到当前阶段区间
+    const tm = text.match(/(\d{1,3})\s*%/);
+    if (tm) {
+      const pct = parseInt(tm[1]);
+      if (pct > 0 && pct <= 100) {
+        if (lastProgress >= 5 && lastProgress < 15) {
+          // 模型下载阶段: PROGRESS:5 → PROGRESS:15
+          lastProgress = Math.round(5 + (pct / 100) * 10);
+        } else if (lastProgress >= 20 && lastProgress < 85) {
+          // 训练阶段: PROGRESS:20 → PROGRESS:85
+          lastProgress = Math.round(20 + (pct / 100) * 65);
+        }
+        logDirty = true;
+      }
+    }
+  }
+
+  child.stdout.on('data', (data: Buffer) => processOutput(data.toString()));
+
+  child.stderr.on('data', (data: Buffer) => processOutput(data.toString()));
 
   const exitCode = await new Promise<number>((resolve) => {
     child.on('close', resolve);
@@ -366,6 +382,22 @@ export async function deleteTrainingJob(req: Request, res: Response) {
   }
 }
 
+function getDirSize(dirPath: string): number {
+  let size = 0;
+  try {
+    const files = fs.readdirSync(dirPath, { withFileTypes: true });
+    for (const f of files) {
+      const fp = path.join(dirPath, f.name);
+      if (f.isDirectory()) {
+        size += getDirSize(fp);
+      } else {
+        size += fs.statSync(fp).size;
+      }
+    }
+  } catch {}
+  return size;
+}
+
 /**
  * GET /api/training/models
  * 列出已训练完成的模型 + Ollama 可用模型
@@ -388,12 +420,15 @@ export async function listModels(_req: Request, res: Response) {
         }
         const stat = fs.statSync(modelPath);
         const createdAt = stat.birthtime || stat.mtime;
+        // 计算模型目录大小 (MB)
+        const sizeMB = getDirSize(modelPath);
         models.push({
           name: d.name,
           path: modelPath,
           metrics,
           hasModelfile: fs.existsSync(path.join(modelPath, 'Modelfile')),
           createdAt: createdAt.toISOString().replace('T', ' ').slice(0, 19),
+          sizeMB,
         });
       }
     }

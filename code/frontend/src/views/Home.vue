@@ -10,7 +10,7 @@ const router = useRouter()
 
 const highlights = [
   {
-    icon: Monitor, color: '#409eff', bg: '#ecf5ff',
+    icon: Monitor, color: '#409eff', bg: '#ecf5ff', route: '/crawler',
     title: '多源智能爬取', desc: '支持智联招聘、51job 双源采集，IP代理池自动切换绕过WAF，浏览器级反爬对抗', docSection: 'feat-crawl',
     detail: `<p>基于 <strong>Puppeteer 浏览器自动化</strong> 实现真实浏览器环境下的数据采集，覆盖智联招聘和前程无忧两大主流招聘平台。</p>
 <table>
@@ -22,7 +22,7 @@ const highlights = [
 </table>`
   },
   {
-    icon: Cpu, color: '#67c23a', bg: '#f0f9eb',
+    icon: Cpu, color: '#67c23a', bg: '#f0f9eb', route: '/crawler',
     title: 'AI 数据增强', desc: 'LLM 自动标准化薪资、提取技能标签、分类职位/行业、规范化经验学历要求', docSection: 'feat-enrich',
     detail: `<p>爬取完成后，通过 <strong>LLM 大模型</strong> 逐条对原始职位数据进行 8 个维度的结构化增强处理。</p>
 <table>
@@ -36,7 +36,7 @@ const highlights = [
 <p style="margin-top:8px;color:#909399;font-size:12px">BATCH_SIZE=1 逐条处理 + 500ms 间隔 + 3 次重试 + 3 层 JSON 降级解析 + ON CONFLICT UPSERT 幂等</p>`
   },
   {
-    icon: DataAnalysis, color: '#e6a23c', bg: '#fdf6ec',
+    icon: DataAnalysis, color: '#e6a23c', bg: '#fdf6ec', route: '/analysis',
     title: '多维智能分析', desc: '薪资分布/城市热度/技能图谱/企业性质等 7 维度图表，自动生成洞察报告', docSection: 'feat-insights',
     detail: `<p>基于 AI 增强后的结构化数据，自动聚合多维度统计并调用 LLM 生成<strong>专业市场洞察报告</strong>。</p>
 <table>
@@ -48,7 +48,7 @@ const highlights = [
 </table>`
   },
   {
-    icon: ChatDotRound, color: '#f56c6c', bg: '#fef0f0',
+    icon: ChatDotRound, color: '#f56c6c', bg: '#fef0f0', route: '/query',
     title: '自然语言查询', desc: '用中文提问即可查询数据，AI 自动生成 SQL JOIN 两张表返回全部关键字段', docSection: 'feat-query',
     detail: `<p>用户用 <strong>自然语言中文提问</strong>，系统自动完成 Text-to-SQL 全流程：解析意图 → 生成 SQL → 安全校验 → 执行查询 → LLM 总结。</p>
 <table>
@@ -61,7 +61,7 @@ const highlights = [
 <p style="margin-top:8px;color:#909399;font-size:12px">示例："北京 Java 岗位薪资 20K 以上的有哪些"、"各城市前端岗位平均薪资对比"</p>`
   },
   {
-    icon: Search, color: '#9b59b6', bg: '#f5f0ff',
+    icon: Search, color: '#9b59b6', bg: '#f5f0ff', route: '/rag',
     title: 'RAG 语义搜索', desc: '职位向量化索引 + 语义相似匹配，用描述搜到最匹配的岗位', docSection: 'feat-rag',
     detail: `<p>基于 <strong>pgvector 向量数据库 + Ollama Embedding</strong> 实现职位知识库的语义相似搜索，支持模糊语义匹配。</p>
 <table>
@@ -74,7 +74,7 @@ const highlights = [
 <p style="margin-top:8px;color:#909399;font-size:12px">示例搜索："需要5年以上经验的Java后端开发"、"金融行业本科学历的数据分析师"</p>`
   },
   {
-    icon: Connection, color: '#00b8ba', bg: '#e8fffe',
+    icon: Connection, color: '#00b8ba', bg: '#e8fffe', route: '/crawler',
     title: 'IP 代理池', desc: '集成 jhao104/proxy_pool HTTP 正向代理，失效自动切换，健康检查保障可用率', docSection: 'feat-proxy',
     detail: `<p>集成第三方 <strong>HTTP 正向代理池</strong>，为爬虫提供动态 IP 轮换能力，绕过目标网站的反爬 IP 封锁。</p>
 <table>
@@ -85,6 +85,45 @@ const highlights = [
   <tr><td>⬇️ 降级直连</td><td>代理池耗尽时自动回退直连模式；连续 5 次失败停止返回代理</td></tr>
 </table>
 <p style="margin-top:8px;color:#909399;font-size:12px">智联使用浏览器级代理（--proxy-server），51job 仅 axios 回退路径使用代理</p>`
+  },
+  {
+    icon: TrendCharts, color: '#e040fb', bg: '#fce4ec', route: '/system/training',
+    title: '语义模型训练', desc: '岗位领域 Embedding 微调，对比学习 + in-batch negatives，一键部署到 Ollama', docSection: 'feat-training',
+    detail: `<p>基于 <strong>Sentence-Transformers + HuggingFace</strong> 对 Embedding 模型进行岗位领域微调，提升职位语义匹配精度。</p>
+<table>
+  <tr><td>📊 数据构建</td><td>从 AI 增强数据自动提取 (anchor, positive) 对比学习训练对，支持正样本策略配置</td></tr>
+  <tr><td>🧠 模型微调</td><td>MultipleNegativesRankingLoss + In-batch Negatives，冻结底层、微调上层，更新 10%~30% 参数</td></tr>
+  <tr><td>📈 训练监控</td><td>日志实时刷新 + 进度条追踪 + 中途停止 + tqdm 乱码自动清理</td></tr>
+  <tr><td>🚀 Ollama 部署</td><td>自动生成 Modelfile → ollama create 一键部署，无缝替换默认 Embedding 模型</td></tr>
+  <tr><td>📐 评估验证</td><td>Pearson 相关系数 + Top-1 Accuracy 双指标评估，模拟真实检索场景验证效果</td></tr>
+</table>
+<p style="margin-top:8px;color:#909399;font-size:12px">支持 HuggingFace 国内镜像加速，Python 编码自适应，训练完成后模型文件自动管理</p>`
+  },
+  {
+    icon: MagicStick, color: '#ff7043', bg: '#fff3e0', route: '/aibot',
+    title: 'AI 问答机器人', desc: 'RAG 驱动智能问答，索引项目文档和源代码，支持多文件上传检索', docSection: 'feat-aibot',
+    detail: `<p>基于 <strong>RAG（检索增强生成）</strong> 架构，将项目文档和源代码向量化索引，实现对话式知识检索。</p>
+<table>
+  <tr><td>📚 文档索引</td><td>自动扫描项目 Markdown 文档 + 源代码文件 + 数据库表结构，支持多文件上传追加索引</td></tr>
+  <tr><td>🔍 向量检索</td><td>Ollama Embedding 生成向量 → pgvector 相似度检索 → 召回 Top-K 最相关文档片段</td></tr>
+  <tr><td>💬 多轮对话</td><td>上下文记忆窗口 + 历史会话管理，支持新建/切换/删除对话</td></tr>
+  <tr><td>📎 源引用</td><td>每条回答附来源文档链接，点击直达对应章节</td></tr>
+  <tr><td>⚡ 索引管理</td><td>按章节/按文件/按类型灵活删除索引，支持索引统计和状态监控</td></tr>
+</table>
+<p style="margin-top:8px;color:#909399;font-size:12px">技术栈：Vue 3 + Express + pgvector + Ollama + 自定义文档扫描器</p>`
+  },
+  {
+    icon: Files, color: '#26a69a', bg: '#e0f2f1', route: '/rag/resume',
+    title: '简历职位匹配', desc: '上传简历自动向量化，与职位库语义匹配，按相似度排序推荐最匹配岗位', docSection: 'feat-resume',
+    detail: `<p>基于 <strong>向量语义匹配</strong> 将简历文本与职位库进行余弦相似度检索，快速找到最匹配的岗位。</p>
+<table>
+  <tr><td>📋 多格式上传</td><td>支持 PDF（pdf-parse）、Word（mammoth）、TXT 三种格式，上限 10MB，也支持直接粘贴简历文本</td></tr>
+  <tr><td>🧬 向量化匹配</td><td>简历文本 → LLM Embedding API 生成向量 → pgvector 余弦相似度检索全部职位 → 按相似度降序排列</td></tr>
+  <tr><td>📊 结果展示</td><td>匹配职位卡片列表，显示职位名称、公司、类别、城市及匹配度百分比</td></tr>
+  <tr><td>🔗 职位详情</td><td>点击卡片展开完整 JD，查看薪资范围、技能要求、学历经验等 AI 增强后的结构化字段</td></tr>
+  <tr><td>⚡ 即时反馈</td><td>上传即匹配，无需等待，匹配结果实时返回</td></tr>
+</table>
+<p style="margin-top:8px;color:#909399;font-size:12px">基于 pgvector + Ollama Embedding 的纯语义匹配，后续可扩展 LLM 多维度评分和评估报告</p>`
   },
 ]
 
@@ -123,7 +162,7 @@ function goToDoc(section: string) {
             popper-class="highlight-detail-popover"
           >
             <template #reference>
-              <el-card shadow="hover" class="highlight-card" @click="goTo(item.title.includes('爬取') ? '/crawler' : item.title.includes('分析') ? '/analysis' : item.title.includes('查询') ? '/query' : item.title.includes('语义') ? '/rag' : item.title.includes('增强') ? '/crawler' : '/crawler')">
+              <el-card shadow="hover" class="highlight-card" @click="goTo(item.route)">
                 <div class="highlight-top">
                   <div class="highlight-icon" :style="{ background: item.bg, color: item.color }">
                     <el-icon :size="24"><component :is="item.icon" /></el-icon>

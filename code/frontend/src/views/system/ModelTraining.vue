@@ -124,7 +124,7 @@
         <div class="table-header">训练任务列表</div>
         <el-table :data="trainingJobs" v-loading="loadingJobs" stripe>
           <el-table-column prop="id" label="ID" width="60" />
-          <el-table-column prop="baseModel" label="基座模型" min-width="180" />
+          <el-table-column prop="baseModel" label="基座模型" min-width="160" show-overflow-tooltip />
           <el-table-column label="状态" width="100">
             <template #default="{ row }">
               <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
@@ -153,12 +153,14 @@
               <span v-else>-</span>
             </template>
           </el-table-column>
-          <el-table-column prop="createdAt" label="创建时间" width="160" />
-          <el-table-column label="操作" width="160" fixed="right">
+          <el-table-column prop="createdAt" label="创建时间" width="170" show-overflow-tooltip />
+          <el-table-column label="操作" width="210" fixed="right">
             <template #default="{ row }">
-              <el-button v-if="row.status === 'running'" link type="warning" size="small" @click="handleStopJob(row)">停止</el-button>
-              <el-button link type="primary" size="small" @click="handleViewLog(row)">日志</el-button>
-              <el-button link type="danger" size="small" @click="handleDeleteJob(row)">删除</el-button>
+              <div style="display: flex; align-items: center; gap: 2px; white-space: nowrap;">
+                <el-button v-if="row.status === 'running'" link type="warning" size="small" @click="handleStopJob(row)"><el-icon style="margin-right:2px;"><VideoPause /></el-icon>停止</el-button>
+                <el-button link type="primary" size="small" @click="handleViewLog(row)"><el-icon style="margin-right:2px;"><Tickets /></el-icon>日志</el-button>
+                <el-button link type="danger" size="small" @click="handleDeleteJob(row)"><el-icon style="margin-right:2px;"><Delete /></el-icon>删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -173,7 +175,7 @@
       </el-card>
 
       <!-- 日志对话框 -->
-      <el-dialog v-model="logVisible" title="训练日志" width="800px" destroy-on-close @closed="if (logRefreshTimer) { clearInterval(logRefreshTimer); logRefreshTimer = null } logJobId = null">
+      <el-dialog v-model="logVisible" title="训练日志" width="800px" destroy-on-close @closed="handleLogClosed">
         <el-input
           v-model="logContent"
           type="textarea"
@@ -189,8 +191,8 @@
       <el-card shadow="never">
         <div class="table-header">已训练模型</div>
         <el-table :data="paginatedModels" v-loading="loadingModels" stripe>
-          <el-table-column prop="name" label="模型名称" min-width="180" />
-          <el-table-column prop="path" label="路径" min-width="240" />
+          <el-table-column prop="name" label="模型名称" width="100" />
+          <el-table-column prop="path" label="路径" min-width="280" show-overflow-tooltip />
           <el-table-column label="评估指标" width="200">
             <template #default="{ row }">
               <template v-if="row.metrics?.accuracy_top1">
@@ -202,19 +204,19 @@
               <template v-if="!row.metrics?.accuracy_top1 && !row.metrics?.eval_pearson">-</template>
             </template>
           </el-table-column>
-          <el-table-column prop="createdAt" label="创建时间" width="160" />
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="大小" width="80" align="right">
             <template #default="{ row }">
-              <el-button
-                link
-                type="success"
-                size="small"
-                :disabled="!row.hasModelfile"
-                @click="handleDeploy(row)"
-              >
-                部署
-              </el-button>
-              <el-button link type="danger" size="small" @click="handleDeleteModel(row)">删除</el-button>
+              <span v-if="row.sizeMB != null">{{ row.sizeMB.toFixed(1) }} MB</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="createdAt" label="创建时间" width="170" show-overflow-tooltip />
+          <el-table-column label="操作" width="150" fixed="right">
+            <template #default="{ row }">
+              <div style="display: flex; align-items: center; gap: 2px; white-space: nowrap;">
+                <el-button link type="success" size="small" :disabled="!row.hasModelfile" @click="handleDeploy(row)"><el-icon style="margin-right:2px;"><Upload /></el-icon>部署</el-button>
+                <el-button link type="danger" size="small" @click="handleDeleteModel(row)"><el-icon style="margin-right:2px;"><Delete /></el-icon>删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -251,9 +253,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay } from '@element-plus/icons-vue'
+import { VideoPlay, VideoPause, Tickets, Delete, Upload } from '@element-plus/icons-vue'
 import {
   buildDataset, listDatasets, previewDataset,
   startTraining, listTrainingJobs, deleteTrainingJob, stopTraining, getTrainingStatus, deleteModel,
@@ -426,17 +428,28 @@ function handleViewLog(row: TrainingJob) {
   logJobId.value = row.id
   logContent.value = row.log || '暂无日志'
   logVisible.value = true
-  // 打开日志后每秒刷新，保证日志实时显示
-  if (logRefreshTimer) clearInterval(logRefreshTimer)
-  logRefreshTimer = setInterval(async () => {
-    if (!logVisible.value || !logJobId.value) { clearInterval(logRefreshTimer!); logRefreshTimer = null; return }
-    try {
-      const res: any = await getTrainingStatus(logJobId.value)
-      if (res.success && res.data) {
-        logContent.value = res.data.log || '暂无日志'
-      }
-    } catch {}
-  }, 2000)
+}
+
+// 日志对话框打开时自动刷新，关闭时清理
+watch(logVisible, (visible) => {
+  if (visible) {
+    logRefreshTimer = setInterval(async () => {
+      if (!logJobId.value) return
+      try {
+        const res: any = await getTrainingStatus(logJobId.value)
+        if (res.success && res.data) {
+          logContent.value = res.data.log || '暂无日志'
+        }
+      } catch {}
+    }, 2000)
+  } else {
+    if (logRefreshTimer) { clearInterval(logRefreshTimer); logRefreshTimer = null }
+    logJobId.value = null
+  }
+})
+
+function handleLogClosed() {
+  // watch on logVisible handles cleanup
 }
 
 async function handleDeleteJob(row: TrainingJob) {
