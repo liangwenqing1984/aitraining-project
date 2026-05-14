@@ -30,12 +30,13 @@ from pathlib import Path
 def parse_args():
     parser = argparse.ArgumentParser(description="Fine-tune embedding model on job data")
     parser.add_argument("--dataset", required=True, help="Path to training JSONL file")
-    parser.add_argument("--base-model", required=True, help="HuggingFace model name")
+    parser.add_argument("--base-model", required=True, help="HuggingFace model name or local path")
     parser.add_argument("--output", required=True, help="Output directory for trained model")
     parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--batch-size", type=int, default=16, help="Training batch size")
     parser.add_argument("--lr", type=float, default=2e-5, help="Learning rate")
     parser.add_argument("--eval-split", type=float, default=0.2, help="Evaluation split ratio")
+    parser.add_argument("--local-files-only", action="store_true", help="Use cached files only, no network")
     return parser.parse_args()
 
 
@@ -90,9 +91,37 @@ def main():
         sys.exit(1)
 
     print(f"Loading base model: {args.base_model}")
+    hf_endpoint = os.environ.get("HF_ENDPOINT", "")
+    if hf_endpoint:
+        print(f"HuggingFace endpoint: {hf_endpoint}")
     print("PROGRESS:5")
 
-    model = SentenceTransformer(args.base_model)
+    # Determine model path: local directory or HuggingFace model name
+    model_path = args.base_model
+    if os.path.isdir(args.base_model):
+        print(f"Using local model path: {args.base_model}")
+        model_path = args.base_model
+
+    model_kwargs = {}
+    if args.local_files_only:
+        model_kwargs["local_files_only"] = True
+        print("Running in offline mode (local_files_only=True)")
+
+    try:
+        model = SentenceTransformer(model_path, trust_remote_code=True, **model_kwargs)
+    except OSError as e:
+        error_msg = str(e)
+        if "We couldn't connect to 'https://huggingface.co'" in error_msg:
+            print(f"ERROR: 无法连接 HuggingFace Hub，请设置镜像环境变量:", file=sys.stderr)
+            print(f"  set HF_ENDPOINT=https://hf-mirror.com", file=sys.stderr)
+            print(f"或先手动下载模型到本地后使用 --base-model <本地路径>", file=sys.stderr)
+            sys.exit(1)
+        elif "check your connection" in error_msg.lower():
+            print(f"ERROR: 网络连接失败，请检查网络或设置 HF_ENDPOINT 镜像", file=sys.stderr)
+            print(f"  set HF_ENDPOINT=https://hf-mirror.com", file=sys.stderr)
+            sys.exit(1)
+        raise
+
     print("PROGRESS:15")
 
     # Build train examples

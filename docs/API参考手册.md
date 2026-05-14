@@ -302,6 +302,21 @@ CSS 选择器推荐。
 ### `GET /rag/stats?taskId=xxx`
 向量化统计信息。
 
+### `GET /rag/index/records?taskId=&keyword=&page=&pageSize=`
+职位向量分页列表。
+
+### `POST /rag/resume/upload`
+上传简历文件并自动匹配。
+
+**请求**：`multipart/form-data`，字段 `file`（PDF/DOCX/TXT）
+
+**响应**：`{ resumeText, matches: [{ jobId, jobName, similarity, ... }] }`
+
+### `POST /rag/resume/match`
+用文本直接匹配。
+
+**请求体**：`{ resumeText: string, limit?: number, minSimilarity?: number }`
+
 ---
 
 ## 十一、系统管理 (RBAC)
@@ -347,6 +362,65 @@ CSS 选择器推荐。
 | `POST` | `/menus` | 创建 `{ name, path, icon, parentId, sortOrder, component, hidden }` |
 | `PUT` | `/menus/:id` | 更新 |
 | `DELETE` | `/menus/:id` | 删除（有子菜单时禁止） |
+
+---
+
+## 十二、数据看板 (Dashboard)
+
+### `GET /dashboard/overview`
+获取数据看板概览指标。
+
+### `POST /dashboard/insights`
+生成 AI 全量洞察报告。
+
+### `GET /dashboard/insights/history`
+洞察报告历史列表。
+
+### `GET /dashboard/insights/report/:reportId`
+获取报告详情。
+
+### `GET /dashboard/insights/report/:reportId/pdf`
+下载报告 PDF。
+
+---
+
+## 十三、对话与文档索引 (Chat & Docs)
+
+### 对话 `/chat`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/chat/send` | 发送消息 `{ message, sessionId? }` |
+| `GET` | `/chat/sessions` | 会话列表 |
+| `GET` | `/chat/sessions/:id` | 会话消息 |
+| `DELETE` | `/chat/sessions/:id` | 删除会话 |
+
+### 文档索引 `/docs`
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/docs/index` | 全量索引 `{ sourceTypes? }` |
+| `GET` | `/docs/index/status` | 索引统计 |
+| `GET` | `/docs/index/records` | 分页列表 `?sourceType=&keyword=&page=&pageSize=` |
+| `POST` | `/docs/index/file` | 上传文件索引（multipart，最多 20 个） |
+| `DELETE` | `/docs/index/source/:sourceType` | 按类型批量删除 |
+| `DELETE` | `/docs/index/:sectionId` | 按章节删除 |
+
+---
+
+## 十四、模型训练 (Training)
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `POST` | `/training/dataset/build` | 构建训练数据集 `{ taskIds[], strategy }` |
+| `GET` | `/training/dataset/list` | 数据集列表 |
+| `GET` | `/training/dataset/:id/preview` | 预览样本 |
+| `POST` | `/training/start` | 启动训练 `{ datasetPath, baseModel, params }` |
+| `GET` | `/training/status/:id` | 训练状态/进度/日志 |
+| `GET` | `/training/list` | 训练任务列表 |
+| `DELETE` | `/training/:id` | 删除训练任务 |
+| `GET` | `/training/models` | 模型列表（本地 + Ollama） |
+| `POST` | `/training/models/deploy` | 部署到 Ollama `{ modelPath, modelName }` |
 
 ---
 

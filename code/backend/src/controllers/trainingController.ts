@@ -82,6 +82,12 @@ export async function startTraining(req: Request, res: Response) {
 
     const jobId = insertResult?.id;
 
+    // 预先写入 model_output_path，确保删除任务时能清理对应的模型文件目录
+    const modelOutputDir = path.resolve(__dirname, '../../data/models', `model_${jobId}`);
+    await db.prepare(
+      'UPDATE sp_training_jobs SET model_output_path = $1 WHERE id = $2'
+    ).run(modelOutputDir, jobId);
+
     // 异步启动 Python 训练
     res.json({ success: true, data: { jobId, status: 'running', message: '训练任务已启动' } });
 
@@ -121,7 +127,15 @@ async function runPythonTraining(
 
   console.log(`[Training] 启动 Python: ${pythonCmd} ${args.join(' ')}`);
 
-  const child = spawn(pythonCmd, args, { cwd: path.resolve(__dirname, '../..') });
+  const env = {
+    ...process.env,
+    HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com',
+  };
+
+  const child = spawn(pythonCmd, args, {
+    cwd: path.resolve(__dirname, '../..'),
+    env,
+  });
 
   let log = '';
   let lastProgress = 0;

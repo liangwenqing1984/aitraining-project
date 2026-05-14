@@ -66,6 +66,11 @@ const menuGroups = [
       { id: 'feat-llm-routing', label: 'LLM 任务路由' },
       { id: 'feat-embedding', label: '文本向量化' },
       { id: 'feat-proxy', label: 'IP 代理池' },
+      { id: 'feat-resume', label: '简历筛选匹配' },
+      { id: 'feat-aibot', label: 'AI 问答机器人' },
+      { id: 'feat-doc-upload', label: '文档向量索引' },
+      { id: 'feat-training', label: '语义模型训练' },
+      { id: 'feat-dashboard', label: '数据看板与大屏' },
     ]
   },
   { id: 'tech-stack', label: '技术栈', icon: Setting },
@@ -77,8 +82,10 @@ const menuGroups = [
       { id: 'api-tasks', label: '任务管理 (12)' },
       { id: 'api-files', label: '文件管理 (8)' },
       { id: 'api-analysis', label: '数据分析 (5)' },
-      { id: 'api-dashboard', label: '数据看板 (2)' },
-      { id: 'api-rag', label: 'RAG 知识库 (5)' },
+      { id: 'api-dashboard', label: '数据看板 (5)' },
+      { id: 'api-rag', label: 'RAG 知识库 (7)' },
+      { id: 'api-chat', label: '对话文档 (10)' },
+      { id: 'api-training', label: '模型训练 (9)' },
       { id: 'api-llm', label: 'AI 服务 (18)' },
       { id: 'api-auth', label: '认证 (7)' },
       { id: 'api-system', label: '系统管理 (23)' },
@@ -94,6 +101,9 @@ const menuGroups = [
       { id: 'guide-insights', label: 'AI 深度分析' },
       { id: 'guide-query', label: '自然语言查询' },
       { id: 'guide-config', label: 'AI 配置管理' },
+      { id: 'guide-resume', label: '简历筛选' },
+      { id: 'guide-training', label: '模型训练' },
+      { id: 'guide-aibot', label: 'AI 问答' },
     ]
   },
   { id: 'websocket', label: 'WebSocket 事件', icon: Connection },
@@ -119,10 +129,11 @@ const docs: Record<string, { title: string; content: string }> = {
 
 <h3>版本信息</h3>
 <table>
-  <tr><td><strong>当前版本</strong></td><td>2.1.0</td></tr>
-  <tr><td><strong>分支</strong></td><td>with-dashboard</td></tr>
+  <tr><td><strong>当前版本</strong></td><td>2.2.0</td></tr>
+  <tr><td><strong>分支</strong></td><td>with-model-train</td></tr>
   <tr><td><strong>Node.js</strong></td><td>v24.14.0+</td></tr>
   <tr><td><strong>PostgreSQL</strong></td><td>SeaboxSQL 7300</td></tr>
+  <tr><td><strong>Python</strong></td><td>3.8+ (模型训练)</td></tr>
   <tr><td><strong>ECharts</strong></td><td>6.0 + echarts-wordcloud 2.1</td></tr>
 </table>`
   },
@@ -2351,7 +2362,119 @@ npm run dev
   <li><strong>#25 任务进度为 0 根因</strong>：db 变量未从 client 模块导入导致静默失败（159 条数据但进度始终为 0）</li>
 </ul>
 
-<blockquote>诊断文档仅供开发维护参考，记录了每个问题的完整排查链路和修复代码。</blockquote>`
+<blockquote>诊断文档仅供开发维护参考，记录了每个问题的完整排查链路和修复代码。截至 2026-05-14 共 157 篇。</blockquote>`
+  },
+
+  // ========== 核心功能扩展 ==========
+  'feat-resume': {
+    title: '简历筛选匹配',
+    content: `<table>
+  <tr><th>功能</th><th>说明</th></tr>
+  <tr><td>简历上传</td><td>支持 PDF / DOCX / TXT 格式，自动提取文本</td></tr>
+  <tr><td>智能匹配</td><td>向量相似度计算，匹配最相关的职位 JD</td></tr>
+  <tr><td>匹配详情</td><td>显示相似度分数、薪资范围、技能要求</td></tr>
+</table>`
+  },
+  'feat-aibot': {
+    title: 'AI 问答机器人',
+    content: `<table>
+  <tr><th>功能</th><th>说明</th></tr>
+  <tr><td>RAG 检索</td><td>基于项目文档和源代码的向量知识库</td></tr>
+  <tr><td>多轮对话</td><td>支持会话管理，上下文记忆</td></tr>
+  <tr><td>来源引用</td><td>回答引用具体文档章节或代码文件</td></tr>
+</table>`
+  },
+  'feat-doc-upload': {
+    title: '文档向量索引',
+    content: `<table>
+  <tr><th>功能</th><th>说明</th></tr>
+  <tr><td>文件上传</td><td>支持 .txt/.md/.pdf/.docx，多文件批量上传（最多 20 个）</td></tr>
+  <tr><td>自动索引</td><td>解析文本 → 智能分块 → 向量化 → 存入 sp_doc_embeddings</td></tr>
+  <tr><td>文档管理</td><td>按来源类型筛选、关键字搜索、单条或批量删除</td></tr>
+</table>`
+  },
+  'feat-training': {
+    title: '语义模型训练',
+    content: `<table>
+  <tr><th>功能</th><th>说明</th></tr>
+  <tr><td>数据构建</td><td>从增强数据提取对比学习训练对（正/负样本）</td></tr>
+  <tr><td>模型微调</td><td>Python sentence-transformers 微调 Embedding 模型</td></tr>
+  <tr><td>Ollama 部署</td><td>生成 Modelfile → Ollama create 部署领域专用模型</td></tr>
+</table>`
+  },
+  'feat-dashboard': {
+    title: '数据看板与大屏',
+    content: `<table>
+  <tr><th>功能</th><th>说明</th></tr>
+  <tr><td>数据看板</td><td>核心指标卡片、采集趋势、AI 增强覆盖率</td></tr>
+  <tr><td>AI 全量洞察</td><td>一键生成综合数据洞察报告</td></tr>
+  <tr><td>数据大屏</td><td>科技蓝全屏可视化大屏，适合投屏展示</td></tr>
+</table>`
+  },
+
+  // ========== API 新分组 ==========
+  'api-chat': {
+    title: '对话与文档索引 (10)',
+    content: `<table>
+  <tr><th>路径</th><th>方法</th><th>说明</th></tr>
+  <tr><td>/api/chat/send</td><td>POST</td><td>发送消息</td></tr>
+  <tr><td>/api/chat/sessions</td><td>GET</td><td>会话列表</td></tr>
+  <tr><td>/api/chat/sessions/:id</td><td>GET/DELETE</td><td>会话详情/删除</td></tr>
+  <tr><td>/api/docs/index</td><td>POST</td><td>全量文档索引</td></tr>
+  <tr><td>/api/docs/index/status</td><td>GET</td><td>索引统计</td></tr>
+  <tr><td>/api/docs/index/records</td><td>GET</td><td>分页列表</td></tr>
+  <tr><td>/api/docs/index/file</td><td>POST</td><td>上传文件索引</td></tr>
+  <tr><td>/api/docs/index/source/:type</td><td>DELETE</td><td>按类型删除</td></tr>
+  <tr><td>/api/docs/index/:sectionId</td><td>DELETE</td><td>按章节删除</td></tr>
+</table>`
+  },
+  'api-training': {
+    title: '模型训练 (9)',
+    content: `<table>
+  <tr><th>路径</th><th>方法</th><th>说明</th></tr>
+  <tr><td>/api/training/dataset/build</td><td>POST</td><td>构建训练数据</td></tr>
+  <tr><td>/api/training/dataset/list</td><td>GET</td><td>数据集列表</td></tr>
+  <tr><td>/api/training/dataset/:id/preview</td><td>GET</td><td>预览样本</td></tr>
+  <tr><td>/api/training/start</td><td>POST</td><td>启动训练</td></tr>
+  <tr><td>/api/training/status/:id</td><td>GET</td><td>训练状态</td></tr>
+  <tr><td>/api/training/list</td><td>GET</td><td>训练任务列表</td></tr>
+  <tr><td>/api/training/:id</td><td>DELETE</td><td>删除任务</td></tr>
+  <tr><td>/api/training/models</td><td>GET</td><td>模型列表</td></tr>
+  <tr><td>/api/training/models/deploy</td><td>POST</td><td>部署模型</td></tr>
+</table>`
+  },
+
+  // ========== 使用指南扩展 ==========
+  'guide-resume': {
+    title: '简历筛选',
+    content: `<ol>
+  <li>进入「语义搜索 → 简历筛选」页面</li>
+  <li>上传简历文件（PDF / DOCX / TXT）或直接粘贴简历文本</li>
+  <li>设置匹配数量和相似度阈值（建议 0.6）</li>
+  <li>点击"开始匹配"，查看按相似度排列的职位列表</li>
+  <li>每条匹配结果显示相似度分数、薪资范围、技能要求等</li>
+</ol>`
+  },
+  'guide-training': {
+    title: '模型训练',
+    content: `<ol>
+  <li>进入「系统管理 → 模型训练」</li>
+  <li>训练数据 Tab：选择已完成的任务，设置正样本策略，点击"构建数据集"</li>
+  <li>训练任务 Tab：选择数据集和基座模型，设置 epochs/batch_size/lr，点击"开始训练"</li>
+  <li>训练完成后在模型管理 Tab 点击"部署"，模型将加载到 Ollama</li>
+  <li>注意：部署后向量维度可能变化，需要重新索引职位数据</li>
+</ol>
+<p><strong>前置条件</strong>：需要 Python 3.10+ 环境并安装 sentence-transformers 和 torch。</p>`
+  },
+  'guide-aibot': {
+    title: 'AI 问答',
+    content: `<ol>
+  <li>进入「系统帮助 → 问答机器人」页面</li>
+  <li>输入技术问题（如"如何配置新的 LLM 提供商？"）</li>
+  <li>AI 基于项目文档和源代码进行 RAG 检索回答</li>
+  <li>回答会引用相关的文档章节或代码文件路径</li>
+  <li>支持多轮对话，左侧可切换历史会话</li>
+</ol>`
   },
 
   // ========== 常见问题 ==========
@@ -2378,7 +2501,7 @@ npm run dev
 <h4>Q: DeepSeek 推理模型返回空内容？</h4>
 <p>推理模型（如 deepseek-v4-pro）的 thinking tokens 会占用 <code>max_tokens</code>。数据增强已设置 <code>maxTokens: 8192</code> 并移除 <code>response_format</code> 约束。</p>
 
-<h4>Q: Puppeteer 内存占用高？</h4>
+<h4>Q: Playwright 内存占用高？</h4>
 <p>限制并发任务数 ≤ 3，或使用 <code>node --max-old-space-size=4096</code> 增加内存。系统已配置孤儿标签页清理和资源拦截优化。</p>
 
 <h4>Q: 代理池获取不到可用代理？</h4>
@@ -2392,7 +2515,7 @@ npm run dev
 </ol>
 
 <h4>Q: 数据库表如何迁移？</h4>
-<p>所有表在 <code>config/database.ts</code> 中通过 <code>CREATE TABLE IF NOT EXISTS</code> 自动迁移，后端启动时自动执行。目前共 15 张表。</p>
+<p>所有表在 <code>config/database.ts</code> 中通过 <code>CREATE TABLE IF NOT EXISTS</code> 自动迁移，后端启动时自动执行。目前共 19 张表。</p>
 
 <h4>Q: 什么是 RBAC 系统管理？</h4>
 <p>侧边栏「系统管理」提供用户/角色/权限/菜单的完整 CRUD 管理。支持本地账号密码登录（bcrypt 加密），角色可分配权限和菜单，实现细粒度访问控制。</p>`
