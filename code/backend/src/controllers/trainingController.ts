@@ -140,28 +140,51 @@ async function runPythonTraining(
 
   let log = '';
   let lastProgress = 0;
+  let lastLogUpdate = Date.now();
+  let logDirty = false;
+
+  // 每隔 2 秒把最新日志刷入 DB，避免只有 PROGRESS 行才更新
+  const logTimer = setInterval(() => {
+    if (logDirty) {
+      logDirty = false;
+      db.prepare(
+        'UPDATE sp_training_jobs SET progress = $1, log = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3'
+      ).run(lastProgress, log, jobId).catch(() => {});
+    }
+  }, 2000);
 
   child.stdout.on('data', (data: Buffer) => {
     const text = data.toString();
     log += text;
+    logDirty = true;
 
     // 解析 PROGRESS:xx 行
     const progressMatch = text.match(/PROGRESS:(\d+(?:\.\d+)?)/);
     if (progressMatch) {
       lastProgress = parseFloat(progressMatch[1]);
+      // 进度更新立即刷入 DB
       db.prepare(
         'UPDATE sp_training_jobs SET progress = $1, log = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3'
-      ).run(lastProgress, log, jobId);
+      ).run(lastProgress, log, jobId).catch(() => {});
+      logDirty = false;
     }
   });
 
   child.stderr.on('data', (data: Buffer) => {
     log += data.toString();
+    logDirty = true;
   });
 
   const exitCode = await new Promise<number>((resolve) => {
     child.on('close', resolve);
   });
+
+  clearInterval(logTimer);
+
+  // 最后一次性刷入完整日志
+  await db.prepare(
+    'UPDATE sp_training_jobs SET progress = $1, log = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3'
+  ).run(lastProgress, log, jobId).catch(() => {});
 
   if (exitCode === 0) {
     // 读取 metrics.json

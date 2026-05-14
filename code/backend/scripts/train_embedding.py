@@ -138,6 +138,7 @@ def main():
         evaluator = evaluation.EmbeddingSimilarityEvaluator(
             eval_sentences1,
             eval_sentences2,
+            scores=[1.0] * len(eval_pairs),
             name="job-eval",
         )
     else:
