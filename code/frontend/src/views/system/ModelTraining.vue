@@ -43,7 +43,7 @@
 
       <el-card shadow="never">
         <div class="table-header">已有数据集</div>
-        <el-table :data="datasets" v-loading="loadingDatasets" stripe>
+        <el-table :data="paginatedDatasets" v-loading="loadingDatasets" stripe>
           <el-table-column prop="name" label="文件名" min-width="260" />
           <el-table-column prop="pairCount" label="训练对数" width="100" />
           <el-table-column prop="size" label="大小" width="100" />
@@ -54,6 +54,14 @@
           </el-table-column>
         </el-table>
         <el-empty v-if="!loadingDatasets && datasets.length === 0" description="暂无数据集，请先选择任务构建" :image-size="60" />
+        <el-pagination
+          v-if="datasets.length > datasetPageSize"
+          v-model:current-page="datasetPage"
+          v-model:page-size="datasetPageSize"
+          :total="datasets.length"
+          layout="total, prev, pager, next"
+          style="margin-top: 16px; justify-content: flex-end"
+        />
       </el-card>
 
       <!-- 预览对话框 -->
@@ -179,7 +187,7 @@
     <template v-if="activeTab === 'models'">
       <el-card shadow="never">
         <div class="table-header">已训练模型</div>
-        <el-table :data="trainedModels" v-loading="loadingModels" stripe>
+        <el-table :data="paginatedModels" v-loading="loadingModels" stripe>
           <el-table-column prop="name" label="模型名称" min-width="180" />
           <el-table-column prop="path" label="路径" min-width="240" />
           <el-table-column label="评估指标" width="200">
@@ -210,6 +218,14 @@
           </el-table-column>
         </el-table>
         <el-empty v-if="!loadingModels && trainedModels.length === 0" description="暂无已训练模型" :image-size="60" />
+        <el-pagination
+          v-if="trainedModels.length > modelPageSize"
+          v-model:current-page="modelPage"
+          v-model:page-size="modelPageSize"
+          :total="trainedModels.length"
+          layout="total, prev, pager, next"
+          style="margin-top: 16px; justify-content: flex-end"
+        />
       </el-card>
 
       <!-- 部署确认对话框 -->
@@ -234,7 +250,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay } from '@element-plus/icons-vue'
 import {
@@ -255,6 +271,12 @@ const datasetForm = reactive({
 const buildingDataset = ref(false)
 const loadingDatasets = ref(false)
 const datasets = ref<TrainingDataset[]>([])
+const datasetPage = ref(1)
+const datasetPageSize = ref(10)
+const paginatedDatasets = computed(() => {
+  const start = (datasetPage.value - 1) * datasetPageSize.value
+  return datasets.value.slice(start, start + datasetPageSize.value)
+})
 const previewVisible = ref(false)
 const previewSamples = ref<any[]>([])
 
@@ -412,6 +434,12 @@ function statusLabel(status: string) {
 // ========== Tab 3: 模型管理 ==========
 const loadingModels = ref(false)
 const trainedModels = ref<TrainingModel[]>([])
+const modelPage = ref(1)
+const modelPageSize = ref(10)
+const paginatedModels = computed(() => {
+  const start = (modelPage.value - 1) * modelPageSize.value
+  return trainedModels.value.slice(start, start + modelPageSize.value)
+})
 const deployVisible = ref(false)
 const deploying = ref(false)
 const deployTarget = ref<TrainingModel | null>(null)

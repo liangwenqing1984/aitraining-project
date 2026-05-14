@@ -130,6 +130,7 @@ async function runPythonTraining(
   const env = {
     ...process.env,
     HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com',
+    HF_HUB_ENABLE_HF_XET: '0',
   };
 
   const child = spawn(pythonCmd, args, {
