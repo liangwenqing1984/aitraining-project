@@ -16,6 +16,7 @@ router.get('/docs/index/status', docController.getIndexStatus);
 
 // 文档向量管理
 router.get('/docs/index/records', docController.listDocEmbeddings);
+router.post('/docs/index/file', ...docController.uploadAndIndexFile);
 router.delete('/docs/index/source/:sourceType', docController.deleteDocBySourceType);
 router.delete('/docs/index/:sectionId', docController.deleteDocBySection);
 

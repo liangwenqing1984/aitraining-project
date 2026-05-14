@@ -72,3 +72,11 @@ export function deleteDocBySourceType(sourceType: string) {
 export function deleteDocBySection(sectionId: string) {
   return api.delete(`/docs/index/${encodeURIComponent(sectionId)}`) as Promise<{ success: boolean; data: { sectionId: string; deletedCount: number }; error?: string }>
 }
+
+export function uploadDocFiles(files: File[]) {
+  const formData = new FormData()
+  files.forEach(f => formData.append('files', f))
+  return api.post('/docs/index/file', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  }) as Promise<{ success: boolean; data: { results: Array<{ fileName: string; sectionId: string; chunks: number; errors: number; textLength: number }>; failures: Array<{ fileName: string; error: string }>; totalFiles: number; successCount: number; failCount: number }; error?: string }>
+}

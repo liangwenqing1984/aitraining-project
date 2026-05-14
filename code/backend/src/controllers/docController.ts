@@ -1,7 +1,23 @@
 import { Request, Response } from 'express';
+import multer from 'multer';
 import { db } from '../config/database';
 import * as docIndexService from '../services/docIndexService';
+import { extractResumeText } from '../services/llm/resumeParser';
 import { ApiResponse } from '../types';
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['.txt', '.md', '.pdf', '.docx', '.doc'];
+    const ext = file.originalname.toLowerCase().slice(file.originalname.lastIndexOf('.'));
+    if (allowed.includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`不支持的文件格式: ${ext}，仅支持 ${allowed.join(', ')}`));
+    }
+  },
+});
 
 export async function indexDocs(req: Request, res: Response) {
   try {
@@ -91,6 +107,48 @@ export async function deleteDocBySourceType(req: Request, res: Response) {
     return res.status(500).json({ success: false, error: error.message } as ApiResponse);
   }
 }
+
+// POST /api/docs/index/file — 上传文件并索引（支持多文件）
+export const uploadAndIndexFile = [
+  upload.array('files', 20),
+  async (req: Request, res: Response) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return res.status(400).json({ success: false, error: '请上传至少一个文件' } as ApiResponse);
+      }
+
+      const results: Array<{ fileName: string; sectionId: string; chunks: number; errors: number; textLength: number }> = [];
+      const failures: Array<{ fileName: string; error: string }> = [];
+
+      for (const file of files) {
+        const fileName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+
+        try {
+          const text = await extractResumeText(file.buffer, file.mimetype, fileName);
+          if (!text || text.length < 50) {
+            failures.push({ fileName, error: '文本内容太短（至少50个字符）' });
+            continue;
+          }
+          console.log(`[DocController] 上传文档索引: ${fileName}, ${text.length} 字符`);
+          const result = await docIndexService.indexUploadedFile(text, fileName);
+          results.push({ fileName, ...result, textLength: text.length });
+        } catch (parseErr: any) {
+          failures.push({ fileName, error: parseErr.message });
+        }
+      }
+
+      return res.json({
+        success: true,
+        data: { results, failures, totalFiles: files.length, successCount: results.length, failCount: failures.length },
+        message: `处理完成：${results.length} 成功，${failures.length} 失败`,
+      } as ApiResponse);
+    } catch (e: any) {
+      console.error('[DocController] uploadAndIndexFile error:', e.message);
+      return res.status(500).json({ success: false, error: e.message } as ApiResponse);
+    }
+  },
+] as any;
 
 // DELETE /api/docs/index/:sectionId — 按 section 删除
 export async function deleteDocBySection(req: Request, res: Response) {

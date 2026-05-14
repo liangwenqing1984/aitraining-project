@@ -387,6 +387,75 @@ export async function indexAllDocs(
   return { total: totalDocs + (wantFiles ? 1 : 0), indexed, skipped, errors };
 }
 
+// 从文件名推断 source_type
+function inferSourceType(fileName: string): SourceType {
+  const ext = fileName.toLowerCase().split('.').pop();
+  if (ext === 'md') return SourceType.USER_DOC;
+  if (ext === 'txt') return SourceType.USER_DOC;
+  if (ext === 'pdf') return SourceType.USER_DOC;
+  if (ext === 'docx' || ext === 'doc') return SourceType.USER_DOC;
+  return SourceType.USER_DOC;
+}
+
+// 生成安全的 section_id
+function fileNameToSectionId(fileName: string): string {
+  const baseName = fileName.replace(/\.[^.]+$/, '');
+  return 'upload_' + baseName.replace(/[^a-zA-Z0-9一-鿿_-]/g, '_').substring(0, 80);
+}
+
+export async function indexUploadedFile(
+  text: string,
+  fileName: string,
+): Promise<{ sectionId: string; sourceType: string; chunks: number; errors: number }> {
+  if (!pgvectorAvailable) {
+    throw new Error('pgvector 扩展未安装，无法进行文档向量化');
+  }
+
+  const sectionId = fileNameToSectionId(fileName);
+  const sourceType = inferSourceType(fileName);
+
+  // 删除同 sectionId 的旧数据
+  await db.prepare('DELETE FROM sp_doc_embeddings WHERE section_id = $1').run(sectionId);
+
+  // 分块
+  const isMarkdown = fileName.toLowerCase().endsWith('.md');
+  const chunks = isMarkdown ? splitMarkdown(text, 3000) : splitLongText(text, 3000);
+
+  let errors = 0;
+  const INSERT_SQL = `
+    INSERT INTO sp_doc_embeddings (section_id, section_title, chunk_index, text_content, embedding, source_type, file_path)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    ON CONFLICT (section_id, chunk_index) DO UPDATE SET
+      embedding = EXCLUDED.embedding,
+      text_content = EXCLUDED.text_content,
+      source_type = EXCLUDED.source_type,
+      file_path = EXCLUDED.file_path
+  `;
+
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (chunk.length < 50) continue;
+    try {
+      const { embedding } = await generateEmbedding(chunk);
+      const vectorStr = `[${embedding.join(',')}]`;
+      await db.prepare(INSERT_SQL).run(
+        sectionId, fileName, i, chunk, vectorStr,
+        sourceType, fileName,
+      );
+    } catch (e: any) {
+      console.error(`[DocIndex] 上传文件向量化失败 ${fileName}[${i}]:`, e.message);
+      errors++;
+      if (errors > 10) throw new Error('向量化错误过多（>10），已中止');
+    }
+    if (i < chunks.length - 1) {
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+
+  console.log(`[DocIndex] 上传文件索引完成: ${fileName} → ${sectionId}, ${chunks.length} 片段, ${errors} 错误`);
+  return { sectionId, sourceType, chunks: chunks.length - errors, errors };
+}
+
 export interface DocSearchResult {
   sectionId: string;
   sectionTitle: string;

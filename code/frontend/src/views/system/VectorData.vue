@@ -65,6 +65,42 @@
 
     <!-- 文档向量 Tab -->
     <template v-if="activeTab === 'doc'">
+      <!-- 文件上传索引区 -->
+      <el-card shadow="never" class="search-card">
+        <el-upload
+          ref="docUploadRef"
+          :auto-upload="false"
+          multiple
+          accept=".txt,.md,.pdf,.docx,.doc"
+          :on-change="handleDocFileSelect"
+          :file-list="pendingFiles"
+          drag
+        >
+          <div class="upload-zone">
+            <el-icon :size="28" color="#409eff"><UploadFilled /></el-icon>
+            <div class="upload-text">
+              <span>拖拽或<em>点击上传</em>文档文件</span>
+              <span class="upload-hint">支持 .txt / .md / .pdf / .docx，最大 10MB，可同时选择多个文件</span>
+            </div>
+          </div>
+          <template #tip>
+            <div style="text-align: center; font-size: 12px; color: #909399; margin-top: 4px">
+              单文件最大 10MB，最多同时上传 20 个文件
+            </div>
+          </template>
+        </el-upload>
+        <div v-if="pendingFiles.length > 0" style="margin-top: 12px; text-align: center">
+          <el-button type="primary" :loading="docUploading" @click="handleStartUpload">
+            开始上传（已选 {{ pendingFiles.length }} 个文件）
+          </el-button>
+          <el-button @click="handleClearPending">清空</el-button>
+        </div>
+        <div v-if="docUploading" class="uploading-hint">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>正在解析文件并生成向量...</span>
+        </div>
+      </el-card>
+
       <el-card shadow="never" class="search-card">
         <el-form :inline="true" :model="docSearch">
           <el-form-item label="来源类型">
@@ -140,9 +176,10 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete } from '@element-plus/icons-vue'
+import { Delete, UploadFilled, Loading } from '@element-plus/icons-vue'
+import type { UploadFile, UploadInstance } from 'element-plus'
 import { listJobEmbeddings, deleteRAGIndex } from '@/api/llm'
-import { listDocEmbeddings, deleteDocBySourceType, deleteDocBySection } from '@/api/chat'
+import { listDocEmbeddings, deleteDocBySourceType, deleteDocBySection, uploadDocFiles } from '@/api/chat'
 
 const activeTab = ref('job')
 
@@ -257,6 +294,55 @@ async function handleDeleteDocByType() {
   } catch { /* handled */ }
 }
 
+// ==================== 文档文件上传 ====================
+
+const docUploadRef = ref<UploadInstance>()
+const docUploading = ref(false)
+const pendingFiles = ref<UploadFile[]>([])
+
+function handleDocFileSelect(file: UploadFile) {
+  const raw = file.raw
+  if (!raw) return
+  if (raw.size > 10 * 1024 * 1024) {
+    ElMessage.error(`文件 ${file.name} 超过 10MB 限制，已跳过`)
+    return
+  }
+  pendingFiles.value.push(file)
+}
+
+function handleClearPending() {
+  pendingFiles.value = []
+  docUploadRef.value?.clearFiles()
+}
+
+async function handleStartUpload() {
+  if (pendingFiles.value.length === 0) {
+    ElMessage.warning('请先选择文件')
+    return
+  }
+
+  docUploading.value = true
+  try {
+    const files = pendingFiles.value.map(f => f.raw!).filter(Boolean)
+    const res: any = await uploadDocFiles(files)
+    if (res.success) {
+      const { successCount, failCount } = res.data
+      if (failCount === 0) {
+        ElMessage.success(`全部 ${successCount} 个文件索引完成`)
+      } else {
+        ElMessage.warning(`索引完成：${successCount} 成功，${failCount} 失败`)
+      }
+      pendingFiles.value = []
+      docUploadRef.value?.clearFiles()
+      loadDocRecords()
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '文件上传或索引失败')
+  } finally {
+    docUploading.value = false
+  }
+}
+
 function onTabChange(tab: string) {
   if (tab === 'job' && jobRecords.value.length === 0) loadJobRecords()
   if (tab === 'doc' && docRecords.value.length === 0) loadDocRecords()
@@ -270,4 +356,19 @@ loadJobRecords()
 .system-page { padding: 0; }
 .search-card { margin-bottom: 16px; }
 .action-bar { margin-bottom: 16px; }
+
+.upload-zone {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 16px 12px; gap: 8px;
+}
+.upload-text {
+  display: flex; flex-direction: column; align-items: center;
+  font-size: 13px; color: #606266; gap: 4px;
+}
+.upload-text em { color: #409eff; font-style: normal; cursor: pointer; }
+.upload-hint { font-size: 11px; color: #c0c4cc; }
+.uploading-hint {
+  display: flex; align-items: center; gap: 8px; justify-content: center;
+  padding: 10px 0 0; font-size: 13px; color: #409eff;
+}
 </style>
