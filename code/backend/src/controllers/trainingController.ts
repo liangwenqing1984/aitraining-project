@@ -345,6 +345,39 @@ export async function listModels(_req: Request, res: Response) {
 }
 
 /**
+ * DELETE /api/training/models/:name
+ * 直接删除模型目录（用于清理孤儿模型文件）
+ */
+export async function deleteModel(req: Request, res: Response) {
+  try {
+    const { name } = req.params;
+    if (!name) {
+      return res.status(400).json({ success: false, error: '缺少模型名称' });
+    }
+
+    const modelsDir = path.resolve(__dirname, '../../data/models');
+    const modelPath = path.join(modelsDir, name);
+
+    // 安全检查：确保路径在 modelsDir 内，防止目录穿越
+    if (!modelPath.startsWith(modelsDir)) {
+      return res.status(403).json({ success: false, error: '非法路径' });
+    }
+
+    if (!fs.existsSync(modelPath)) {
+      return res.status(404).json({ success: false, error: '模型目录不存在' });
+    }
+
+    fs.rmSync(modelPath, { recursive: true, force: true });
+    console.log(`[Training] 模型目录已删除: ${modelPath}`);
+
+    res.json({ success: true, data: { deleted: true } });
+  } catch (e: any) {
+    console.error('[Training] deleteModel error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+}
+
+/**
  * POST /api/training/models/deploy
  * 部署模型到 Ollama
  */

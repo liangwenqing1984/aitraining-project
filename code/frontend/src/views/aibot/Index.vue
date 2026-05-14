@@ -246,14 +246,25 @@ onMounted(() => {
           <el-icon :size="14"><Document /></el-icon>
           <span v-if="indexStatus.sectionCount > 0">
             已索引 {{ indexStatus.chunkCount }} 片段
-            <el-tooltip v-if="indexStatus.sourceBreakdown" placement="top">
-              <template #content>
-                <div v-for="(count, type) in indexStatus.sourceBreakdown" :key="type" style="line-height: 1.6">
-                  {{ SOURCE_TYPE_LABELS[type] || type }}：{{ count }} 章节
-                </div>
+            <el-popover
+              v-if="indexStatus.sourceBreakdown && Object.keys(indexStatus.sourceBreakdown).length > 0"
+              placement="top"
+              :width="200"
+              trigger="hover"
+            >
+              <template #reference>
+                <span class="breakdown-hint">（{{ Object.keys(indexStatus.sourceBreakdown).length }} 类源）</span>
               </template>
-              <span class="breakdown-hint">（{{ Object.keys(indexStatus.sourceBreakdown).length }} 类源）</span>
-            </el-tooltip>
+              <div style="font-size: 12px; line-height: 1.8">
+                <div v-for="(count, type) in indexStatus.sourceBreakdown" :key="type">
+                  <el-tag :type="(SOURCE_TYPE_COLORS[type] as any) || 'info'" size="small" style="margin-right: 6px">
+                    {{ SOURCE_TYPE_LABELS[type] || type }}
+                  </el-tag>
+                  {{ count }} 章节
+                </div>
+              </div>
+            </el-popover>
+            <span v-else class="breakdown-hint">（1 类源）</span>
           </span>
           <span v-else class="not-indexed">文档未索引</span>
         </div>

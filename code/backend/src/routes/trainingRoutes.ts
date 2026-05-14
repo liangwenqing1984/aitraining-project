@@ -16,6 +16,7 @@ router.delete('/:id', trainingController.deleteTrainingJob);
 
 // 模型管理
 router.get('/models', trainingController.listModels);
+router.delete('/models/:name', trainingController.deleteModel);
 router.post('/models/deploy', trainingController.deployModel);
 
 export default router;

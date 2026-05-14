@@ -384,6 +384,16 @@ export async function indexAllDocs(
 
   const totalDocs = wantDocs ? DOC_SECTIONS.length : 0;
   emit(`文档索引完成：索引 ${indexed}，跳过 ${skipped}，错误 ${errors}，总片段 ${totalChunks}`);
+
+  // 索引完成后输出源类型分布，便于诊断
+  try {
+    const stats = await getDocIndexStats();
+    const breakdownStr = Object.entries(stats.sourceBreakdown || {})
+      .map(([type, cnt]) => `${type}=${cnt}章节`)
+      .join(', ');
+    emit(`索引后源类型分布: ${breakdownStr || '(空)'}`);
+  } catch {}
+
   return { total: totalDocs + (wantFiles ? 1 : 0), indexed, skipped, errors };
 }
 
@@ -538,8 +548,8 @@ export async function searchDocs(
       chunkIndex: r.chunkIndex || r.chunk_index || 0,
       textContent: r.textContent || r.text_content,
       similarity: Math.round((r.similarity || 0) * 10000) / 10000,
-      sourceType: r.source_type || 'doc_section',
-      filePath: r.file_path || undefined,
+      sourceType: r.sourceType || 'doc_section',
+      filePath: r.filePath || undefined,
     }));
 
     // 如果向量搜索结果不足，用关键词搜索补充
@@ -608,8 +618,8 @@ async function keywordSearch(query: string, limit: number = 5): Promise<DocSearc
     chunkIndex: r.chunkIndex || r.chunk_index || 0,
     textContent: r.textContent || r.text_content,
     similarity: 0.5,
-    sourceType: r.source_type || 'doc_section',
-    filePath: r.file_path || undefined,
+    sourceType: r.sourceType || 'doc_section',
+    filePath: r.filePath || undefined,
   }));
   return results;
 }
@@ -630,7 +640,7 @@ export async function getDocIndexStats(): Promise<{
 
   const sourceBreakdown: Record<string, number> = {};
   for (const r of breakdownRows) {
-    const st = r.source_type || 'doc_section';
+    const st = r.sourceType || 'doc_section';
     sourceBreakdown[st] = (sourceBreakdown[st] || 0) + Number(r.cnt);
   }
 

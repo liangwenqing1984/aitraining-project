@@ -70,3 +70,7 @@ export function listModels(): Promise<ApiResponse<TrainingModel[]>> {
 export function deployModel(data: { modelPath: string; modelName: string }): Promise<ApiResponse<{ modelName: string; message: string }>> {
   return api.post('/training/models/deploy', data)
 }
+
+export function deleteModel(name: string): Promise<ApiResponse<any>> {
+  return api.delete(`/training/models/${encodeURIComponent(name)}`)
+}

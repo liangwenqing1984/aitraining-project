@@ -255,7 +255,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay } from '@element-plus/icons-vue'
 import {
   buildDataset, listDatasets, previewDataset,
-  startTraining, listTrainingJobs, deleteTrainingJob, getTrainingStatus,
+  startTraining, listTrainingJobs, deleteTrainingJob, getTrainingStatus, deleteModel,
   listModels, deployModel,
   type TrainingDataset, type TrainingJob, type TrainingModel,
 } from '@/api/training'
@@ -479,10 +479,17 @@ async function handleConfirmDeploy() {
 
 async function handleDeleteModel(row: TrainingModel) {
   try {
-    await ElMessageBox.confirm(`确定删除模型 ${row.name}？`, '删除确认', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除模型 ${row.name}？此操作不可恢复。`, '删除确认', { type: 'warning' })
   } catch { return }
-  // 模型文件通过训练任务删除来清理
-  ElMessage.info('请通过训练任务列表删除关联任务来清理模型文件')
+  try {
+    const res: any = await deleteModel(row.name)
+    if (res.success) {
+      ElMessage.success(`模型 ${row.name} 已删除`)
+      await loadModels()
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '删除失败')
+  }
 }
 
 onMounted(() => {

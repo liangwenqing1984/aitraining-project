@@ -124,12 +124,16 @@ export function scanFiles(sourceTypes?: SourceType[]): ScannedFile[] {
     ? FILE_SOURCE_CONFIGS.filter(c => sourceTypes.includes(c.type))
     : FILE_SOURCE_CONFIGS;
 
+  console.log(`[DocScanner] 项目根目录: ${projectRoot}`);
+  console.log(`[DocScanner] 待扫描配置: ${configs.map(c => c.label).join(', ') || '(无)'}`);
+
   const results: ScannedFile[] = [];
 
   for (const config of configs) {
     const baseDir = path.join(projectRoot, config.baseDir);
+    console.log(`[DocScanner] 检查目录: ${baseDir}`);
     if (!fs.existsSync(baseDir)) {
-      console.log(`[DocScanner] 目录不存在，跳过: ${config.baseDir}`);
+      console.log(`[DocScanner] 目录不存在，跳过: ${config.baseDir} (绝对路径: ${baseDir})`);
       continue;
     }
 
