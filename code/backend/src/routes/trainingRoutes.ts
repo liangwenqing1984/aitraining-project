@@ -12,6 +12,7 @@ router.get('/dataset/:id/preview', trainingController.previewDatasetHandler);
 router.post('/start', trainingController.startTraining);
 router.get('/status/:id', trainingController.getTrainingStatus);
 router.get('/list', trainingController.listTrainingJobs);
+router.post('/:id/stop', trainingController.stopTraining);
 router.delete('/:id', trainingController.deleteTrainingJob);
 
 // 模型管理

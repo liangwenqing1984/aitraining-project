@@ -96,8 +96,22 @@ def main():
         print(f"HuggingFace endpoint: {hf_endpoint}")
     print("PROGRESS:5")
 
-    # Determine model path: local directory or HuggingFace model name
+    # Pre-download model files (skip ONNX — not needed for training, causes timeout)
+    # SentenceTransformer internally calls snapshot_download which will try ALL files;
+    # we pre-download with ignore_patterns so the cache is complete for the files we need.
     model_path = args.base_model
+    if not os.path.isdir(args.base_model) and not args.local_files_only:
+        try:
+            from huggingface_hub import snapshot_download
+            print("Pre-downloading model (skipping ONNX files)...")
+            model_path = snapshot_download(
+                args.base_model,
+                ignore_patterns=["onnx/*", "*.onnx"],
+            )
+            print(f"Model cached at: {model_path}")
+        except Exception as e:
+            print(f"WARNING: Pre-download failed ({e}), will try direct load...", file=sys.stderr)
+
     if os.path.isdir(args.base_model):
         print(f"Using local model path: {args.base_model}")
         model_path = args.base_model
@@ -154,7 +168,7 @@ def main():
         epochs=args.epochs,
         warmup_steps=warmup_steps,
         evaluator=evaluator,
-        evaluation_steps=max(1, len(train_dataloader) // 2),
+        evaluation_steps=0,  # 由 EvaluatorCallback 负责评估，避免 Trainer 内置 eval 需要 eval_dataset
         output_path=args.output,
         optimizer_params={"lr": args.lr},
         show_progress_bar=False,

@@ -156,6 +156,7 @@
           <el-table-column prop="createdAt" label="创建时间" width="160" />
           <el-table-column label="操作" width="160" fixed="right">
             <template #default="{ row }">
+              <el-button v-if="row.status === 'running'" link type="warning" size="small" @click="handleStopJob(row)">停止</el-button>
               <el-button link type="primary" size="small" @click="handleViewLog(row)">日志</el-button>
               <el-button link type="danger" size="small" @click="handleDeleteJob(row)">删除</el-button>
             </template>
@@ -255,7 +256,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoPlay } from '@element-plus/icons-vue'
 import {
   buildDataset, listDatasets, previewDataset,
-  startTraining, listTrainingJobs, deleteTrainingJob, getTrainingStatus, deleteModel,
+  startTraining, listTrainingJobs, deleteTrainingJob, stopTraining, getTrainingStatus, deleteModel,
   listModels, deployModel,
   type TrainingDataset, type TrainingJob, type TrainingModel,
 } from '@/api/training'
@@ -404,6 +405,21 @@ function stopPolling() {
   if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
 }
 
+async function handleStopJob(row: TrainingJob) {
+  try {
+    await ElMessageBox.confirm(`确定停止训练任务 ${row.name}？`, '停止确认', { type: 'warning' })
+  } catch { return }
+  try {
+    const res: any = await stopTraining(row.id)
+    if (res.success) {
+      ElMessage.success('训练已停止')
+      await loadTrainingJobs()
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '停止失败')
+  }
+}
+
 function handleViewLog(row: TrainingJob) {
   logContent.value = row.log || '暂无日志'
   logVisible.value = true
@@ -423,11 +439,11 @@ async function handleDeleteJob(row: TrainingJob) {
 }
 
 function statusType(status: string) {
-  const map: Record<string, string> = { pending: 'info', running: '', completed: 'success', failed: 'danger' }
+  const map: Record<string, string> = { pending: 'info', running: '', completed: 'success', failed: 'danger', stopped: 'warning' }
   return map[status] || 'info'
 }
 function statusLabel(status: string) {
-  const map: Record<string, string> = { pending: '等待中', running: '训练中', completed: '已完成', failed: '失败' }
+  const map: Record<string, string> = { pending: '等待中', running: '训练中', completed: '已完成', failed: '失败', stopped: '已停止' }
   return map[status] || status
 }
 

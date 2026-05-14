@@ -5,6 +5,9 @@ import { ChildProcess, spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
+// 跟踪运行中的训练进程，支持停止操作
+const runningProcesses = new Map<number, ChildProcess>();
+
 /**
  * POST /api/training/dataset/build
  */
@@ -138,10 +141,20 @@ async function runPythonTraining(
     env,
   });
 
+  runningProcesses.set(jobId, child);
+
   let log = '';
   let lastProgress = 0;
-  let lastLogUpdate = Date.now();
   let logDirty = false;
+
+  // 清理 tqdm 进度条字符和回车控制符，避免日志乱码
+  function sanitizeLog(text: string): string {
+    return text
+      .replace(/\r/g, '\n')           // tqdm 回车 → 换行
+      .replace(/[▀-▟]+/g, '') // 删除 Unicode 块字符（▀ ▄ █ ▌ 等）
+      .replace(/\|[\s\d/]*\|\s*\d+\/\d+\s*\[[\d<>,?its ]+\]/g, '') // 删除 tqdm 进度条
+      .replace(/\n{3,}/g, '\n\n');     // 压缩多余空行
+  }
 
   // 每隔 2 秒把最新日志刷入 DB，避免只有 PROGRESS 行才更新
   const logTimer = setInterval(() => {
@@ -149,7 +162,7 @@ async function runPythonTraining(
       logDirty = false;
       db.prepare(
         'UPDATE sp_training_jobs SET progress = $1, log = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3'
-      ).run(lastProgress, log, jobId).catch(() => {});
+      ).run(lastProgress, sanitizeLog(log), jobId).catch(() => {});
     }
   }, 2000);
 
@@ -165,7 +178,7 @@ async function runPythonTraining(
       // 进度更新立即刷入 DB
       db.prepare(
         'UPDATE sp_training_jobs SET progress = $1, log = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3'
-      ).run(lastProgress, log, jobId).catch(() => {});
+      ).run(lastProgress, sanitizeLog(log), jobId).catch(() => {});
       logDirty = false;
     }
   });
@@ -180,11 +193,12 @@ async function runPythonTraining(
   });
 
   clearInterval(logTimer);
+  runningProcesses.delete(jobId);
 
   // 最后一次性刷入完整日志
   await db.prepare(
     'UPDATE sp_training_jobs SET progress = $1, log = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3'
-  ).run(lastProgress, log, jobId).catch(() => {});
+  ).run(lastProgress, sanitizeLog(log), jobId).catch(() => {});
 
   if (exitCode === 0) {
     // 读取 metrics.json
@@ -281,6 +295,47 @@ export async function listTrainingJobs(req: Request, res: Response) {
 }
 
 /**
+ * POST /api/training/:id/stop
+ */
+export async function stopTraining(req: Request, res: Response) {
+  try {
+    const id = parseInt(req.params.id);
+    if (!id) {
+      return res.status(400).json({ success: false, error: '缺少任务ID' });
+    }
+
+    const child = runningProcesses.get(id);
+    if (!child) {
+      return res.status(404).json({ success: false, error: '该任务未在运行或已结束' });
+    }
+
+    const pid = child.pid;
+    if (pid) {
+      try {
+        if (process.platform === 'win32') {
+          spawn('taskkill', ['/PID', String(pid), '/T', '/F']);
+        } else {
+          process.kill(-pid, 'SIGTERM');
+        }
+      } catch {}
+    }
+
+    child.kill('SIGTERM');
+    runningProcesses.delete(id);
+
+    await db.prepare(
+      'UPDATE sp_training_jobs SET status = $1, finished_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $2'
+    ).run('stopped', id);
+
+    console.log(`[Training] 任务 ${id} 已被用户停止`);
+    res.json({ success: true, data: { message: '训练已停止' } });
+  } catch (e: any) {
+    console.error('[Training] stopTraining error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+}
+
+/**
  * DELETE /api/training/:id
  */
 export async function deleteTrainingJob(req: Request, res: Response) {
@@ -327,12 +382,14 @@ export async function listModels(_req: Request, res: Response) {
         if (fs.existsSync(metricsPath)) {
           try { metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf-8')); } catch {}
         }
+        const stat = fs.statSync(modelPath);
+        const createdAt = stat.birthtime || stat.mtime;
         models.push({
           name: d.name,
           path: modelPath,
           metrics,
           hasModelfile: fs.existsSync(path.join(modelPath, 'Modelfile')),
-          createdAt: fs.statSync(modelPath).ctime,
+          createdAt: createdAt.toISOString().replace('T', ' ').slice(0, 19),
         });
       }
     }

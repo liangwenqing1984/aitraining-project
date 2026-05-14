@@ -13,7 +13,7 @@ export interface TrainingJob {
   datasetConfig: any
   baseModel: string
   params: any
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped'
   progress: number
   metrics: any
   datasetPath: string
@@ -60,6 +60,10 @@ export function listTrainingJobs(params?: { page?: number; pageSize?: number }):
 
 export function deleteTrainingJob(id: number): Promise<ApiResponse<any>> {
   return api.delete(`/training/${id}`)
+}
+
+export function stopTraining(id: number): Promise<ApiResponse<any>> {
+  return api.post(`/training/${id}/stop`)
 }
 
 // 模型管理
