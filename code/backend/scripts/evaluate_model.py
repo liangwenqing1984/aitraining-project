@@ -32,6 +32,7 @@ def parse_args():
 
 
 def load_training_data(dataset_path: str):
+    """加载三元组 (anchor, positive, negative)，用于训练和评估。"""
     pairs = []
     with open(dataset_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -42,8 +43,9 @@ def load_training_data(dataset_path: str):
                 obj = json.loads(line)
                 anchor = obj.get("anchor", "").strip()
                 positive = obj.get("positive", "").strip()
+                negative = obj.get("negative", "").strip()
                 if anchor and positive:
-                    pairs.append((anchor, positive))
+                    pairs.append((anchor, positive, negative if negative else None))
             except json.JSONDecodeError:
                 continue
     return pairs
@@ -143,13 +145,24 @@ def main():
     metrics = {}
 
     # Pearson (cosine similarity) evaluation
+    # 同时使用正样本（score=1.0）和负样本（score=0.0）产生方差，使 Pearson 可计算
     print("Running embedding similarity evaluation...")
-    eval_sentences1 = [p[0] for p in eval_pairs]
-    eval_sentences2 = [p[1] for p in eval_pairs]
+    eval_sentences1 = []   # anchors
+    eval_sentences2 = []   # texts
+    eval_scores = []        # similarity labels
+    for anchor, positive, negative in eval_pairs:
+        eval_sentences1.append(anchor)
+        eval_sentences2.append(positive)
+        eval_scores.append(1.0)
+        if negative:
+            eval_sentences1.append(anchor)
+            eval_sentences2.append(negative)
+            eval_scores.append(0.0)
+
     evaluator = evaluation.EmbeddingSimilarityEvaluator(
         eval_sentences1,
         eval_sentences2,
-        scores=[1.0] * len(eval_pairs),
+        scores=eval_scores,
         name="job-eval",
     )
 
@@ -171,7 +184,7 @@ def main():
     print("Running top-1 accuracy evaluation...")
     correct_top1 = 0
     sample_size = min(100, len(eval_pairs))
-    for anchor, positive in eval_pairs[:sample_size]:
+    for anchor, positive, _ in eval_pairs[:sample_size]:
         all_texts = [positive] + [p[1] for p in random.sample(eval_pairs, min(10, len(eval_pairs)))]
         embeddings = model.encode([anchor] + all_texts)
         anchor_emb = embeddings[0]

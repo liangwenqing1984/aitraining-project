@@ -2624,6 +2624,60 @@ spawn('python', [
 
 <h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">两者关系</h5>
 <p style="margin: 6px 0;"><code>torch</code> 是发动机，<code>sentence-transformers</code> 是装在发动机上的整车。本系统不直接调用 PyTorch API，而是通过 sentence-transformers 间接使用它——<code>train_embedding.py</code> 中所有训练逻辑都是 sentence-transformers 的高级封装，底层自动调用 torch 完成计算。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q14：为什么评估结果只有 Top-1 准确率，没有 Pearson？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+
+<h5 style="margin: 12px 0 6px; color: #e6a23c; font-size: 13px;">现象</h5>
+<p style="margin: 6px 0;">模型管理 → 评估指标列只显示「Top-1 准确率: 100.0%」，没有 Pearson 数值。即使重新评估也依然如此。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">根因</h5>
+<p style="margin: 6px 0;"><strong>Pearson 相关系数要求标注分数有方差</strong>（不能全是同一个值）。旧版评估脚本仅将锚点-正样本对送入 <code>EmbeddingSimilarityEvaluator</code>，所有标注分数统一为 1.0，scipy 计算时因常量输入导致分母为 0，结果为 NaN。系统自动将 NaN 转为 null，前端检测到 null 就不显示。</p>
+<p style="margin: 6px 0; color: #67c23a;"><strong>已修复</strong>：v2 版评估脚本同时纳入负样本对（标注 0.0），与正样本对（标注 1.0）混合评估，产生充足方差，Pearson 可正常计算。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">解决</h5>
+<ul style="margin: 6px 0; padding-left: 20px;">
+  <li><strong>使用新版评估脚本</strong>：最新 evaluate_model.py 自动使用正负样本混合评估，Pearson 不再为 NaN</li>
+  <li><strong>扩充训练数据</strong>：建议至少构建 200~500 对，使评估指标更具统计意义</li>
+</ul>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q15：Pearson 相似度和 Top-1 准确率分别代表什么？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">Pearson 相关系数</h5>
+<p style="margin: 6px 0;">衡量模型预测的文本相似度与真实相似度之间的<strong>线性相关性</strong>，取值 -1 到 1：</p>
+<table style="margin: 10px 0;">
+  <tr style="background:#f5f7fa;"><th style="padding:4px 10px;text-align:left;">值</th><th style="padding:4px 10px;text-align:left;">含义</th></tr>
+  <tr><td style="padding:3px 10px;"><strong>1.0</strong></td><td style="padding:3px 10px;">模型预测与真实标签完全正相关（理想状态）</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;"><strong>0.0</strong></td><td style="padding:3px 10px;">模型预测与真实标签无关（随机水平）</td></tr>
+  <tr><td style="padding:3px 10px;"><strong>-1.0</strong></td><td style="padding:3px 10px;">模型预测与真实标签完全负相关（搞反了）</td></tr>
+</table>
+<p style="margin: 6px 0; color: #909399; font-size: 12px;">计算方式：将锚点-正样本对的预测余弦相似度序列，与标注分数序列做 Pearson 相关分析。<strong>要求标注分数有方差</strong>（不能全是同一值），否则分母为 0，结果为 NaN。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">Top-1 准确率</h5>
+<p style="margin: 6px 0;">衡量模型在<strong>排序检索</strong>中的精准度：</p>
+<ol style="margin: 6px 0; padding-left: 20px;">
+  <li>取一个锚点文本 + 1 个正样本 + 10 个随机干扰样本（共 11 个候选）</li>
+  <li>模型计算锚点与所有候选的向量相似度并排序</li>
+  <li>如果<strong>排第一的是正样本</strong> → 正确；否则 → 错误</li>
+  <li>正确数 / 总测试数 = Top-1 准确率</li>
+</ol>
+<p style="margin: 6px 0;"><strong>含义</strong>：用户搜索时，最相关的结果排在第一位的概率。例如 Top-1 为 85%，表示 100 次搜索中有 85 次最优匹配排在首位。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">两者对比</h5>
+<table style="margin: 10px 0;">
+  <tr style="background:#f5f7fa;"><th style="padding:4px 10px;text-align:left;"></th><th style="padding:4px 10px;text-align:left;">Pearson</th><th style="padding:4px 10px;text-align:left;">Top-1</th></tr>
+  <tr><td style="padding:3px 10px;">测什么</td><td style="padding:3px 10px;">相似度分数的校准度</td><td style="padding:3px 10px;">排序检索的精准度</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;">需要什么</td><td style="padding:3px 10px;">有方差的多级标注</td><td style="padding:3px 10px;">正负样本对比即可</td></tr>
+  <tr><td style="padding:3px 10px;">受数据集大小影响</td><td style="padding:3px 10px;">敏感（需要足够样本）</td><td style="padding:3px 10px;">相对鲁棒</td></tr>
+</table>
+<p style="margin: 6px 0;">两者互补：<strong>Pearson 高说明分数可信，Top-1 高说明排序准</strong>。实际使用需要足够的训练数据（建议 200 对以上）才能得到有参考价值的指标。</p>
 </div>`
   },
   'feat-dashboard': {

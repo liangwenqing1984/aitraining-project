@@ -551,14 +551,29 @@ export async function deployModel(req: Request, res: Response) {
       return res.status(400).json({ success: false, error: `Modelfile 不存在: ${modelfilePath}` });
     }
 
-    const modelfileContent = fs.readFileSync(modelfilePath, 'utf-8');
+    let modelfileContent = fs.readFileSync(modelfilePath, 'utf-8');
 
-    // 调用 Ollama API 创建模型
+    // 解析 Modelfile 的 FROM 行，提取基座模型名
+    const fromMatch = modelfileContent.match(/^FROM\s+(.+)$/m);
+    const fromModel = fromMatch ? fromMatch[1].trim() : null;
+
+    // 自动修正 HuggingFace ID 为 Ollama 可识别的模型名
+    const HF_TO_OLLAMA: Record<string, string> = {
+      'nomic-ai/nomic-embed-text-v1.5': 'nomic-embed-text:latest',
+      'nomic-ai/nomic-embed-text-v1': 'nomic-embed-text:latest',
+      'BAAI/bge-base-zh-v1.5': 'bge-base-zh:latest',
+      'BAAI/bge-small-zh-v1.5': 'bge-small-zh:latest',
+      'sentence-transformers/all-MiniLM-L6-v2': 'all-minilm:latest',
+      'sentence-transformers/all-mpnet-base-v2': 'all-minilm:latest',
+    };
+    let ollamaFrom = fromModel ? (HF_TO_OLLAMA[fromModel] || fromModel) : 'nomic-embed-text:latest';
+
+    // 调用 Ollama API 创建模型（Ollama 0.5+ 使用 from 参数替代 modelfile）
     const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     const response = await fetch(`${ollamaUrl}/api/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: modelName, modelfile: modelfileContent }),
+      body: JSON.stringify({ name: modelName, from: ollamaFrom }),
     });
 
     if (!response.ok) {

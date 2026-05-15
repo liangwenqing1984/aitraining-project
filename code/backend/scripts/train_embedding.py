@@ -217,8 +217,20 @@ def main():
     print(f"Model saved to {args.output}")
 
     # Generate Ollama Modelfile
+    # 将 HuggingFace 模型 ID 映射为 Ollama 可识别的模型名称
+    HF_TO_OLLAMA = {
+        "nomic-ai/nomic-embed-text-v1.5": "nomic-embed-text:latest",
+        "nomic-ai/nomic-embed-text-v1": "nomic-embed-text:latest",
+        "BAAI/bge-base-zh-v1.5": "bge-base-zh:latest",
+        "BAAI/bge-small-zh-v1.5": "bge-small-zh:latest",
+        "sentence-transformers/all-MiniLM-L6-v2": "all-minilm:latest",
+        "sentence-transformers/all-mpnet-base-v2": "all-minilm:latest",
+    }
+    ollama_base = HF_TO_OLLAMA.get(args.base_model)
+    from_line = f"FROM {ollama_base}" if ollama_base else f"# FROM {args.base_model}  (请手动替换为 Ollama 模型名)"
+
     modelfile_content = f"""
-FROM {args.base_model}
+{from_line}
 # Domain fine-tuned on job descriptions ({len(train_pairs)} pairs)
 # Model saved to: {args.output}
 """
