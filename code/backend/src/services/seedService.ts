@@ -66,7 +66,6 @@ export async function runSeed(): Promise<void> {
       { name: '数据大屏', path: '/daping', icon: 'Monitor', sortOrder: 5 },
       { name: '数据看板', path: '/dashboard', icon: 'DataAnalysis', sortOrder: 6 },
       { name: '智能查询', path: '/query', icon: 'ChatDotRound', sortOrder: 7 },
-      { name: '智能查询', path: '/query', icon: 'ChatDotRound', sortOrder: 7 },
     ];
 
     const menuIds: Record<string, number> = {};
@@ -81,14 +80,12 @@ export async function runSeed(): Promise<void> {
 
     // Step 2: 创建语义搜索父菜单 + 子菜单
     const ragMenu = await menuService.createMenu({
-      name: '语义搜索', icon: 'Search', sortOrder: 8, hidden: false,
+      name: '语义搜索', icon: 'Search', sortOrder: 9, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 语义搜索 (id=${ragMenu.id})`);
 
     const ragChildren = [
       { name: '职位搜索', path: '/rag', icon: 'Search', sortOrder: 1 },
-      { name: '简历筛选', path: '/rag/resume', icon: 'User', sortOrder: 2 },
-      { name: '简历库', path: '/rag/resume-library', icon: 'Collection', sortOrder: 3 },
     ];
     const ragChildIds: number[] = [];
     for (const child of ragChildren) {
@@ -102,7 +99,7 @@ export async function runSeed(): Promise<void> {
 
     // Step 3: 创建模型管理父菜单 + 子菜单
     const modelMenu = await menuService.createMenu({
-      name: '模型管理', icon: 'TrendCharts', sortOrder: 9, hidden: false,
+      name: '模型管理', icon: 'TrendCharts', sortOrder: 10, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 模型管理 (id=${modelMenu.id})`);
 
@@ -120,9 +117,35 @@ export async function runSeed(): Promise<void> {
       console.log(`[Seed]   子菜单: ${child.name} (id=${m.id})`);
     }
 
-    // Step 3: 创建系统管理父菜单 + 子菜单
+    // Step 4: 创建场景应用父菜单 + HR助手子菜单（三级菜单）
+    const sceneMenu = await menuService.createMenu({
+      name: '场景应用', icon: 'Monitor', sortOrder: 8, hidden: false,
+    } as any);
+    console.log(`[Seed] 菜单: 场景应用 (id=${sceneMenu.id})`);
+
+    const hrMenu = await menuService.createMenu({
+      name: 'HR助手', icon: 'UserFilled', parentId: sceneMenu.id, sortOrder: 1, hidden: false,
+    } as any);
+    console.log(`[Seed]   子菜单: HR助手 (id=${hrMenu.id})`);
+
+    const hrChildren = [
+      { name: '简历筛选', path: '/rag/resume', icon: 'User', sortOrder: 1 },
+      { name: '简历库', path: '/rag/resume-library', icon: 'Collection', sortOrder: 2 },
+      { name: '内部岗位', path: '/system/internal-jobs', icon: 'Briefcase', sortOrder: 3 },
+    ];
+    const hrChildIds: number[] = [];
+    for (const child of hrChildren) {
+      const m = await menuService.createMenu({
+        name: child.name, path: child.path, icon: child.icon, parentId: hrMenu.id,
+        sortOrder: child.sortOrder, hidden: false,
+      } as any);
+      hrChildIds.push(m.id!);
+      console.log(`[Seed]      三级菜单: ${child.name} (id=${m.id})`);
+    }
+
+    // Step 5: 创建系统管理父菜单 + 子菜单
     const sysMenu = await menuService.createMenu({
-      name: '系统管理', icon: 'Setting', sortOrder: 10, hidden: false,
+      name: '系统管理', icon: 'Setting', sortOrder: 11, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 系统管理 (id=${sysMenu.id})`);
 
@@ -133,7 +156,6 @@ export async function runSeed(): Promise<void> {
       { name: '菜单管理', path: '/system/menus', icon: 'Menu', sortOrder: 4 },
       { name: '增强数据管理', path: '/system/enrichment', icon: 'DataAnalysis', sortOrder: 5 },
       { name: '文本向量管理', path: '/system/vectors', icon: 'Search', sortOrder: 6 },
-      { name: '内部岗位', path: '/system/internal-jobs', icon: 'Briefcase', sortOrder: 7 },
     ];
     const sysChildIds: number[] = [];
     for (const child of sysChildren) {
@@ -147,7 +169,7 @@ export async function runSeed(): Promise<void> {
 
     // Step 3: 创建系统帮助父菜单 + 子菜单
     const helpMenu = await menuService.createMenu({
-      name: '系统帮助', icon: 'Headset', sortOrder: 11, hidden: false,
+      name: '系统帮助', icon: 'Headset', sortOrder: 12, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 系统帮助 (id=${helpMenu.id})`);
 
@@ -167,11 +189,12 @@ export async function runSeed(): Promise<void> {
 
     // 剩余独立菜单
     await menuService.createMenu({
-      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 12, hidden: false,
+      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 13, hidden: false,
     } as any);
 
     // Step 4: 创建管理员角色
     const allMenuIds = Object.values(menuIds);
+    allMenuIds.push(sceneMenu.id!, hrMenu.id!, ...hrChildIds);
     allMenuIds.push(ragMenu.id!, ...ragChildIds);
     allMenuIds.push(modelMenu.id!, ...modelChildIds);
     allMenuIds.push(sysMenu.id!, ...sysChildIds);

@@ -5,7 +5,7 @@ import { getUserInfo, logout as authLogout } from '@/utils/auth'
 import {
   HomeFilled, Monitor, Files, TrendCharts, DataAnalysis, Search,
   Setting, User, UserFilled, Lock, Menu as MenuIcon, Document, InfoFilled,
-  PieChart, ChatDotRound, Headset,
+  PieChart, ChatDotRound, Headset, Collection, Briefcase,
 } from '@element-plus/icons-vue'
 import { getMenuTree, type SystemMenu } from '@/api/system'
 
@@ -27,7 +27,7 @@ const isSubPage = computed(() => {
 const isFullScreen = computed(() => route.path === '/daping')
 
 interface MenuItem {
-  path?: string; title: string; icon: any; children?: { path: string; title: string; icon?: any }[]
+  path?: string; title: string; icon: any; children?: MenuItem[]
 }
 
 // 图标名称 → 组件映射（markRaw 避免 Vue 深度响应式包装）
@@ -37,6 +37,7 @@ const namedIcons: Record<string, any> = {
   Setting: markRaw(Setting), User: markRaw(User), UserFilled: markRaw(UserFilled),
   Lock: markRaw(Lock), Menu: markRaw(MenuIcon), Document: markRaw(Document), InfoFilled: markRaw(InfoFilled),
   PieChart: markRaw(PieChart), ChatDotRound: markRaw(ChatDotRound), Headset: markRaw(Headset),
+  Collection: markRaw(Collection), Briefcase: markRaw(Briefcase),
 }
 
 // 默认菜单（API 故障时的兜底）
@@ -48,10 +49,22 @@ const defaultMenuItems: MenuItem[] = [
   { path: '/daping', title: '数据大屏', icon: namedIcons.Monitor },
   { path: '/query', title: '智能查询', icon: namedIcons.ChatDotRound },
   {
+    title: '场景应用', icon: namedIcons.Monitor,
+    children: [
+      {
+        title: 'HR助手', icon: namedIcons.UserFilled,
+        children: [
+          { path: '/rag/resume', title: '简历筛选', icon: namedIcons.User },
+          { path: '/rag/resume-library', title: '简历库', icon: namedIcons.Collection },
+          { path: '/system/internal-jobs', title: '内部岗位', icon: namedIcons.Briefcase },
+        ]
+      },
+    ]
+  },
+  {
     title: '语义搜索', icon: namedIcons.Search,
     children: [
       { path: '/rag', title: '职位搜索', icon: namedIcons.Search },
-      { path: '/rag/resume', title: '简历筛选', icon: namedIcons.User },
     ]
   },
   {
@@ -94,11 +107,7 @@ function buildMenuItems(menus: SystemMenu[]): MenuItem[] {
         return {
           title: m.name,
           icon,
-          children: buildMenuItems(m.children).map(c => ({
-            path: c.path,
-            title: c.title,
-            icon: c.icon,
-          })),
+          children: buildMenuItems(m.children),
         }
       }
       return {
@@ -187,11 +196,20 @@ onMounted(() => {
   }
 })
 
-// 获取当前页面标题
-const getCurrentPageTitle = () => {
-  const currentItem = menuItems.value.find(item => item.path === route.path || route.path.startsWith(item.path + '/'))
-  return currentItem?.title || ''
+// 获取当前页面标题（递归搜索嵌套菜单）
+function findPageTitle(items: MenuItem[]): string {
+  for (const item of items) {
+    if (item.path && (item.path === route.path || route.path.startsWith(item.path + '/'))) {
+      return item.title
+    }
+    if (item.children) {
+      const found = findPageTitle(item.children)
+      if (found) return found
+    }
+  }
+  return ''
 }
+const getCurrentPageTitle = () => findPageTitle(menuItems.value)
 </script>
 
 <template>
@@ -231,14 +249,27 @@ const getCurrentPageTitle = () => {
                 <el-icon><component :is="item.icon" /></el-icon>
                 <span>{{ item.title }}</span>
               </template>
-              <el-menu-item
-                v-for="child in item.children"
-                :key="child.path"
-                :index="child.path"
-              >
-                <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
-                <span>{{ child.title }}</span>
-              </el-menu-item>
+              <template v-for="child in item.children" :key="child.title">
+                <!-- 二级有子菜单 → 嵌套 el-sub-menu（三级菜单） -->
+                <el-sub-menu v-if="child.children && child.children.length" :index="child.title">
+                  <template #title>
+                    <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
+                    <span>{{ child.title }}</span>
+                  </template>
+                  <el-menu-item
+                    v-for="sub in child.children"
+                    :key="sub.path"
+                    :index="sub.path"
+                  >
+                    <span>{{ sub.title }}</span>
+                  </el-menu-item>
+                </el-sub-menu>
+                <!-- 二级菜单项 -->
+                <el-menu-item v-else :index="child.path">
+                  <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
+                  <span>{{ child.title }}</span>
+                </el-menu-item>
+              </template>
             </el-sub-menu>
             <el-menu-item v-else :index="item.path">
               <el-icon><component :is="item.icon" /></el-icon>
@@ -437,7 +468,16 @@ const getCurrentPageTitle = () => {
   font-size: 13px;
 }
 
-:deep(.top-nav-menu .el-menu--popup .el-menu-item:hover) {
+:deep(.top-nav-menu .el-menu--popup .el-sub-menu__title) {
+  margin: 2px 4px;
+  height: 40px;
+  line-height: 40px;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+:deep(.top-nav-menu .el-menu--popup .el-menu-item:hover),
+:deep(.top-nav-menu .el-menu--popup .el-sub-menu__title:hover) {
   background: var(--glass-bg-hover) !important;
   color: var(--color-primary) !important;
 }
