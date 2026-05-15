@@ -68,7 +68,7 @@ export async function parseResumeStructure(resumeText: string): Promise<ParsedRe
   const result = await llmService.callLLM(
     RESUME_PARSE_SYSTEM,
     RESUME_PARSE_USER(resumeText),
-    { taskType: 'resume-parse', responseFormat: 'json', temperature: 0.1 }
+    { taskType: 'resume-parse', responseFormat: 'json', temperature: 0.1, maxTokens: 16384 }
   );
 
   let parsed: any;
