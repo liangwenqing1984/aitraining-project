@@ -72,6 +72,10 @@ export function listModels(): Promise<ApiResponse<TrainingModel[]>> {
   return api.get('/training/models')
 }
 
+export function evaluateModel(modelPath: string, datasetPath: string): Promise<ApiResponse<{ metrics: any; stdout: string; stderr: string }>> {
+  return api.post('/training/models/evaluate', { modelPath, datasetPath })
+}
+
 export function deployModel(data: { modelPath: string; modelName: string }): Promise<ApiResponse<{ modelName: string; message: string }>> {
   return api.post('/training/models/deploy', data)
 }

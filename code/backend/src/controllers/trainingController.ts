@@ -382,20 +382,18 @@ export async function deleteTrainingJob(req: Request, res: Response) {
   }
 }
 
-function getDirSize(dirPath: string): number {
-  let size = 0;
-  try {
-    const files = fs.readdirSync(dirPath, { withFileTypes: true });
+function getDirSizeMB(dirPath: string): number {
+  function walk(d: string): number {
+    let bytes = 0;
+    const files = fs.readdirSync(d, { withFileTypes: true });
     for (const f of files) {
-      const fp = path.join(dirPath, f.name);
-      if (f.isDirectory()) {
-        size += getDirSize(fp);
-      } else {
-        size += fs.statSync(fp).size;
-      }
+      const fp = path.join(d, f.name);
+      if (f.isDirectory()) bytes += walk(fp);
+      else bytes += fs.statSync(fp).size;
     }
-  } catch {}
-  return size;
+    return bytes;
+  }
+  try { return walk(dirPath) / (1024 * 1024); } catch { return 0; }
 }
 
 /**
@@ -421,7 +419,7 @@ export async function listModels(_req: Request, res: Response) {
         const stat = fs.statSync(modelPath);
         const createdAt = stat.birthtime || stat.mtime;
         // 计算模型目录大小 (MB)
-        const sizeMB = getDirSize(modelPath);
+        const sizeMB = getDirSizeMB(modelPath);
         models.push({
           name: d.name,
           path: modelPath,
@@ -436,6 +434,67 @@ export async function listModels(_req: Request, res: Response) {
     res.json({ success: true, data: models });
   } catch (e: any) {
     console.error('[Training] listModels error:', e.message);
+    res.status(500).json({ success: false, error: e.message });
+  }
+}
+
+/**
+ * POST /api/training/models/evaluate
+ * 对已训练模型单独运行评估，生成 metrics.json
+ */
+export async function evaluateModel(req: Request, res: Response) {
+  try {
+    const { modelPath, datasetPath } = req.body;
+    if (!modelPath || !datasetPath) {
+      res.status(400).json({ success: false, error: '请提供 modelPath 和 datasetPath' });
+      return;
+    }
+    if (!fs.existsSync(modelPath) || !fs.existsSync(datasetPath)) {
+      res.status(400).json({ success: false, error: '模型路径或数据集路径不存在' });
+      return;
+    }
+
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const scriptPath = path.resolve(__dirname, '../../scripts/evaluate_model.py');
+    const args = [scriptPath, '--model', modelPath, '--dataset', datasetPath];
+
+    console.log(`[Training] 启动评估: ${pythonCmd} ${args.join(' ')}`);
+
+    const child = spawn(pythonCmd, args, {
+      cwd: path.resolve(__dirname, '../..'),
+      env: {
+        ...process.env,
+        PYTHONUNBUFFERED: '1',
+        PYTHONIOENCODING: 'utf-8',
+      },
+    });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (data: Buffer) => { stdout += data.toString(); });
+    child.stderr.on('data', (data: Buffer) => { stderr += data.toString(); });
+
+    child.on('close', (code: number) => {
+      console.log(`[Training] 评估完成, exit code: ${code}`);
+      if (code === 0) {
+        // 读取 metrics.json 返回
+        const metricsPath = path.join(modelPath, 'metrics.json');
+        let metrics = {};
+        if (fs.existsSync(metricsPath)) {
+          try { metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf-8')); } catch {}
+        }
+        res.json({ success: true, data: { metrics, stdout, stderr } });
+      } else {
+        res.status(500).json({ success: false, error: '评估脚本执行失败', stdout, stderr });
+      }
+    });
+
+    child.on('error', (err: Error) => {
+      console.error('[Training] 评估进程启动失败:', err.message);
+      res.status(500).json({ success: false, error: err.message });
+    });
+  } catch (e: any) {
+    console.error('[Training] evaluateModel error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 }

@@ -190,7 +190,7 @@
     <template v-if="activeTab === 'models'">
       <el-card shadow="never">
         <div class="table-header">已训练模型</div>
-        <el-table :data="paginatedModels" v-loading="loadingModels" stripe>
+        <el-table :data="paginatedModels" v-loading="loadingModels" stripe class="models-table">
           <el-table-column prop="name" label="模型名称" width="100" />
           <el-table-column prop="path" label="路径" min-width="280" show-overflow-tooltip />
           <el-table-column label="评估指标" width="200">
@@ -204,16 +204,17 @@
               <template v-if="!row.metrics?.accuracy_top1 && !row.metrics?.eval_pearson">-</template>
             </template>
           </el-table-column>
-          <el-table-column label="大小" width="80" align="right">
+          <el-table-column label="大小" width="110" align="right">
             <template #default="{ row }">
               <span v-if="row.sizeMB != null">{{ row.sizeMB.toFixed(1) }} MB</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column prop="createdAt" label="创建时间" width="170" show-overflow-tooltip />
-          <el-table-column label="操作" width="150" fixed="right">
+          <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <div style="display: flex; align-items: center; gap: 2px; white-space: nowrap;">
+                <el-button link type="warning" size="small" @click="handleOpenEval(row)"><el-icon style="margin-right:2px;"><DataAnalysis /></el-icon>评估</el-button>
                 <el-button link type="success" size="small" :disabled="!row.hasModelfile" @click="handleDeploy(row)"><el-icon style="margin-right:2px;"><Upload /></el-icon>部署</el-button>
                 <el-button link type="danger" size="small" @click="handleDeleteModel(row)"><el-icon style="margin-right:2px;"><Delete /></el-icon>删除</el-button>
               </div>
@@ -248,6 +249,29 @@
           <el-button type="primary" :loading="deploying" @click="handleConfirmDeploy"><el-icon><Check /></el-icon>确认部署</el-button>
         </template>
       </el-dialog>
+
+      <!-- 评估对话框 -->
+      <el-dialog v-model="evalVisible" title="评估模型" width="500px" destroy-on-close>
+        <el-form :model="evalForm" label-width="100px">
+          <el-form-item label="模型名称">
+            <el-input :model-value="evalTarget?.name" disabled />
+          </el-form-item>
+          <el-form-item label="选择数据集">
+            <el-select v-model="evalForm.datasetPath" placeholder="选择训练数据集" style="width: 100%" filterable>
+              <el-option v-for="d in datasets" :key="d.path" :label="`${d.name} (${d.pairCount}对)`" :value="d.path" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <el-alert type="info" :closable="false" show-icon style="margin-bottom: 16px">
+          <template #title>
+            选择用于评估的数据集，脚本将用该数据集计算 Pearson 相似度和 Top-1 准确率，写入模型目录的 metrics.json。
+          </template>
+        </el-alert>
+        <template #footer>
+          <el-button @click="evalVisible = false"><el-icon><Close /></el-icon>取消</el-button>
+          <el-button type="primary" :loading="evaluating" :disabled="!evalForm.datasetPath" @click="handleDoEvaluate"><el-icon><DataAnalysis /></el-icon>开始评估</el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -255,11 +279,11 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay, VideoPause, Tickets, Delete, Upload, FolderAdd, View, Close, Check } from '@element-plus/icons-vue'
+import { VideoPlay, VideoPause, Tickets, Delete, Upload, FolderAdd, View, Close, Check, DataAnalysis } from '@element-plus/icons-vue'
 import {
   buildDataset, listDatasets, previewDataset,
   startTraining, listTrainingJobs, deleteTrainingJob, stopTraining, getTrainingStatus, deleteModel,
-  listModels, deployModel,
+  listModels, deployModel, evaluateModel,
   type TrainingDataset, type TrainingJob, type TrainingModel,
 } from '@/api/training'
 
@@ -488,6 +512,11 @@ const deploying = ref(false)
 const deployTarget = ref<TrainingModel | null>(null)
 const deployForm = reactive({ modelName: '' })
 
+const evalVisible = ref(false)
+const evaluating = ref(false)
+const evalTarget = ref<TrainingModel | null>(null)
+const evalForm = reactive({ datasetPath: '' })
+
 async function loadModels() {
   loadingModels.value = true
   try {
@@ -502,6 +531,29 @@ function handleDeploy(row: TrainingModel) {
   deployTarget.value = row
   deployForm.modelName = row.name
   deployVisible.value = true
+}
+
+function handleOpenEval(row: TrainingModel) {
+  evalTarget.value = row
+  evalForm.datasetPath = ''
+  evalVisible.value = true
+}
+
+async function handleDoEvaluate() {
+  if (!evalTarget.value || !evalForm.datasetPath) return
+  evaluating.value = true
+  try {
+    const res: any = await evaluateModel(evalTarget.value.path, evalForm.datasetPath)
+    if (res.success) {
+      ElMessage.success(`评估完成 — Pearson: ${res.data.metrics.eval_pearson?.toFixed(4) || 'N/A'}, Top-1: ${res.data.metrics.accuracy_top1 != null ? (res.data.metrics.accuracy_top1 * 100).toFixed(1) + '%' : 'N/A'}`)
+      evalVisible.value = false
+      await loadModels()
+    }
+  } catch (e: any) {
+    ElMessage.error(e.response?.data?.error || '评估失败')
+  } finally {
+    evaluating.value = false
+  }
 }
 
 async function handleConfirmDeploy() {
@@ -560,4 +612,6 @@ onUnmounted(() => {
 .sample-label.positive { background: #f0f9eb; color: #67c23a; }
 .sample-label.negative { background: #fef0f0; color: #f56c6c; }
 .sample-text { font-size: 12px; color: #606266; line-height: 1.6; word-break: break-all; margin: 0; padding: 4px 8px; background: #f5f7fa; border-radius: 4px; max-height: 100px; overflow-y: auto; }
+
+.models-table :deep(.el-table__cell) { white-space: nowrap; }
 </style>
