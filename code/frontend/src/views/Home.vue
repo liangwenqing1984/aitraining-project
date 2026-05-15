@@ -128,11 +128,13 @@ const highlights = [
 ]
 
 const steps = [
-  { key: 'create', title: '创建爬取任务', desc: '配置数据来源、关键词、城市等参数，支持批量创建' },
-  { key: 'crawl', title: '自动采集数据', desc: '浏览器自动化爬取，断点续传，实时进度监控' },
-  { key: 'enrich', title: 'AI 增强数据', desc: 'LLM 标准化薪资/技能/行业/学历，从原始文本提取结构化字段' },
-  { key: 'analyze', title: '智能分析', desc: '查看 7 维度分析图表，AI 自动生成市场洞察报告' },
-  { key: 'query', title: '自由查询', desc: '用自然语言提问，或通过语义搜索精准匹配职位' },
+  { key: 'crawl', title: '多源数据采集', desc: '智联/51job 双源爬取，IP代理池自动切换，断点续传实时监控' },
+  { key: 'enrich', title: 'AI 数据增强', desc: 'LLM 标准化薪资/技能/行业/学历等 8 个维度，自动提取结构化字段' },
+  { key: 'train', title: '语义模型训练', desc: '岗位领域 Embedding 微调，Pearson+Top-1 双指标评估，一键部署到 Ollama' },
+  { key: 'analyze', title: '多维智能分析', desc: '7 维度图表可视化，AI 自动生成市场洞察报告' },
+  { key: 'search', title: '语义搜索匹配', desc: '向量化语义搜索职位 + 上传简历智能匹配最优岗位' },
+  { key: 'query', title: '自然语言查询', desc: '用中文提问直查数据库，AI 自动生成 SQL 并总结结果' },
+  { key: 'chat', title: '知识库问答', desc: '文档向量索引 + RAG 多轮对话，问任何关于系统的问题' },
 ]
 
 function goTo(route: string) {
@@ -185,7 +187,7 @@ function goToDoc(section: string) {
     <section class="section">
       <div class="section-header">
         <h2>操作流程指引</h2>
-        <p class="section-subtitle">5 步完成从数据采集到智能分析的全流程</p>
+        <p class="section-subtitle">7 步完成从数据采集到知识问答的全流程</p>
       </div>
       <el-card shadow="hover" class="flow-card">
         <div class="flow-steps">
@@ -211,11 +213,13 @@ function goToDoc(section: string) {
 
         <!-- 快速入口 -->
         <div class="quick-entry">
-          <span class="entry-label">快速开始：</span>
-          <el-button type="primary" :icon="Monitor" @click="goTo('/crawler')">任务列表</el-button>
+          <span class="entry-label">快速入口：</span>
+          <el-button type="primary" :icon="Monitor" @click="goTo('/crawler')">数据采集</el-button>
+          <el-button type="success" :icon="TrendCharts" @click="goTo('/system/training')">模型训练</el-button>
           <el-button type="warning" :icon="DataAnalysis" @click="goTo('/analysis')">智能分析</el-button>
           <el-button type="danger" :icon="ChatDotRound" @click="goTo('/query')">智能查询</el-button>
           <el-button :icon="Search" style="color:#9b59b6;border-color:#9b59b6" @click="goTo('/rag')">语义搜索</el-button>
+          <el-button :icon="MagicStick" style="color:#ff7043;border-color:#ff7043" @click="goTo('/aibot')">AI 问答</el-button>
         </div>
       </el-card>
     </section>

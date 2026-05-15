@@ -485,11 +485,55 @@ async function initDatabase() {
       FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
       AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '文本向量管理')
     `);
+    // 种子菜单项：创建"模型管理"父菜单，并将"模型训练"和"模型配置"迁入
     await client.query(`
       INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
-      SELECT '模型训练', '/system/training', 'TrendCharts', m.id, 7, NULL, false
-      FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
-      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '模型训练')
+      SELECT '模型管理', NULL, 'TrendCharts', NULL, 9, NULL, false
+      WHERE NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '模型管理' AND parent_id IS NULL)
+    `);
+    // 将"模型训练"迁入模型管理
+    await client.query(`
+      UPDATE sp_menus
+      SET parent_id = (SELECT id FROM sp_menus WHERE name = '模型管理' AND parent_id IS NULL),
+          sort_order = 1
+      WHERE name = '模型训练'
+      AND parent_id IS NOT NULL
+      AND parent_id = (SELECT id FROM sp_menus WHERE name = '系统管理' AND parent_id IS NULL)
+    `);
+    // 将"模型配置"迁入模型管理
+    await client.query(`
+      UPDATE sp_menus
+      SET parent_id = (SELECT id FROM sp_menus WHERE name = '模型管理' AND parent_id IS NULL),
+          sort_order = 2
+      WHERE name = '模型配置'
+      AND parent_id IS NOT NULL
+      AND parent_id = (SELECT id FROM sp_menus WHERE name = '系统管理' AND parent_id IS NULL)
+    `);
+    // 顺延 sort_order: 系统管理 9→10, 系统帮助 10→11, 关于 11→12
+    await client.query(`
+      UPDATE sp_menus SET sort_order = 10
+      WHERE name = '系统管理' AND parent_id IS NULL AND sort_order = 9
+    `);
+    await client.query(`
+      UPDATE sp_menus SET sort_order = 11
+      WHERE name = '系统帮助' AND parent_id IS NULL AND sort_order = 10
+    `);
+    await client.query(`
+      UPDATE sp_menus SET sort_order = 12
+      WHERE name = '关于' AND parent_id IS NULL AND sort_order = 11
+    `);
+    // 将新父菜单"模型管理"授权给已有角色（拥有子菜单的角色同步获得父菜单权限）
+    await client.query(`
+      INSERT INTO sp_role_menus (role_id, menu_id)
+      SELECT DISTINCT rm.role_id, pm.id
+      FROM sp_role_menus rm
+      CROSS JOIN sp_menus pm
+      WHERE pm.name = '模型管理' AND pm.parent_id IS NULL
+      AND rm.menu_id IN (SELECT id FROM sp_menus WHERE name IN ('模型训练', '模型配置'))
+      AND NOT EXISTS (
+        SELECT 1 FROM sp_role_menus rm2
+        WHERE rm2.role_id = rm.role_id AND rm2.menu_id = pm.id
+      )
     `);
 
     console.log('✅ PostgreSQL数据库表初始化完成');

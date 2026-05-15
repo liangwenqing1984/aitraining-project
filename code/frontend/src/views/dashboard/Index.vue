@@ -275,7 +275,7 @@ function renderRegionCharts() {
       },
       series: [{
         type: 'map', map: 'heilongjiang',
-        roam: true, zoom: 1.1, center: [127.5, 47.5],
+        roam: true, zoom: 1.05, center: [128.14, 49.0],
         label: { show: true, fontSize: 11, color: '#333' },
         emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' }, itemStyle: { areaColor: '#fbb040' } },
         data: mapData.map(d => ({ name: d.name, value: d.value, ...Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'name' && k !== 'value')) })),

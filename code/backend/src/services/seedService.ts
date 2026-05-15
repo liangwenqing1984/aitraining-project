@@ -99,9 +99,29 @@ export async function runSeed(): Promise<void> {
       console.log(`[Seed]   子菜单: ${child.name} (id=${m.id})`);
     }
 
+    // Step 3: 创建模型管理父菜单 + 子菜单
+    const modelMenu = await menuService.createMenu({
+      name: '模型管理', icon: 'TrendCharts', sortOrder: 9, hidden: false,
+    } as any);
+    console.log(`[Seed] 菜单: 模型管理 (id=${modelMenu.id})`);
+
+    const modelChildren = [
+      { name: '模型训练', path: '/system/training', icon: 'TrendCharts', sortOrder: 1 },
+      { name: '模型配置', path: '/settings/llm', icon: 'Setting', sortOrder: 2 },
+    ];
+    const modelChildIds: number[] = [];
+    for (const child of modelChildren) {
+      const m = await menuService.createMenu({
+        name: child.name, path: child.path, icon: child.icon, parentId: modelMenu.id,
+        sortOrder: child.sortOrder, hidden: false,
+      } as any);
+      modelChildIds.push(m.id!);
+      console.log(`[Seed]   子菜单: ${child.name} (id=${m.id})`);
+    }
+
     // Step 3: 创建系统管理父菜单 + 子菜单
     const sysMenu = await menuService.createMenu({
-      name: '系统管理', icon: 'Setting', sortOrder: 9, hidden: false,
+      name: '系统管理', icon: 'Setting', sortOrder: 10, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 系统管理 (id=${sysMenu.id})`);
 
@@ -110,7 +130,6 @@ export async function runSeed(): Promise<void> {
       { name: '角色管理', path: '/system/roles', icon: 'UserFilled', sortOrder: 2 },
       { name: '权限管理', path: '/system/permissions', icon: 'Lock', sortOrder: 3 },
       { name: '菜单管理', path: '/system/menus', icon: 'Menu', sortOrder: 4 },
-      { name: '模型配置', path: '/settings/llm', icon: 'Setting', sortOrder: 5 },
     ];
     const sysChildIds: number[] = [];
     for (const child of sysChildren) {
@@ -124,7 +143,7 @@ export async function runSeed(): Promise<void> {
 
     // Step 3: 创建系统帮助父菜单 + 子菜单
     const helpMenu = await menuService.createMenu({
-      name: '系统帮助', icon: 'Headset', sortOrder: 10, hidden: false,
+      name: '系统帮助', icon: 'Headset', sortOrder: 11, hidden: false,
     } as any);
     console.log(`[Seed] 菜单: 系统帮助 (id=${helpMenu.id})`);
 
@@ -144,12 +163,13 @@ export async function runSeed(): Promise<void> {
 
     // 剩余独立菜单
     await menuService.createMenu({
-      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 11, hidden: false,
+      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 12, hidden: false,
     } as any);
 
     // Step 4: 创建管理员角色
     const allMenuIds = Object.values(menuIds);
     allMenuIds.push(ragMenu.id!, ...ragChildIds);
+    allMenuIds.push(modelMenu.id!, ...modelChildIds);
     allMenuIds.push(sysMenu.id!, ...sysChildIds);
     allMenuIds.push(helpMenu.id!, ...helpChildIds);
     // Also add 关于 (the last menu)

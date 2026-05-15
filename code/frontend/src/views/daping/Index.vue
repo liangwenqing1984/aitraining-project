@@ -521,8 +521,8 @@ async function renderMap(regionStats: RegionStats) {
       type: 'map',
       map: 'heilongjiang',
       roam: true,
-      zoom: 1.2,
-      center: [127.5, 47.5],
+      zoom: 1.15,
+      center: [128.14, 49.0],
       label: { show: true, fontSize: 11, color: '#94a3b8' },
       itemStyle: {
         areaColor: '#1b3a6b',

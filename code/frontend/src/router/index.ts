@@ -152,7 +152,7 @@ const routes: RouteRecordRaw[] = [
         path: 'settings/llm',
         name: 'LLMSettings',
         component: () => import('@/views/settings/LLMSettings.vue'),
-        meta: { title: '模型配置', icon: 'Setting' }
+        meta: { title: '模型配置', icon: 'Setting', parent: '模型管理' }
       },
       {
         path: 'system/users',
@@ -194,7 +194,7 @@ const routes: RouteRecordRaw[] = [
         path: 'system/training',
         name: 'SystemTraining',
         component: () => import('@/views/system/ModelTraining.vue'),
-        meta: { title: '模型训练', parent: '系统管理' }
+        meta: { title: '模型训练', parent: '模型管理' }
       },
       {
         path: 'about',
