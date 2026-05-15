@@ -101,12 +101,6 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '配置任务' }
       },
       {
-        path: 'files',
-        name: 'Files',
-        component: () => import('@/views/files/Index.vue'),
-        meta: { title: '文件管理', icon: 'Folder' }
-      },
-      {
         path: 'analysis',
         name: 'Analysis',
         component: () => import('@/views/analysis/Index.vue'),

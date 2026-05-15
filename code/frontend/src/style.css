@@ -88,9 +88,9 @@
   --font-size-3xl: 32px;
 
   /* Layout */
-  --sidebar-width: 240px;
-  --sidebar-collapsed-width: 70px;
-  --header-height: 70px;
+  --header-height: 110px;
+  --nav-bar-height: 60px;
+  --breadcrumb-bar-height: 42px;
 
   /* Transition */
   --transition-fast: 0.15s ease;

@@ -213,7 +213,6 @@ function goToDoc(section: string) {
         <div class="quick-entry">
           <span class="entry-label">快速开始：</span>
           <el-button type="primary" :icon="Monitor" @click="goTo('/crawler')">任务列表</el-button>
-          <el-button type="success" :icon="Files" @click="goTo('/files')">文件管理</el-button>
           <el-button type="warning" :icon="DataAnalysis" @click="goTo('/analysis')">智能分析</el-button>
           <el-button type="danger" :icon="ChatDotRound" @click="goTo('/query')">智能查询</el-button>
           <el-button :icon="Search" style="color:#9b59b6;border-color:#9b59b6" @click="goTo('/rag')">语义搜索</el-button>

@@ -5,7 +5,7 @@ import { useCrawlerStore } from '@/stores/crawler'
 import { fileApi } from '@/api/file'
 import { taskApi } from '@/api/task'
 import { startEnrichment as startEnrichApi, getEnrichmentStatus } from '@/api/llm'
-import { Plus, Document, VideoPlay, VideoPause, RefreshRight, Monitor, CircleCheck, DataAnalysis, Download, TrendCharts, Setting, Delete } from '@element-plus/icons-vue'
+import { Plus, Document, VideoPlay, VideoPause, RefreshRight, Monitor, CircleCheck, DataAnalysis, Download, TrendCharts, Setting, Delete, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { Task } from '@/api/task'
 import StatCard from '@/components/StatCard.vue'
@@ -17,6 +17,43 @@ const crawlerStore = useCrawlerStore()
 const currentPage = ref(1)
 const pageSize = ref(10)
 const totalRecords = ref(0)
+
+// 预览对话框
+const previewVisible = ref(false)
+const previewData = ref<any[]>([])
+const previewFile = ref<any>(null)
+
+const previewColumns = computed(() => {
+  if (previewData.value.length === 0) return []
+  const firstRow = previewData.value[0]
+  const columns = Object.keys(firstRow).map(key => {
+    const columnConfig: Record<string, { label: string; width?: number; minWidth?: number }> = {
+      '企业名称': { label: '企业名称', minWidth: 180 },
+      '职位名称': { label: '职位名称', minWidth: 200 },
+      '薪资范围': { label: '薪资范围', width: 120 },
+      '工作城市': { label: '工作城市', width: 100 },
+      '工作经验': { label: '工作经验', width: 100 },
+      '学历': { label: '学历', width: 80 },
+      '公司性质': { label: '公司性质', width: 100 },
+      '公司规模': { label: '公司规模', width: 120 },
+      '经营范围': { label: '经营范围', minWidth: 200 },
+      '职位描述': { label: '职位描述', minWidth: 300 },
+      '职位标签': { label: '职位标签', minWidth: 150 },
+      '工作地址': { label: '工作地址', minWidth: 200 },
+      '岗位招聘人数': { label: '招聘人数', width: 100 },
+      '岗位更新日期': { label: '更新日期', width: 110 },
+      '工作性质': { label: '工作性质', width: 90 },
+      '数据来源': { label: '数据来源', width: 90 }
+    }
+    const config = columnConfig[key] || { label: key, minWidth: 120 }
+    return { prop: key, label: config.label, width: config.width, minWidth: config.minWidth }
+  })
+  return columns
+})
+
+function getSourceName(source: string): string {
+  return source === 'zhilian' ? '智联招聘' : source === '51job' ? '前程无忧' : source
+}
 
 async function loadTasks(p?: number, ps?: number) {
   if (p !== undefined) currentPage.value = p
@@ -48,10 +85,6 @@ function goToMonitor(taskId: string) {
 
 function goToEdit(taskId: string) {
   router.push(`/crawler/edit/${taskId}`)
-}
-
-function goToFiles(taskId: string) {
-  router.push({ path: '/files', query: { taskId } })
 }
 
 // 下载任务结果文件
@@ -103,6 +136,40 @@ async function analyzeTask(taskId: string) {
   } catch (error: any) {
     console.error('[Analyze] Error:', error)
     ElMessage.error(error.response?.data?.error || '无法获取文件信息')
+  }
+}
+
+// 预览任务结果文件
+async function previewByTaskId(taskId: string) {
+  try {
+    const res = await fileApi.getFileByTaskId(taskId)
+    if (!res.data) {
+      ElMessage.warning('该任务暂无结果文件')
+      return
+    }
+    const file = res.data
+    const previewRes: any = await fileApi.previewFile(file.id, 10)
+    if (previewRes.success && previewRes.data) {
+      const { headers, rows } = previewRes.data
+      if (!headers || !rows || rows.length === 0) {
+        ElMessage.warning('文件内容为空')
+        return
+      }
+      previewData.value = rows.map((row: string[]) => {
+        const obj: any = {}
+        headers.forEach((header: string, index: number) => {
+          obj[header] = row[index] || ''
+        })
+        return obj
+      })
+      previewFile.value = file
+      previewVisible.value = true
+    } else {
+      ElMessage.warning('暂无预览数据')
+    }
+  } catch (error: any) {
+    console.error('[Preview] Error:', error)
+    ElMessage.error('预览失败')
   }
 }
 
@@ -349,7 +416,7 @@ async function handleResumeTask(row: any) {
       <el-table v-else :data="crawlerStore.tasks" stripe size="small" class="task-table" :style="{ '--el-table-bg-color': '#fff', '--el-table-tr-bg-color': '#fff' }">
         <el-table-column label="任务名称" min-width="130">
           <template #default="{ row }">
-            <el-link type="primary" :underline="false" @click="goToFiles(row.id)">{{ row.name }}</el-link>
+            <el-link type="primary" :underline="false" @click="previewByTaskId(row.id)">{{ row.name }}</el-link>
           </template>
         </el-table-column>
         <el-table-column prop="source" label="数据来源" width="80">
@@ -471,7 +538,7 @@ async function handleResumeTask(row: any) {
             {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="410">
+        <el-table-column label="操作" width="460">
           <template #default="{ row }">
             <div class="action-buttons">
             <!-- 任务控制按钮 -->
@@ -540,7 +607,17 @@ async function handleResumeTask(row: any) {
               </template>
               <template v-else>AI 增强</template>
             </el-button>
-            
+
+            <el-button
+              v-if="row.status === 'completed' || ((row.status === 'failed' || row.status === 'stopped') && row.recordCount > 0)"
+              type="primary"
+              link
+              size="small"
+              @click="previewByTaskId(row.id)"
+            >
+              <el-icon class="action-icon"><View /></el-icon>预览
+            </el-button>
+
             <!-- 删除按钮 - 带确认 -->
             <el-button type="info" link size="small" @click="handleDeleteTask(row.id)">
               <el-icon class="action-icon"><Delete /></el-icon>删除
@@ -563,6 +640,53 @@ async function handleResumeTask(row: any) {
         />
       </div>
     </el-card>
+
+    <!-- 预览对话框 -->
+    <el-dialog
+      v-model="previewVisible"
+      title="数据预览"
+      width="85%"
+      class="preview-dialog"
+      :before-close="() => previewVisible = false"
+      :close-on-click-modal="true"
+      :append-to-body="true"
+    >
+      <div class="preview-info" v-if="previewFile">
+        <el-descriptions :column="3" border size="small">
+          <el-descriptions-item label="文件名">{{ previewFile.filename }}</el-descriptions-item>
+          <el-descriptions-item label="数据来源">{{ getSourceName(previewFile.source) }}</el-descriptions-item>
+          <el-descriptions-item label="记录数">{{ previewFile.recordCount }} 条</el-descriptions-item>
+        </el-descriptions>
+      </div>
+
+      <el-table
+        v-if="previewData.length > 0"
+        :data="previewData"
+        stripe
+        border
+        class="preview-table"
+        style="width: 100%; margin-top: 16px"
+        max-height="500"
+      >
+        <el-table-column
+          v-for="column in previewColumns"
+          :key="column.prop"
+          :prop="column.prop"
+          :label="column.label"
+          :width="column.width"
+          :min-width="column.minWidth"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            <span v-if="row[column.prop]">{{ row[column.prop] }}</span>
+            <span v-else style="color: #c0c4cc; font-style: italic;">-</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-else style="text-align: center; padding: 40px 0;">
+        <el-empty description="暂无数据" />
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -753,6 +877,13 @@ async function handleResumeTask(row: any) {
   text-align: center;
   line-height: 1;
 }
+</style>
+
+<style>
+/* 预览对话框（非 scoped：对话框 append-to-body 时生效） */
+.preview-dialog .el-dialog__body {
+  overflow-x: auto;
+}
 
 /* 任务列表卡片 */
 .task-list-card {
@@ -764,7 +895,6 @@ async function handleResumeTask(row: any) {
   justify-content: center;
   margin-top: 16px;
 }
-
 </style>
 
 <!-- 非 scoped：强制覆盖 Element Plus 固定列透明背景（body 前缀提高特异性） -->

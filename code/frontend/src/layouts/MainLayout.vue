@@ -20,8 +20,6 @@ const userInfo = ref<any>({
   loginType: 'oauth2'
 })
 
-const isCollapse = ref(false)
-
 const isSubPage = computed(() => {
   return route.path.startsWith('/crawler/') && route.path !== '/crawler'
 })
@@ -45,7 +43,6 @@ const namedIcons: Record<string, any> = {
 const defaultMenuItems: MenuItem[] = [
   { path: '/home', title: '首页', icon: namedIcons.HomeFilled },
   { path: '/crawler', title: '数据采集', icon: namedIcons.Monitor },
-  { path: '/files', title: '数据管理', icon: namedIcons.Files },
   { path: '/analysis', title: '智能分析', icon: namedIcons.PieChart },
   { path: '/dashboard', title: '数据看板', icon: namedIcons.DataAnalysis },
   { path: '/daping', title: '数据大屏', icon: namedIcons.Monitor },
@@ -82,7 +79,7 @@ const defaultMenuItems: MenuItem[] = [
 
 const menuItems = shallowRef<MenuItem[]>(defaultMenuItems)
 
-// 将 API 返回的菜单树转换为侧边栏格式
+// 将 API 返回的菜单树转换为菜单格式
 function buildMenuItems(menus: SystemMenu[]): MenuItem[] {
   return menus
     .filter(m => !m.hidden)
@@ -110,7 +107,6 @@ function buildMenuItems(menus: SystemMenu[]): MenuItem[] {
 onMounted(async () => {
   try {
     const res = await getMenuTree()
-    // 注意：axios 响应拦截器已解包 response.data，res 即 { success, data }
     if (res?.success && res.data?.length > 0) {
       menuItems.value = buildMenuItems(res.data)
     }
@@ -126,21 +122,11 @@ const activeMenu = computed(() => {
   return currentPath
 })
 
-const toggleSidebar = () => {
-  isCollapse.value = !isCollapse.value
-}
-
 // 处理菜单点击
 const handleMenuSelect = (path: string) => {
-  console.log('[MainLayout] 菜单点击:', path)
-  console.log('[MainLayout] 当前路由:', route.path)
-  
-  // 如果已经在该页面，不重复跳转
   if (route.path === path || (path === '/crawler' && route.path.startsWith('/crawler'))) {
-    console.log('[MainLayout] 已在当前页面，无需跳转')
     return
   }
-  
   router.push(path).catch(err => {
     console.error('[MainLayout] 路由跳转失败:', err)
   })
@@ -152,33 +138,23 @@ const handleCommand = (command: string) => {
   }
 }
 
-// 🔧 处理登出
+// 处理登出
 const handleLogout = () => {
-  console.log('[MainLayout] 用户登出, 登录类型:', userInfo.value.loginType);
-  
-  // 如果是本地登录,清除 localStorage
   if (userInfo.value.loginType === 'local') {
     localStorage.removeItem('user_info');
     localStorage.removeItem('is_authenticated');
-    console.log('[MainLayout] 已清除本地登录信息');
-    
-    // 跳转到登录页
     window.location.href = '/login';
     return;
   }
-  
-  // OAuth2 登录,调用 auth 服务的登出
   authLogout();
 }
 
-// 🔧 加载用户信息
+// 加载用户信息
 onMounted(() => {
-  // 优先检查本地登录的用户信息
   const localUserInfo = localStorage.getItem('user_info');
   const isAuthenticated = localStorage.getItem('is_authenticated');
-  
+
   if (localUserInfo && isAuthenticated === 'true') {
-    // 本地登录
     try {
       const info = JSON.parse(localUserInfo);
       userInfo.value = {
@@ -188,14 +164,12 @@ onMounted(() => {
         userLoginName: info.username,
         loginType: 'local'
       };
-      console.log('[MainLayout] 本地登录用户信息已加载:', userInfo.value);
       return;
     } catch (e) {
       console.error('[MainLayout] 解析本地用户信息失败:', e);
     }
   }
-  
-  // OAuth2 登录
+
   const info = getUserInfo();
   if (info) {
     userInfo.value = {
@@ -205,7 +179,6 @@ onMounted(() => {
       userLoginName: info.userLoginName,
       loginType: 'oauth2'
     };
-    console.log('[MainLayout] OAuth2 用户信息已加载:', userInfo.value);
   }
 })
 
@@ -219,105 +192,56 @@ const getCurrentPageTitle = () => {
 <template>
   <a href="#main-content" class="sr-only">跳到主内容</a>
   <el-container class="layout-container">
-    <!-- 左侧菜单 - 美化版 -->
-    <el-aside v-show="!isFullScreen" :width="isCollapse ? '70px' : '240px'" class="sidebar">
-      <div class="logo">
-        <div class="logo-icon">
-          <svg viewBox="0 0 48 48" class="logo-svg" xmlns="http://www.w3.org/2000/svg">
-            <!-- 外环 -->
-            <circle cx="24" cy="24" r="22" fill="none" stroke="#C4152D" stroke-width="2.5"/>
-            <!-- 天安门简化 -->
-            <rect x="16" y="26" width="16" height="5" fill="#C4152D" rx="1"/>
-            <rect x="12" y="20" width="5" height="10" fill="#C4152D" rx="1"/>
-            <rect x="31" y="20" width="5" height="10" fill="#C4152D" rx="1"/>
-            <rect x="19" y="18" width="10" height="5" fill="#C4152D" rx="1"/>
-            <!-- 五角星 -->
-            <polygon points="24,7 26.5,14.5 34,14.5 28,19 30.5,26.5 24,22 17.5,26.5 20,19 14,14.5 21.5,14.5" fill="#FFD700"/>
-            <!-- 底部绶带 -->
-            <rect x="10" y="31" width="28" height="4" fill="#C4152D" rx="2"/>
-            <rect x="14" y="35" width="20" height="3" fill="#C4152D" rx="1.5"/>
-          </svg>
+    <!-- 顶部导航栏（全屏模式下隐藏） -->
+    <el-header v-show="!isFullScreen" class="top-header" height="auto">
+      <!-- 第一行：Logo + 导航菜单 + 右侧操作 -->
+      <div class="header-row nav-row">
+        <div class="logo-area">
+          <div class="logo-icon">
+            <svg viewBox="0 0 48 48" class="logo-svg" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="24" cy="24" r="22" fill="none" stroke="#C4152D" stroke-width="2.5"/>
+              <rect x="16" y="26" width="16" height="5" fill="#C4152D" rx="1"/>
+              <rect x="12" y="20" width="5" height="10" fill="#C4152D" rx="1"/>
+              <rect x="31" y="20" width="5" height="10" fill="#C4152D" rx="1"/>
+              <rect x="19" y="18" width="10" height="5" fill="#C4152D" rx="1"/>
+              <polygon points="24,7 26.5,14.5 34,14.5 28,19 30.5,26.5 24,22 17.5,26.5 20,19 14,14.5 21.5,14.5" fill="#FFD700"/>
+              <rect x="10" y="31" width="28" height="4" fill="#C4152D" rx="2"/>
+              <rect x="14" y="35" width="20" height="3" fill="#C4152D" rx="1.5"/>
+            </svg>
+          </div>
+          <span class="logo-text">高质量人才数据集</span>
         </div>
-        <transition name="fade-slide">
-          <span v-show="!isCollapse" class="logo-text">高质量人才数据集</span>
-        </transition>
-      </div>
-      
-      <div class="menu-wrapper">
+
         <el-menu
+          mode="horizontal"
           :default-active="activeMenu"
-          :collapse="isCollapse"
-          :collapse-transition="false"
-          class="sidebar-menu"
+          :ellipsis="true"
+          class="top-nav-menu"
           @select="handleMenuSelect"
         >
           <template v-for="item in menuItems" :key="item.title">
-            <el-sub-menu v-if="item.children" :index="item.title" class="sub-menu-custom">
+            <el-sub-menu v-if="item.children" :index="item.title">
               <template #title>
-                <div class="menu-item-content">
-                  <el-icon class="menu-icon"><component :is="item.icon" /></el-icon>
-                  <transition name="fade-slide">
-                    <span v-show="!isCollapse">{{ item.title }}</span>
-                  </transition>
-                </div>
+                <el-icon><component :is="item.icon" /></el-icon>
+                <span>{{ item.title }}</span>
               </template>
               <el-menu-item
                 v-for="child in item.children"
                 :key="child.path"
                 :index="child.path"
-                class="menu-item-custom sub-item"
               >
-                <div class="sub-item-content">
-                  <el-icon v-if="child.icon" class="sub-icon"><component :is="child.icon" /></el-icon>
-                  <span>{{ child.title }}</span>
-                </div>
+                <el-icon v-if="child.icon"><component :is="child.icon" /></el-icon>
+                <span>{{ child.title }}</span>
               </el-menu-item>
             </el-sub-menu>
-            <el-menu-item
-              v-else
-              :index="item.path"
-              class="menu-item-custom"
-            >
-              <div class="menu-item-content">
-                <el-icon class="menu-icon"><component :is="item.icon" /></el-icon>
-                <transition name="fade-slide">
-                  <span v-show="!isCollapse" class="menu-title">{{ item.title }}</span>
-                </transition>
-              </div>
+            <el-menu-item v-else :index="item.path">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span>{{ item.title }}</span>
             </el-menu-item>
           </template>
         </el-menu>
-      </div>
-    </el-aside>
 
-    <!-- 右侧主内容区 -->
-    <el-container class="main-container">
-      <!-- 顶栏 - 美化版（大屏模式下隐藏） -->
-      <el-header v-show="!isFullScreen" class="header">
-        <div class="header-left">
-          <el-button
-            class="collapse-btn"
-            :icon="isCollapse ? Expand : Fold"
-            circle
-            text
-            @click="toggleSidebar"
-          />
-          <div class="breadcrumb-area">
-            <el-breadcrumb separator="/">
-              <el-breadcrumb-item :to="{ path: '/home' }">首页</el-breadcrumb-item>
-              <template v-if="isSubPage">
-                <el-breadcrumb-item :to="{ path: '/crawler' }">数据采集</el-breadcrumb-item>
-                <el-breadcrumb-item>{{ route.meta.title }}</el-breadcrumb-item>
-              </template>
-              <el-breadcrumb-item v-else-if="route.path !== '/home'">
-                {{ getCurrentPageTitle() }}
-              </el-breadcrumb-item>
-            </el-breadcrumb>
-          </div>
-        </div>
-
-        <div class="header-right">
-          <!-- 数据大屏快捷入口 -->
+        <div class="header-actions">
           <el-button
             class="daping-btn"
             :type="route.path === '/daping' ? 'primary' : 'default'"
@@ -348,13 +272,29 @@ const getCurrentPageTitle = () => {
             </template>
           </el-dropdown>
         </div>
-      </el-header>
+      </div>
 
-      <!-- 主内容（大屏模式下无 padding/overflow） -->
-      <el-main id="main-content" :class="['main', { 'main--fullscreen': isFullScreen }]">
-        <router-view />
-      </el-main>
-    </el-container>
+      <!-- 第二行：面包屑 -->
+      <div class="header-row breadcrumb-row">
+        <div class="breadcrumb-area">
+          <el-breadcrumb separator="/">
+            <el-breadcrumb-item :to="{ path: '/home' }">首页</el-breadcrumb-item>
+            <template v-if="isSubPage">
+              <el-breadcrumb-item :to="{ path: '/crawler' }">数据采集</el-breadcrumb-item>
+              <el-breadcrumb-item>{{ route.meta.title }}</el-breadcrumb-item>
+            </template>
+            <el-breadcrumb-item v-else-if="route.path !== '/home'">
+              {{ getCurrentPageTitle() }}
+            </el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+      </div>
+    </el-header>
+
+    <!-- 主内容区（全屏模式下无 padding/overflow） -->
+    <el-main id="main-content" :class="['main', { 'main--fullscreen': isFullScreen }]">
+      <router-view />
+    </el-main>
   </el-container>
 </template>
 
@@ -362,41 +302,43 @@ const getCurrentPageTitle = () => {
 .layout-container {
   height: 100vh;
   width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ===== 左侧边栏 — 玻璃质感 ===== */
-.sidebar {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--glass-blur-strong));
-  -webkit-backdrop-filter: blur(var(--glass-blur-strong));
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
+/* ===== 顶部 Header ===== */
+.top-header {
+  --el-header-padding: 0;
+  padding: 0;
+  height: auto;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-header, 100);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--shadow-md);
-  border-right: 1px solid var(--glass-border);
-  position: relative;
+  border-bottom: 1px solid var(--glass-border);
 }
 
-/* 侧边栏顶部微弱渐变叠加层 */
-.sidebar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(102, 126, 234, 0.03) 0%, transparent 40%, rgba(118, 75, 162, 0.03) 100%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Logo区域 */
-.logo {
-  height: 70px;
+.header-row {
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  background: transparent;
-  border-bottom: 1px solid var(--glass-border-subtle);
+  padding: 0 24px;
+}
+
+/* ===== 导航行 ===== */
+.nav-row {
+  height: var(--nav-bar-height, 60px);
+}
+
+/* Logo 区域 */
+.logo-area {
+  display: flex;
+  align-items: center;
   gap: 12px;
-  position: relative;
-  z-index: 1;
+  flex-shrink: 0;
+  margin-right: 24px;
 }
 
 .logo-icon {
@@ -412,7 +354,7 @@ const getCurrentPageTitle = () => {
   transition: transform 0.3s ease;
 }
 
-.logo:hover .logo-icon {
+.logo-area:hover .logo-icon {
   transform: scale(1.08);
 }
 
@@ -429,258 +371,93 @@ const getCurrentPageTitle = () => {
   letter-spacing: 0.5px;
 }
 
-/* 菜单容器 */
-.menu-wrapper {
-  height: calc(100vh - 70px);
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 12px 0;
-  background: transparent;
-  position: relative;
-  z-index: 1;
-}
-
-.menu-wrapper::-webkit-scrollbar {
-  width: 4px;
-}
-
-.menu-wrapper::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.menu-wrapper::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 2px;
-}
-
-.menu-wrapper::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
-}
-
-/* 侧边栏菜单 */
-.sidebar-menu {
-  border-right: none;
-  background: transparent;
-}
-
-/* 自定义菜单项 */
-:deep(.menu-item-custom) {
-  margin: 4px 12px;
-  border-radius: 8px;
-  height: 48px;
-  line-height: 48px;
-  transition: all 0.3s ease;
-  border: 1px solid transparent;
-}
-
-:deep(.menu-item-custom .el-menu-item) {
-  background: transparent !important;
-  color: #4b5563;
-  font-weight: 500;
-  padding: 0 16px !important;
-}
-
-:deep(.menu-item-custom:hover) {
-  background: var(--glass-bg-hover) !important;
-  border-color: rgba(102, 126, 234, 0.15);
-  box-shadow: var(--shadow-xs);
-}
-
-:deep(.menu-item-custom.is-active) {
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%) !important;
-  border-color: rgba(102, 126, 234, 0.25);
-  box-shadow: 0 2px 12px rgba(102, 126, 234, 0.1), inset 0 1px 0 rgba(255,255,255,0.5);
-}
-
-:deep(.menu-item-custom.is-active .el-menu-item) {
-  color: #667eea !important;
-  font-weight: 600;
-}
-
-/* 菜单项内容布局 */
-.menu-item-content {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-
-.menu-icon {
-  font-size: 20px;
-  flex-shrink: 0;
-  transition: all 0.3s ease;
-  color: #6b7280;
-}
-
-:deep(.menu-item-custom:hover) .menu-icon {
-  transform: scale(1.1);
-  color: #667eea;
-}
-
-:deep(.menu-item-custom.is-active) .menu-icon {
-  color: #667eea;
-}
-
-.menu-title {
-  font-size: 14px;
-  white-space: nowrap;
+/* ===== 水平导航菜单 ===== */
+.top-nav-menu {
   flex: 1;
+  min-width: 0;
+  border-bottom: none !important;
+  background: transparent;
 }
 
-/* 子菜单样式 */
-:deep(.sub-menu-custom) {
-  margin: 2px 12px;
-}
-
-:deep(.sub-menu-custom .el-sub-menu__title) {
-  height: 48px;
-  line-height: 48px;
-  border-radius: 8px;
-  padding: 0 16px !important;
+:deep(.top-nav-menu > .el-menu-item),
+:deep(.top-nav-menu > .el-sub-menu > .el-sub-menu__title) {
+  height: var(--nav-bar-height, 60px);
+  line-height: var(--nav-bar-height, 60px);
+  border-bottom: 2px solid transparent !important;
   color: #4b5563;
   font-weight: 500;
-  transition: all 0.3s ease;
-  border: 1px solid transparent;
+  transition: all var(--transition-base);
+  padding: 0 14px !important;
 }
 
-:deep(.sub-menu-custom .el-sub-menu__title:hover) {
+:deep(.top-nav-menu > .el-menu-item:hover),
+:deep(.top-nav-menu > .el-sub-menu > .el-sub-menu__title:hover) {
   background: var(--glass-bg-hover) !important;
-  border-color: rgba(102, 126, 234, 0.15);
-  box-shadow: var(--shadow-xs);
+  color: var(--color-primary) !important;
+  border-bottom-color: rgba(102, 126, 234, 0.3) !important;
 }
 
-:deep(.sub-menu-custom.is-opened .el-sub-menu__title) {
-  color: #667eea;
+:deep(.top-nav-menu > .el-menu-item.is-active) {
+  border-bottom-color: var(--color-primary) !important;
+  color: var(--color-primary) !important;
   font-weight: 600;
-}
-
-:deep(.sub-menu-custom .el-menu) {
   background: transparent !important;
-  padding: 0;
 }
 
-:deep(.sub-item) {
+:deep(.top-nav-menu .el-icon) {
+  margin-right: 6px;
+  font-size: 18px;
+  vertical-align: middle;
+}
+
+/* 子菜单弹出框 — 玻璃质感 */
+:deep(.top-nav-menu .el-menu--popup) {
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border: 1px solid var(--glass-border);
+  padding: 4px;
+}
+
+:deep(.top-nav-menu .el-menu--popup .el-menu-item) {
+  border-radius: 6px;
+  margin: 2px 4px;
   height: 40px;
   line-height: 40px;
-  margin: 2px 12px;
-  padding: 0 16px !important;
+  color: #4b5563;
   font-size: 13px;
-  color: #6b7280;
-  border-radius: 6px;
-  transition: all 0.3s ease;
 }
 
-:deep(.sub-item:hover) {
+:deep(.top-nav-menu .el-menu--popup .el-menu-item:hover) {
   background: var(--glass-bg-hover) !important;
-  color: #667eea;
+  color: var(--color-primary) !important;
 }
 
-:deep(.sub-item.is-active) {
+:deep(.top-nav-menu .el-menu--popup .el-menu-item.is-active) {
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%) !important;
-  color: #667eea;
+  color: var(--color-primary) !important;
   font-weight: 600;
 }
 
-.sub-item-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.sub-icon {
-  font-size: 16px;
-  flex-shrink: 0;
-  color: #9ca3af;
-}
-
-:deep(.sub-item.is-active) .sub-icon {
-  color: #667eea;
-}
-
-/* 折叠状态优化 */
-.sidebar-menu.el-menu--collapse {
-  width: 70px;
-}
-
-:deep(.sidebar-menu.el-menu--collapse .menu-item-custom) {
-  margin: 4px 8px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ===== 右侧主容器 ===== */
-.main-container {
-  display: flex;
-  flex-direction: column;
-  background: var(--color-bg-page-gradient);
-  position: relative;
-}
-
-.main-container::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 30% 20%, rgba(102, 126, 234, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse 60% 50% at 70% 80%, rgba(118, 75, 162, 0.03) 0%, transparent 50%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ===== 顶部导航栏 - 玻璃质感 ===== */
-.header {
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
-  box-shadow: var(--shadow-md);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 24px;
-  height: 70px;
-  border-bottom: 1px solid var(--glass-border);
-  position: sticky;
-  top: 0;
-  z-index: 100;
-}
-
-.header-left {
+/* ===== 右侧操作区 ===== */
+.header-actions {
   display: flex;
   align-items: center;
   gap: 16px;
-  position: relative;
-  z-index: 1;
+  flex-shrink: 0;
+  margin-left: 20px;
 }
 
-/* 折叠按钮 */
-.collapse-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: var(--glass-bg);
+/* ===== 面包屑行 ===== */
+.breadcrumb-row {
+  height: var(--breadcrumb-bar-height, 42px);
+  background: var(--glass-bg-weak);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
-  border: 1px solid var(--glass-border-subtle);
-  transition: all var(--transition-base);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #6b7280;
+  border-top: 1px solid var(--glass-border-subtle);
 }
 
-.collapse-btn:hover {
-  background: var(--glass-bg-hover);
-  border-color: rgba(102, 126, 234, 0.25);
-  color: #667eea;
-  transform: scale(1.05);
-  box-shadow: var(--shadow-xs);
-}
-
-/* 面包屑区域 */
 .breadcrumb-area {
-  padding-left: 8px;
+  padding-left: 0;
 }
 
 :deep(.el-breadcrumb__item) {
@@ -706,14 +483,6 @@ const getCurrentPageTitle = () => {
 :deep(.el-breadcrumb__item:last-child .el-breadcrumb__inner) {
   color: #1f2937;
   font-weight: 600;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  position: relative;
-  z-index: 1;
 }
 
 /* 数据大屏快捷按钮 */
@@ -824,9 +593,25 @@ const getCurrentPageTitle = () => {
 
 /* 主内容区 */
 .main {
+  flex: 1;
   padding: 24px;
   overflow-y: auto;
-  background: transparent;
+  background: var(--color-bg-page-gradient);
+  position: relative;
+}
+
+.main::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 80% 60% at 30% 20%, rgba(102, 126, 234, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 70% 80%, rgba(118, 75, 162, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.main > :deep(*) {
   position: relative;
   z-index: 1;
 }
@@ -837,19 +622,16 @@ const getCurrentPageTitle = () => {
   overflow: hidden;
 }
 
-/* ===== 过渡动画 ===== */
-.fade-slide-enter-active,
-.fade-slide-leave-active {
-  transition: all 0.3s ease;
-}
-
-.fade-slide-enter-from {
-  opacity: 0;
-  transform: translateX(-10px);
-}
-
-.fade-slide-leave-to {
-  opacity: 0;
-  transform: translateX(-10px);
+/* 无障碍跳过链接 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 </style>
