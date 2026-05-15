@@ -247,9 +247,7 @@ export function uploadResume(file: File, options?: {
   formData.append('file', file)
   if (options?.limit) formData.append('limit', String(options.limit))
   if (options?.minSimilarity) formData.append('minSimilarity', String(options.minSimilarity))
-  return api.post('/rag/resume/upload', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  })
+  return api.post('/rag/resume/upload', formData)
 }
 
 // 简历结构化解析接口
@@ -283,8 +281,7 @@ export function parseResume(file: File): Promise<ApiResponse<ParsedResume>> {
   const formData = new FormData()
   formData.append('file', file)
   return api.post('/rag/resume/parse', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000,
+    timeout: 300000,
   })
 }
 
@@ -404,7 +401,6 @@ export function batchParseResumes(files: File[]): Promise<ApiResponse<BatchParse
   const formData = new FormData()
   files.forEach(f => formData.append('files', f))
   return api.post('/rag/resume/batch-parse', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 300000,
   })
 }

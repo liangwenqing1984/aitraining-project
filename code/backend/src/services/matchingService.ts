@@ -58,12 +58,12 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
     // 获取已有 embedding 或实时生成
     if (resumeData.embedding) {
       resumeEmbedding = parseVector(resumeData.embedding);
-    } else if (resumeData.raw_text) {
-      const { embedding } = await generateEmbedding(resumeData.raw_text.substring(0, 2000));
+    } else if (resumeData.rawText) {
+      const { embedding } = await generateEmbedding(resumeData.rawText.substring(0, 2000));
       resumeEmbedding = embedding;
     }
   } else if (params.resumeText) {
-    resumeData = { raw_text: params.resumeText, name: '手动输入', skills: [], education_level: null, work_years: null };
+    resumeData = { rawText: params.resumeText, name: '手动输入', skills: [], educationLevel: null, workYears: null };
     const { embedding } = await generateEmbedding(params.resumeText.substring(0, 2000));
     resumeEmbedding = embedding;
   } else {
@@ -74,8 +74,8 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
   const resumeSkills: string[] = typeof resumeData.skills === 'string'
     ? JSON.parse(resumeData.skills || '[]')
     : (resumeData.skills || []);
-  const resumeEducation = resumeData.education_level || '';
-  const resumeWorkYears = resumeData.work_years || 0;
+  const resumeEducation = resumeData.educationLevel || '';
+  const resumeWorkYears = resumeData.workYears || 0;
 
   // 2. 获取内部岗位列表
   let jobs: any[];
@@ -95,21 +95,21 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
   const results: ScreeningResult[] = [];
 
   for (const job of jobs) {
-    const jobSkills: string[] = typeof job.required_skills === 'string'
-      ? JSON.parse(job.required_skills || '[]')
-      : (job.required_skills || []);
-    const jobPreferredSkills: string[] = typeof job.preferred_skills === 'string'
-      ? JSON.parse(job.preferred_skills || '[]')
-      : (job.preferred_skills || []);
-    const skillMode: 'all' | 'any' = job.skill_match_mode || 'any';
+    const jobSkills: string[] = typeof job.requiredSkills === 'string'
+      ? JSON.parse(job.requiredSkills || '[]')
+      : (job.requiredSkills || []);
+    const jobPreferredSkills: string[] = typeof job.preferredSkills === 'string'
+      ? JSON.parse(job.preferredSkills || '[]')
+      : (job.preferredSkills || []);
+    const skillMode: 'all' | 'any' = job.skillMatchMode || 'any';
 
     // 硬性规则检查
     const hardRules = checkHardRules({
       resumeEducation,
       resumeWorkYears,
       resumeSkills,
-      jobEducation: job.education_required || '',
-      jobExperienceMin: job.experience_years_min || 0,
+      jobEducation: job.educationRequired || '',
+      jobExperienceMin: job.experienceYearsMin || 0,
       jobRequiredSkills: jobSkills,
       skillMode,
     });
@@ -119,9 +119,9 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
     if (resumeEmbedding && job.embedding) {
       const jobEmb = parseVector(job.embedding);
       similarity = cosineSimilarity(resumeEmbedding, jobEmb) * 100;
-    } else if (resumeEmbedding && job.embedding_text) {
+    } else if (resumeEmbedding && job.embeddingText) {
       // fallback: 为岗位实时生成 embedding
-      const { embedding } = await generateEmbedding(job.embedding_text.substring(0, 2000));
+      const { embedding } = await generateEmbedding(job.embeddingText.substring(0, 2000));
       similarity = cosineSimilarity(resumeEmbedding, embedding) * 100;
     }
 

@@ -116,7 +116,7 @@
           </span>
         </div>
 
-        <div v-if="!matchResult && !matching && !fileUploading" class="result-placeholder">
+        <div v-if="!matchResult && !parsedResume && !screeningResult && !matching && !screening && !fileUploading" class="result-placeholder">
           <el-icon :size="48" color="#c0c4cc"><Document /></el-icon>
           <p>上传简历文件或粘贴文本后开始匹配</p>
           <div class="placeholder-tips">
@@ -183,7 +183,7 @@
         </div>
 
         <!-- 结构化解析结果 -->
-        <div v-if="parsedResume && !fileUploading" class="parsed-result">
+        <div v-if="parsedResume && !fileUploading && !(screenMode === 'screen' && screeningResult)" class="parsed-result">
           <el-alert type="success" :closable="false" show-icon style="margin-bottom: 16px">
             <template #title>
               解析完成 · 置信度 {{ (parsedResume.parseConfidence * 100).toFixed(0) }}%

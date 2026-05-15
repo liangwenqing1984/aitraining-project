@@ -380,7 +380,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import {
   Plus, Loading, Link, Edit, Delete, Search, Setting, Cpu,
   InfoFilled, Key, Switch, Check, CircleCheckFilled, CircleCloseFilled,
-  DataAnalysis, TrendCharts, ChatDotRound, Monitor, Grid,
+  DataAnalysis, TrendCharts, ChatDotRound, Monitor, Grid, Document,
 } from '@element-plus/icons-vue'
 import {
   listLLMConfigs, saveLLMConfig, deleteLLMConfig, checkLLMHealth, fetchProviderModels,
@@ -443,6 +443,7 @@ const taskOptions = [
   { value: 'query', label: 'NL 查询', desc: '中文提问转 SQL 查询', icon: ChatDotRound, color: '#e6a23c', bg: '#fdf6ec' },
   { value: 'anti-crawl', label: '反爬检测', desc: '验证码识别与反爬对抗', icon: Monitor, color: '#f56c6c', bg: '#fef0f0' },
   { value: 'embedding', label: '文本向量化', desc: '职位文本转向量(Embedding)', icon: Grid, color: '#9b59b6', bg: '#f5f0ff' },
+  { value: 'resume-parse', label: '简历解析', desc: '从简历文件提取结构化信息', icon: Document, color: '#e67e22', bg: '#fef5e7' },
 ]
 
 const taskLabelMap: Record<string, string> = {
@@ -451,6 +452,7 @@ const taskLabelMap: Record<string, string> = {
   'query': 'NL查询',
   'anti-crawl': '反爬检测',
   'embedding': '向量化',
+  'resume-parse': '简历解析',
 }
 
 function taskLabel(key: string): string {
@@ -463,6 +465,7 @@ const taskTagTypeMap: Record<string, string> = {
   'query': 'warning',
   'anti-crawl': 'danger',
   'embedding': '',
+  'resume-parse': 'success',
 }
 
 function taskTagType(key: string): string {
@@ -575,7 +578,7 @@ async function onProviderChange(provider: string) {
   if (form.value.taskRouting.length === 0) {
     form.value.taskRouting = provider === 'ollama'
       ? ['enrichment', 'anti-crawl']
-      : ['enrichment', 'insights', 'query']
+      : ['enrichment', 'insights', 'query', 'resume-parse']
   }
   if (provider === 'ollama') {
     fetchOllamaModels()
@@ -590,7 +593,7 @@ function quickAdd(provider: string) {
     ...defaultForm,
     provider,
     baseUrl: getDefaultUrl(provider),
-    taskRouting: provider === 'ollama' ? ['enrichment', 'anti-crawl'] : ['enrichment', 'insights', 'query'],
+    taskRouting: provider === 'ollama' ? ['enrichment', 'anti-crawl'] : ['enrichment', 'insights', 'query', 'resume-parse'],
   }
   formRef.value?.resetFields()
   if (provider === 'ollama') {

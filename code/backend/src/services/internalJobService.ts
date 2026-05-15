@@ -49,6 +49,7 @@ export async function createInternalJob(data: InternalJob): Promise<number> {
   const result = await db.prepare(`
     INSERT INTO sp_internal_jobs (title, department, description, requirement, education_required, experience_years_min, experience_years_max, required_skills, preferred_skills, skill_match_mode, city_preferred, job_category, headcount, salary_min, salary_max, job_type, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    RETURNING id
   `).run(
     data.title, data.department || null, data.description, data.requirement || null,
     data.educationRequired || null, data.experienceYearsMin || null, data.experienceYearsMax || null,

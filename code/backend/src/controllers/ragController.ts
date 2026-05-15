@@ -372,6 +372,7 @@ export const parseResume = [
       const result = await db.prepare(`
         INSERT INTO sp_resumes (original_filename, raw_text, name, email, phone, education_level, school, major, graduation_year, work_years, skills, skill_levels, desired_position, desired_city, desired_salary_min, desired_salary_max, job_type, projects, certifications, languages, self_evaluation, parse_confidence, parsed_by_model)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        RETURNING id
       `).run(
         fileName, resumeText, parsed.name, parsed.email, parsed.phone,
         parsed.educationLevel, parsed.school, parsed.major, parsed.graduationYear,
@@ -779,6 +780,7 @@ export const batchParseResumes = [
           const result = await db.prepare(`
             INSERT INTO sp_resumes (original_filename, raw_text, name, email, phone, education_level, school, major, graduation_year, work_years, skills, skill_levels, desired_position, desired_city, desired_salary_min, desired_salary_max, job_type, projects, certifications, languages, self_evaluation, parse_confidence, parsed_by_model)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            RETURNING id
           `).run(
             fileName, resumeText, parsed.name, parsed.email, parsed.phone,
             parsed.educationLevel, parsed.school, parsed.major, parsed.graduationYear,
