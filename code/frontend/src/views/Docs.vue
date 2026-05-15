@@ -2368,12 +2368,83 @@ npm run dev
   // ========== 核心功能扩展 ==========
   'feat-resume': {
     title: '简历筛选匹配',
-    content: `<table>
+    content: `<h4>三种处理模式</h4>
+<table>
+  <tr><th style="width:100px">模式</th><th>核心能力</th><th>适用场景</th></tr>
+  <tr>
+    <td><strong>职位匹配</strong></td>
+    <td>将简历文本向量化，与外部招聘平台爬取的职位向量库做<strong>余弦相似度匹配</strong>，返回最相关的在招职位</td>
+    <td>帮候选人快速找到市场上匹配的外部职位</td>
+  </tr>
+  <tr>
+    <td><strong>内部筛选</strong></td>
+    <td>简历先结构化解析 → 与公司<strong>内部岗位 JD</strong> 做三级融合打分（硬性规则 + 向量语义 + 技能加分）</td>
+    <td>HR 筛简历，判断候选人是否符合内部岗位要求</td>
+  </tr>
+  <tr>
+    <td><strong>结构解析</strong></td>
+    <td>用 LLM（DeepSeek V4 Pro）从非结构化简历中<strong>提取 18 个结构化字段</strong>（姓名/学历/技能/工作年限/项目经验/证书等），存入简历库并生成语义向量</td>
+    <td>批量数字化简历，建立可搜索的人才库</td>
+  </tr>
+</table>
+
+<h4>三级融合打分引擎（内部筛选模式）</h4>
+<table>
+  <tr><th>评分维度</th><th>满分</th><th>计算方式</th></tr>
+  <tr>
+    <td><strong>硬性规则</strong></td>
+    <td>40 分</td>
+    <td>学历等级比较（高中:1 ~ 博士:5）+ 工作年限阈值 + 必备技能匹配（支持 all/any 模式）。全部通过得 40 分，任一不通过得 0 分（直接淘汰）</td>
+  </tr>
+  <tr>
+    <td><strong>语义相似度</strong></td>
+    <td>40 分</td>
+    <td>简历与岗位 JD 的向量余弦相似度 × 40，基于自训练语义模型（nomic-embed-text 微调版）</td>
+  </tr>
+  <tr>
+    <td><strong>技能加分</strong></td>
+    <td>20 分</td>
+    <td>必备技能每匹配一项 +3 分，加分技能每匹配一项 +2 分，20 分封顶</td>
+  </tr>
+</table>
+
+<div style="margin: 12px 0; padding: 8px 14px; background: #f0f9eb; border-left: 4px solid #67c23a; border-radius: 0 4px 4px 0;">
+<strong>综合得分计算：</strong> totalScore = hardRuleScore + similarityScore + skillBonus<br/>
+<strong>推荐等级：</strong> ≥80 强烈推荐 | ≥60 一般推荐 | ≥40 勉强匹配 | &lt;40 不推荐
+</div>
+
+<h4>简历库管理</h4>
+<table>
   <tr><th>功能</th><th>说明</th></tr>
-  <tr><td>简历上传</td><td>支持 PDF / DOCX / TXT 格式，自动提取文本</td></tr>
-  <tr><td>智能匹配</td><td>向量相似度计算，匹配最相关的职位 JD</td></tr>
-  <tr><td>匹配详情</td><td>显示相似度分数、薪资范围、技能要求</td></tr>
-</table>`
+  <tr><td>批量导入</td><td>支持一次上传最多 20 份简历文件，自动解析并入库</td></tr>
+  <tr><td>搜索过滤</td><td>按姓名、期望岗位、技能模糊搜索</td></tr>
+  <tr><td>字段编辑</td><td>人工修正 LLM 解析结果（学历/技能/项目等）</td></tr>
+  <tr><td>批量删除</td><td>勾选多条简历一键删除</td></tr>
+  <tr><td>Excel 导出</td><td>导出简历库全部 20 个字段为 Excel 文件</td></tr>
+</table>
+
+<h4>筛选历史与导出</h4>
+<table>
+  <tr><th>功能</th><th>说明</th></tr>
+  <tr><td>结果持久化</td><td>筛选结果可"保存到历史"，存入 sp_screening_results 表</td></tr>
+  <tr><td>历史查询</td><td>按简历/岗位筛选历史记录，分页展示</td></tr>
+  <tr><td>Excel 导出</td><td>筛选结果导出为 Excel（含硬性规则逐项明细 + 推荐等级条件着色）</td></tr>
+</table>
+
+<h4>支持的简历格式</h4>
+<ul>
+  <li><strong>PDF</strong>（.pdf） — 使用 pdf-parse 库提取文本</li>
+  <li><strong>Word</strong>（.docx） — 使用 mammoth 库提取文本</li>
+  <li><strong>纯文本</strong>（.txt） — UTF-8 / GBK 自动编码检测</li>
+  <li>文件大小上限：10MB / 份</li>
+</ul>
+
+<h4>AI 模型配置</h4>
+<ul>
+  <li><strong>嵌入模型</strong>：Ollama nomic-embed-text（或自训练微调版），768 维向量</li>
+  <li><strong>解析模型</strong>：路由到 taskType='resume-parse' 的 LLM（推荐 DeepSeek V4 Pro），需设置 maxTokens ≥ 16384 防止推理 token 耗尽</li>
+  <li><strong>相似度算子</strong>：pgvector <code><=></code> 余弦距离</li>
+</ul>`
   },
   'feat-aibot': {
     title: 'AI 问答机器人',
@@ -2725,12 +2796,71 @@ spawn('python', [
   // ========== 使用指南扩展 ==========
   'guide-resume': {
     title: '简历筛选',
-    content: `<ol>
-  <li>进入「语义搜索 → 简历筛选」页面</li>
-  <li>上传简历文件（PDF / DOCX / TXT）或直接粘贴简历文本</li>
-  <li>设置匹配数量和相似度阈值（建议 0.6）</li>
-  <li>点击"开始匹配"，查看按相似度排列的职位列表</li>
-  <li>每条匹配结果显示相似度分数、薪资范围、技能要求等</li>
+    content: `<p>简历筛选提供三种处理模式，覆盖从"匹配外部职位"到"内部 HR 精准筛选"的完整链路。入口：<strong>语义搜索 → 简历筛选</strong>。</p>
+
+<h4>模式一：职位匹配（外部职位搜索）</h4>
+<ol>
+  <li>在顶部切换开关选择「<strong>职位匹配</strong>」模式</li>
+  <li>上传简历文件（PDF / DOCX / TXT）<strong>或</strong>直接粘贴简历文本</li>
+  <li>调整参数：「返回数量」控制结果条数（5~50），「相似度」过滤低分结果（建议 ≥ 0.6）</li>
+  <li>点击「<strong>开始匹配职位</strong>」</li>
+  <li>右侧展示按相似度降序的职位卡片：职位名、公司、行业/城市标签、匹配度百分比、岗位 JD 摘要</li>
+</ol>
+
+<h4>模式二：结构解析（简历数字化）</h4>
+<ol>
+  <li>在顶部切换开关选择「<strong>结构解析</strong>」模式</li>
+  <li>上传一份或多份简历文件（支持拖拽批量上传，最多 10 个文件）</li>
+  <li>系统自动调用 LLM 提取结构化信息，存入简历库</li>
+  <li>右侧展示解析结果：<strong>基本信息</strong>（姓名/学历/联系方式/学校）、<strong>求职意向</strong>（期望岗位/城市/薪资）、<strong>技能标签</strong>（含熟练度）、<strong>项目经验</strong>（可折叠面板）、<strong>证书/语言</strong>、<strong>自我评价</strong></li>
+  <li>解析完成后简历自动生成语义向量，可用于后续匹配</li>
+</ol>
+<div style="margin: 8px 0; padding: 8px 14px; background: #fdf6ec; border-left: 4px solid #e6a23c; border-radius: 0 4px 4px 0;">
+<strong>注意：</strong>若使用 DeepSeek 推理模型，需确保 LLM 配置的 maxTokens ≥ 16384，否则可能因推理 token 耗尽导致解析失败（报 REASONING_EXHAUSTED 错误）。
+</div>
+
+<h4>模式三：内部筛选（HR 精准打分）</h4>
+<ol>
+  <li>在顶部切换开关选择「<strong>内部筛选</strong>」模式</li>
+  <li><strong>必须先上传简历</strong>：上传后系统自动完成结构解析（同模式二）</li>
+  <li>在「目标岗位」下拉框中选择要匹配的内部岗位（可选"全部岗位"），下拉框数据来自「系统管理 → 内部岗位」中状态为"招聘中"的岗位</li>
+  <li>点击「<strong>开始智能筛选</strong>」，系统执行三级融合打分</li>
+  <li>右侧展示卡片含：
+    <ul>
+      <li><strong>总分大数字</strong>（按等级着色：绿≥80 / 黄≥60 / 灰≥40 / 红&lt;40）</li>
+      <li><strong>推荐等级标签</strong>：强烈推荐 / 一般推荐 / 勉强匹配 / 不推荐</li>
+      <li><strong>评分明细</strong>（点击展开）：硬性规则逐项检查（学历 ✓/✗、工作年限 ✓/✗、必备技能匹配/缺失清单）、语义相似度百分比 + 分数、技能加分明细、综合得分计算</li>
+    </ul>
+  </li>
+  <li>筛选完成后可「<strong>保存到历史</strong>」或「<strong>导出 Excel</strong>」</li>
+</ol>
+
+<h4>内部岗位管理（前置准备）</h4>
+<p>内部筛选模式依赖已录入的内部岗位数据。在「<strong>系统管理 → 内部岗位</strong>」中：</p>
+<ol>
+  <li>点击「新增」创建岗位，填写岗位名称、部门、描述、要求</li>
+  <li>配置硬性筛选规则：学历要求、工作年限下限/上限、必备技能、加分技能、技能匹配模式（all=全部满足 / any=任一满足）</li>
+  <li>设置招聘信息：期望城市、薪资范围、招聘人数、岗位状态</li>
+  <li>保存后系统自动生成岗位语义向量（用于相似度匹配）</li>
+</ol>
+
+<h4>简历库管理</h4>
+<p>所有通过结构解析或内部筛选模式上传的简历，自动存入简历库。入口：「<strong>语义搜索 → 简历库</strong>」：</p>
+<ol>
+  <li>表格展示全部简历（姓名/学历/工龄/技能/期望岗位/电话/解析置信度等）</li>
+  <li>支持搜索（姓名/期望岗位/技能模糊匹配）</li>
+  <li>点击「详情」查看完整 18 字段 + 项目经验折叠面板</li>
+  <li>点击「编辑」人工修正 LLM 解析结果（学历/技能/项目等）</li>
+  <li>「批量导入」一次上传最多 20 个文件并自动解析入库</li>
+  <li>「导出 Excel」下载简历库全部数据（20 列含技能/证书展开文本）</li>
+  <li>支持勾选 +「批量删除」</li>
+</ol>
+
+<h4>筛选历史</h4>
+<p>内部筛选模式下点击「保存到历史」后，结果存入 <code>sp_screening_results</code> 表：</p>
+<ol>
+  <li>可通过 API <code>GET /api/rag/resume/screening/history</code> 查询历史记录</li>
+  <li>导出 API <code>GET /api/rag/resume/screening/export</code> 生成含条件着色的 Excel 文件</li>
 </ol>`
   },
   'guide-training': {
