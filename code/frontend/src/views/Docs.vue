@@ -2594,6 +2594,36 @@ spawn('python', [
                   → Node 写最终状态 (completed/failed)
                     → 模型文件保存到 data/models/model_{id}/
 </pre>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q13：sentence-transformers 和 torch 是什么？和本系统有什么关系？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">sentence-transformers</h5>
+<p style="margin: 6px 0;">基于 PyTorch 的 Python 库，专门将<strong>句子/段落/文档转换成向量（embedding）</strong>。在本系统中的角色：</p>
+<table style="margin: 8px 0; font-size: 12px;">
+  <tr><th style="width: 140px;">功能</th><th>说明</th></tr>
+  <tr><td>SentenceTransformer</td><td>加载预训练基座模型（如 all-MiniLM-L6-v2），把文本变成高维向量</td></tr>
+  <tr><td>MultipleNegativesRankingLoss</td><td>对比学习损失函数，让"职位描述—简历"对在向量空间中靠近，不相关的远离</td></tr>
+  <tr><td>InputExample</td><td>训练数据格式，构建正例对（text_a=JD, text_b=匹配简历）</td></tr>
+  <tr><td>SentenceTransformerTrainer</td><td>3.x 版本的高级训练 API，封装了 Trainer、DataLoader、Evaluator</td></tr>
+</table>
+<p style="margin: 6px 0;">简单说：它是一个<strong>语义模型工厂</strong> — 你给它文本对，它产出"能判断 JD 和简历是否匹配"的向量模型。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">torch（PyTorch）</h5>
+<p style="margin: 6px 0;">Meta 开源的<strong>深度学习框架</strong>，是 sentence-transformers 的底层引擎。在本系统中的角色：</p>
+<table style="margin: 8px 0; font-size: 12px;">
+  <tr><th style="width: 140px;">功能</th><th>说明</th></tr>
+  <tr><td>张量运算</td><td>所有矩阵计算（向量内积、梯度反向传播）</td></tr>
+  <tr><td>GPU 加速</td><td>若机器有 CUDA 显卡，model.to('cuda') 会将训练搬上 GPU</td></tr>
+  <tr><td>自动微分</td><td>loss.backward() 自动算梯度，无需手写求导公式</td></tr>
+  <tr><td>DataLoader</td><td>批量加载训练数据，高效喂入模型</td></tr>
+</table>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">两者关系</h5>
+<p style="margin: 6px 0;"><code>torch</code> 是发动机，<code>sentence-transformers</code> 是装在发动机上的整车。本系统不直接调用 PyTorch API，而是通过 sentence-transformers 间接使用它——<code>train_embedding.py</code> 中所有训练逻辑都是 sentence-transformers 的高级封装，底层自动调用 torch 完成计算。</p>
 </div>`
   },
   'feat-dashboard': {
