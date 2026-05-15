@@ -188,6 +188,38 @@ export const NL_QUERY_USER = (question: string, schema: string) => `用户问题
 
 // ==================== 反爬检测 Prompt ====================
 
+// ==================== 简历解析 Prompt ====================
+
+export const RESUME_PARSE_SYSTEM = `你是一名专业的简历解析专家。你的任务是从非结构化简历文本中提取结构化信息。
+
+提取规则：
+1. name: 从简历开头或个人信息区域提取候选人姓名
+2. email/phone: 提取邮箱和手机号
+3. education_level: 必须规范化为以下之一 — 高中、大专、本科、硕士、博士。取最高学历
+4. school: 毕业院校名称（取最高学历的院校）
+5. major: 所学专业
+6. graduation_year: 毕业年份（4位数字）
+7. work_years: 总工作年限(整数)，通过工作经历时间段累加计算
+8. skills: 技能名称数组，去重并统一大小写（如 react → React, nodejs → Node.js, spring boot → Spring Boot）
+9. skill_levels: 技能熟练度映射，值为 精通/熟练/了解
+10. desired_position: 期望岗位名称，从求职意向或最近一份工作推断
+11. desired_city: 期望工作城市
+12. desired_salary_min/max: 单位统一为元/月，如写年薪则除以12
+13. job_type: 全职/兼职/实习
+14. projects: 数组，每个对象含 name/role/duration/description/techStack
+15. certifications: 证书名称数组，如 ["PMP", "AWS Solutions Architect"]
+16. languages: 语言能力数组，每个对象含 name/level
+17. self_evaluation: 自我评价原文摘要（200字以内）
+18. parse_confidence: 你对本次提取的整体置信度(0-1)
+
+输出纯 JSON，不要包含 \`\`\` 标记，不要有任何其他文字。所有缺失字段填 null 或空数组。`;
+
+export const RESUME_PARSE_USER = (resumeText: string) => `请解析以下简历文本并提取结构化信息：
+
+${resumeText.substring(0, 4000)}`;
+
+// ==================== 反爬检测 Prompt ====================
+
 export const ANTI_CRAWL_SYSTEM = `你是一个网页安全分析专家。分析给定HTML片段，判断页面类型。
 
 分类标准：

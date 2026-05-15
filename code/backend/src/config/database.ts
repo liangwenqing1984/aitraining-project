@@ -247,6 +247,155 @@ async function initDatabase() {
       console.warn('[Database] ⚠️ 跳过 sp_job_embeddings 表创建（pgvector 不可用）');
     }
 
+    // 创建 sp_resumes 表（简历结构化解析存储）
+    if (pgvectorAvailable) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sp_resumes (
+          id SERIAL PRIMARY KEY,
+          original_filename VARCHAR(500),
+          raw_text TEXT,
+          name VARCHAR(100),
+          email VARCHAR(200),
+          phone VARCHAR(50),
+          education_level VARCHAR(20),
+          school VARCHAR(200),
+          major VARCHAR(200),
+          graduation_year INTEGER,
+          work_years INTEGER,
+          skills JSONB DEFAULT '[]',
+          skill_levels JSONB DEFAULT '{}',
+          desired_position VARCHAR(200),
+          desired_city VARCHAR(100),
+          desired_salary_min INTEGER,
+          desired_salary_max INTEGER,
+          job_type VARCHAR(20),
+          projects JSONB DEFAULT '[]',
+          certifications JSONB DEFAULT '[]',
+          languages JSONB DEFAULT '[]',
+          self_evaluation TEXT,
+          parse_confidence REAL,
+          parsed_by_model VARCHAR(100),
+          embedding vector(768),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } else {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sp_resumes (
+          id SERIAL PRIMARY KEY,
+          original_filename VARCHAR(500),
+          raw_text TEXT,
+          name VARCHAR(100),
+          email VARCHAR(200),
+          phone VARCHAR(50),
+          education_level VARCHAR(20),
+          school VARCHAR(200),
+          major VARCHAR(200),
+          graduation_year INTEGER,
+          work_years INTEGER,
+          skills JSONB DEFAULT '[]',
+          skill_levels JSONB DEFAULT '{}',
+          desired_position VARCHAR(200),
+          desired_city VARCHAR(100),
+          desired_salary_min INTEGER,
+          desired_salary_max INTEGER,
+          job_type VARCHAR(20),
+          projects JSONB DEFAULT '[]',
+          certifications JSONB DEFAULT '[]',
+          languages JSONB DEFAULT '[]',
+          self_evaluation TEXT,
+          parse_confidence REAL,
+          parsed_by_model VARCHAR(100),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+
+    // 创建 sp_internal_jobs 表（HR 内部岗位 JD 管理）
+    if (pgvectorAvailable) {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sp_internal_jobs (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(300) NOT NULL,
+          department VARCHAR(200),
+          description TEXT NOT NULL,
+          requirement TEXT,
+          education_required VARCHAR(20),
+          experience_years_min INTEGER,
+          experience_years_max INTEGER,
+          required_skills JSONB DEFAULT '[]',
+          preferred_skills JSONB DEFAULT '[]',
+          skill_match_mode VARCHAR(10) DEFAULT 'any',
+          city_preferred JSONB DEFAULT '[]',
+          job_category VARCHAR(100),
+          headcount INTEGER DEFAULT 1,
+          salary_min INTEGER,
+          salary_max INTEGER,
+          job_type VARCHAR(20) DEFAULT '全职',
+          status VARCHAR(20) DEFAULT 'open',
+          embedding vector(768),
+          embedding_text TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    } else {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS sp_internal_jobs (
+          id SERIAL PRIMARY KEY,
+          title VARCHAR(300) NOT NULL,
+          department VARCHAR(200),
+          description TEXT NOT NULL,
+          requirement TEXT,
+          education_required VARCHAR(20),
+          experience_years_min INTEGER,
+          experience_years_max INTEGER,
+          required_skills JSONB DEFAULT '[]',
+          preferred_skills JSONB DEFAULT '[]',
+          skill_match_mode VARCHAR(10) DEFAULT 'any',
+          city_preferred JSONB DEFAULT '[]',
+          job_category VARCHAR(100),
+          headcount INTEGER DEFAULT 1,
+          salary_min INTEGER,
+          salary_max INTEGER,
+          job_type VARCHAR(20) DEFAULT '全职',
+          status VARCHAR(20) DEFAULT 'open',
+          embedding_text TEXT,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+    }
+
+    // 创建 sp_screening_results 表（简历筛选结果持久化）
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_screening_results (
+        id SERIAL PRIMARY KEY,
+        resume_id INTEGER REFERENCES sp_resumes(id) ON DELETE SET NULL,
+        internal_job_id INTEGER REFERENCES sp_internal_jobs(id) ON DELETE SET NULL,
+        resume_name VARCHAR(200),
+        internal_job_title VARCHAR(300),
+        department VARCHAR(200),
+        total_score REAL,
+        recommendation VARCHAR(20),
+        hard_rules_passed BOOLEAN,
+        education_passed BOOLEAN,
+        experience_passed BOOLEAN,
+        skills_passed BOOLEAN,
+        similarity REAL,
+        skill_bonus REAL,
+        score_breakdown JSONB DEFAULT '{}',
+        full_result JSONB DEFAULT '{}',
+        created_by VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query('CREATE INDEX IF NOT EXISTS idx_screening_results_resume ON sp_screening_results(resume_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_screening_results_job ON sp_screening_results(internal_job_id)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_screening_results_created ON sp_screening_results(created_at DESC)');
+
     // ==================== 系统管理 RBAC 表 ====================
 
     // 用户表
@@ -471,6 +620,12 @@ async function initDatabase() {
       FROM sp_menus m WHERE m.name = '语义搜索' AND m.parent_id IS NULL
       AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '简历筛选')
     `);
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '简历库', '/rag/resume-library', 'Collection', m.id, 3, NULL, false
+      FROM sp_menus m WHERE m.name = '语义搜索' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '简历库')
+    `);
 
     // 种子菜单项：系统管理下新增"增强数据管理"和"文本向量管理"
     await client.query(`
@@ -534,6 +689,14 @@ async function initDatabase() {
         SELECT 1 FROM sp_role_menus rm2
         WHERE rm2.role_id = rm.role_id AND rm2.menu_id = pm.id
       )
+    `);
+
+    // 种子菜单项：系统管理下新增"内部岗位"
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '内部岗位', '/system/internal-jobs', 'Briefcase', m.id, 7, NULL, false
+      FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '内部岗位')
     `);
 
     console.log('✅ PostgreSQL数据库表初始化完成');

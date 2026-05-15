@@ -88,6 +88,7 @@ export async function runSeed(): Promise<void> {
     const ragChildren = [
       { name: '职位搜索', path: '/rag', icon: 'Search', sortOrder: 1 },
       { name: '简历筛选', path: '/rag/resume', icon: 'User', sortOrder: 2 },
+      { name: '简历库', path: '/rag/resume-library', icon: 'Collection', sortOrder: 3 },
     ];
     const ragChildIds: number[] = [];
     for (const child of ragChildren) {
@@ -130,6 +131,9 @@ export async function runSeed(): Promise<void> {
       { name: '角色管理', path: '/system/roles', icon: 'UserFilled', sortOrder: 2 },
       { name: '权限管理', path: '/system/permissions', icon: 'Lock', sortOrder: 3 },
       { name: '菜单管理', path: '/system/menus', icon: 'Menu', sortOrder: 4 },
+      { name: '增强数据管理', path: '/system/enrichment', icon: 'DataAnalysis', sortOrder: 5 },
+      { name: '文本向量管理', path: '/system/vectors', icon: 'Search', sortOrder: 6 },
+      { name: '内部岗位', path: '/system/internal-jobs', icon: 'Briefcase', sortOrder: 7 },
     ];
     const sysChildIds: number[] = [];
     for (const child of sysChildren) {

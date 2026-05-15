@@ -72,7 +72,7 @@ export class LLMService {
 
   async refreshConfigCache(): Promise<void> {
     const configs = await db.prepare(
-      'SELECT * FROM sp_llm_config WHERE is_active = true ORDER BY id'
+      'SELECT * FROM sp_llm_config ORDER BY id'
     ).all();
     this.configCache = configs as LLMConfig[];
     this.configCacheTime = Date.now();
@@ -83,10 +83,10 @@ export class LLMService {
       await this.refreshConfigCache();
     }
     const config = this.configCache.find(c =>
-      Array.isArray(c.taskRouting) && c.taskRouting.includes(taskType)
+      c.isActive !== false && Array.isArray(c.taskRouting) && c.taskRouting.includes(taskType)
     );
     if (!config) {
-      const fallback = this.configCache[0];
+      const fallback = this.configCache.find(c => c.isActive !== false);
       if (fallback) {
         console.log(`[LLMService] 任务 "${taskType}" 无专用配置，使用默认模型: ${fallback.modelName}`);
       }

@@ -101,7 +101,7 @@ export interface ProgressData {
 // ==================== LLM 相关类型 ====================
 
 export type LLMProvider = 'openai' | 'anthropic' | 'ollama' | 'deepseek' | 'zhipu';
-export type LLMTaskType = 'enrichment' | 'insights' | 'query' | 'anti-crawl' | 'embedding';
+export type LLMTaskType = 'enrichment' | 'insights' | 'query' | 'anti-crawl' | 'embedding' | 'resume-parse';
 
 export interface LLMConfig {
   id?: number;
@@ -244,6 +244,31 @@ export interface SystemMenu {
   component?: string;
   hidden: boolean;
   children?: SystemMenu[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ==================== 内部岗位 JD 类型 ====================
+
+export interface InternalJob {
+  id?: number;
+  title: string;
+  department?: string;
+  description: string;
+  requirement?: string;
+  educationRequired?: string;
+  experienceYearsMin?: number;
+  experienceYearsMax?: number;
+  requiredSkills: string[];
+  preferredSkills: string[];
+  skillMatchMode: 'all' | 'any';
+  cityPreferred: string[];
+  jobCategory?: string;
+  headcount: number;
+  salaryMin?: number;
+  salaryMax?: number;
+  jobType: string;
+  status: 'open' | 'closed' | 'filled';
   createdAt?: string;
   updatedAt?: string;
 }

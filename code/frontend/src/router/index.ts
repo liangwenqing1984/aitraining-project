@@ -149,6 +149,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '简历筛选', icon: 'User' }
       },
       {
+        path: 'rag/resume-library',
+        name: 'ResumeLibrary',
+        component: () => import('@/views/rag/ResumeLibrary.vue'),
+        meta: { title: '简历库', icon: 'Collection' }
+      },
+      {
         path: 'settings/llm',
         name: 'LLMSettings',
         component: () => import('@/views/settings/LLMSettings.vue'),
@@ -177,6 +183,12 @@ const routes: RouteRecordRaw[] = [
         name: 'SystemMenus',
         component: () => import('@/views/system/Menus.vue'),
         meta: { title: '菜单管理', parent: '系统管理' }
+      },
+      {
+        path: 'system/internal-jobs',
+        name: 'SystemInternalJobs',
+        component: () => import('@/views/system/InternalJobs.vue'),
+        meta: { title: '内部岗位', parent: '系统管理' }
       },
       {
         path: 'system/enrichment',

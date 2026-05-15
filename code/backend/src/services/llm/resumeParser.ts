@@ -1,5 +1,7 @@
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
+import { llmService } from './index';
+import { RESUME_PARSE_SYSTEM, RESUME_PARSE_USER } from './prompts';
 
 /**
  * 从文件 buffer 中提取文本
@@ -33,4 +35,81 @@ export async function extractResumeText(
   }
   if (!text) throw new Error('无法从文件中提取文本内容，请确认文件格式');
   return text;
+}
+
+export interface ParsedResume {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  educationLevel: string | null;
+  school: string | null;
+  major: string | null;
+  graduationYear: number | null;
+  workYears: number | null;
+  skills: string[];
+  skillLevels: Record<string, string>;
+  desiredPosition: string | null;
+  desiredCity: string | null;
+  desiredSalaryMin: number | null;
+  desiredSalaryMax: number | null;
+  jobType: string | null;
+  projects: Array<{ name: string; role: string; duration: string; description: string; techStack: string[] }>;
+  certifications: string[];
+  languages: Array<{ name: string; level: string }>;
+  selfEvaluation: string | null;
+  parseConfidence: number;
+}
+
+/**
+ * 使用 LLM 从简历文本中提取结构化信息
+ */
+export async function parseResumeStructure(resumeText: string): Promise<ParsedResume> {
+  const startTime = Date.now();
+  const result = await llmService.callLLM(
+    RESUME_PARSE_SYSTEM,
+    RESUME_PARSE_USER(resumeText),
+    { taskType: 'resume-parse', responseFormat: 'json', temperature: 0.1 }
+  );
+
+  let parsed: any;
+  const content = result.content.trim();
+  // 尝试去掉可能的 markdown 代码块标记
+  const jsonStr = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch {
+    // 兜底：提最后一个 JSON 对象
+    const m = jsonStr.match(/\{[\s\S]*\}/);
+    if (m) {
+      parsed = JSON.parse(m[0]);
+    } else {
+      throw new Error('LLM 未返回有效的 JSON');
+    }
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(`[ResumeParser] LLM 解析完成, 耗时 ${duration}ms, 置信度 ${parsed.parse_confidence}`);
+
+  return {
+    name: parsed.name || null,
+    email: parsed.email || null,
+    phone: parsed.phone || null,
+    educationLevel: parsed.education_level || null,
+    school: parsed.school || null,
+    major: parsed.major || null,
+    graduationYear: parsed.graduation_year || null,
+    workYears: parsed.work_years || null,
+    skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+    skillLevels: parsed.skill_levels && typeof parsed.skill_levels === 'object' ? parsed.skill_levels : {},
+    desiredPosition: parsed.desired_position || null,
+    desiredCity: parsed.desired_city || null,
+    desiredSalaryMin: parsed.desired_salary_min || null,
+    desiredSalaryMax: parsed.desired_salary_max || null,
+    jobType: parsed.job_type || null,
+    projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+    certifications: Array.isArray(parsed.certifications) ? parsed.certifications : [],
+    languages: Array.isArray(parsed.languages) ? parsed.languages : [],
+    selfEvaluation: parsed.self_evaluation || null,
+    parseConfidence: parsed.parse_confidence || 0,
+  };
 }

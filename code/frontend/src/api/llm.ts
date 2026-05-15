@@ -251,3 +251,164 @@ export function uploadResume(file: File, options?: {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
+
+// 简历结构化解析接口
+export interface ParsedResume {
+  id: number
+  originalFilename: string
+  textLength: number
+  name: string | null
+  email: string | null
+  phone: string | null
+  educationLevel: string | null
+  school: string | null
+  major: string | null
+  graduationYear: number | null
+  workYears: number | null
+  skills: string[]
+  skillLevels: Record<string, string>
+  desiredPosition: string | null
+  desiredCity: string | null
+  desiredSalaryMin: number | null
+  desiredSalaryMax: number | null
+  jobType: string | null
+  projects: Array<{ name: string; role: string; duration: string; description: string; techStack: string[] }>
+  certifications: string[]
+  languages: Array<{ name: string; level: string }>
+  selfEvaluation: string | null
+  parseConfidence: number
+}
+
+export function parseResume(file: File): Promise<ApiResponse<ParsedResume>> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/rag/resume/parse', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+  })
+}
+
+export function getResume(id: number): Promise<ApiResponse<any>> {
+  return api.get(`/rag/resume/${id}`)
+}
+
+export function listResumes(params?: { keyword?: string; page?: number; pageSize?: number }): Promise<ApiResponse<{ list: any[]; total: number; page: number; pageSize: number }>> {
+  return api.get('/rag/resumes', { params })
+}
+
+export function updateResume(id: number, data: Record<string, any>): Promise<ApiResponse<any>> {
+  return api.put(`/rag/resume/${id}`, data)
+}
+
+export function deleteResume(id: number): Promise<ApiResponse<any>> {
+  return api.delete(`/rag/resume/${id}`)
+}
+
+// ==================== 智能筛选 ====================
+
+export interface HardRuleCheck {
+  passed: boolean
+  education: { passed: boolean; required: string; actual: string }
+  experience: { passed: boolean; requiredMin: number; actual: number }
+  requiredSkills: { passed: boolean; required: string[]; matched: string[]; missing: string[]; mode: 'all' | 'any' }
+}
+
+export interface ScreeningResultItem {
+  internalJobId: number
+  internalJobTitle: string
+  department: string
+  hardRules: HardRuleCheck
+  softMatch: { similarity: number; matchedSkills: string[]; preferredSkillMatches: string[] }
+  totalScore: number
+  scoreBreakdown: { hardRuleScore: number; similarityScore: number; skillBonus: number }
+  recommendation: 'strong' | 'moderate' | 'weak' | 'rejected'
+}
+
+export interface ScreeningResponse {
+  resumeId: number | null
+  resumeName: string
+  totalJobsCompared: number
+  results: ScreeningResultItem[]
+}
+
+export function screenResume(params: {
+  resumeId?: number
+  resumeText?: string
+  internalJobId?: number
+  limit?: number
+  minScore?: number
+}): Promise<ApiResponse<ScreeningResponse>> {
+  return api.post('/rag/resume/screen', params, { timeout: 60000 })
+}
+
+// ==================== 筛选历史 & 导出 ====================
+
+export interface ScreeningHistoryItem {
+  id: number
+  resumeId: number | null
+  internalJobId: number | null
+  resumeName: string
+  internalJobTitle: string
+  department: string
+  totalScore: number
+  recommendation: string
+  hardRulesPassed: boolean
+  educationPassed: boolean
+  experiencePassed: boolean
+  skillsPassed: boolean
+  similarity: number
+  skillBonus: number
+  scoreBreakdown: any
+  fullResult: ScreeningResultItem
+  createdBy: string
+  createdAt: string
+}
+
+export function saveScreeningResult(data: {
+  resumeId?: number
+  results: ScreeningResultItem[]
+}): Promise<ApiResponse<{ saved: number }>> {
+  return api.post('/rag/resume/screening/save', data)
+}
+
+export function getScreeningHistory(params?: {
+  resumeId?: number
+  internalJobId?: number
+  page?: number
+  pageSize?: number
+}): Promise<ApiResponse<{ list: ScreeningHistoryItem[]; total: number; page: number; pageSize: number }>> {
+  return api.get('/rag/resume/screening/history', { params })
+}
+
+export function exportScreeningExcel(params?: {
+  resumeId?: number
+  internalJobId?: number
+}): Promise<any> {
+  return api.get('/rag/resume/screening/export', { params, responseType: 'blob' })
+}
+
+export function exportResumesExcel(params?: { keyword?: string }): Promise<any> {
+  return api.get('/rag/resumes/export', { params, responseType: 'blob' })
+}
+
+// ==================== 批量操作 ====================
+
+export interface BatchParseResult {
+  total: number
+  successCount: number
+  failCount: number
+  results: Array<{ id?: number; fileName: string; success: boolean; name?: string; educationLevel?: string; error?: string }>
+}
+
+export function batchParseResumes(files: File[]): Promise<ApiResponse<BatchParseResult>> {
+  const formData = new FormData()
+  files.forEach(f => formData.append('files', f))
+  return api.post('/rag/resume/batch-parse', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 300000,
+  })
+}
+
+export function batchDeleteResumes(ids: number[]): Promise<ApiResponse<{ deletedCount: number }>> {
+  return api.delete('/rag/resumes/batch', { data: { ids } })
+}
