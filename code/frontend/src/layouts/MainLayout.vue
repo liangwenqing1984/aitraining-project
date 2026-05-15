@@ -193,7 +193,7 @@ const getCurrentPageTitle = () => {
   <a href="#main-content" class="sr-only">跳到主内容</a>
   <el-container class="layout-container">
     <!-- 顶部导航栏（全屏模式下隐藏） -->
-    <el-header v-show="!isFullScreen" class="top-header" height="auto">
+    <el-header v-show="!isFullScreen" class="top-header" height="auto" style="background: #fff; backdrop-filter: none; -webkit-backdrop-filter: none;">
       <!-- 第一行：Logo + 导航菜单 + 右侧操作 -->
       <div class="header-row nav-row">
         <div class="logo-area">
@@ -217,6 +217,7 @@ const getCurrentPageTitle = () => {
           :default-active="activeMenu"
           :ellipsis="true"
           class="top-nav-menu"
+          style="--el-menu-bg-color: #fff; background: #fff;"
           @select="handleMenuSelect"
         >
           <template v-for="item in menuItems" :key="item.title">
@@ -275,7 +276,7 @@ const getCurrentPageTitle = () => {
       </div>
 
       <!-- 第二行：面包屑 -->
-      <div class="header-row breadcrumb-row">
+      <div class="header-row breadcrumb-row" style="background: #f8f9fa; backdrop-filter: none; -webkit-backdrop-filter: none;">
         <div class="breadcrumb-area">
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/home' }">首页</el-breadcrumb-item>
@@ -314,9 +315,7 @@ const getCurrentPageTitle = () => {
   position: sticky;
   top: 0;
   z-index: var(--z-header, 100);
-  background: var(--glass-bg-strong);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: #fff;
   box-shadow: var(--shadow-md);
   border-bottom: 1px solid var(--glass-border);
 }
@@ -376,7 +375,7 @@ const getCurrentPageTitle = () => {
   flex: 1;
   min-width: 0;
   border-bottom: none !important;
-  background: transparent;
+  background: #fff;
 }
 
 :deep(.top-nav-menu > .el-menu-item),
@@ -404,18 +403,26 @@ const getCurrentPageTitle = () => {
   background: transparent !important;
 }
 
-:deep(.top-nav-menu .el-icon) {
+/* 菜单项自定义图标，不干扰 el-sub-menu 自带的箭头图标 */
+:deep(.top-nav-menu > .el-menu-item > .el-icon),
+:deep(.top-nav-menu > .el-sub-menu > .el-sub-menu__title > .el-icon:not(.el-sub-menu__icon-arrow)) {
   margin-right: 6px;
   font-size: 18px;
   vertical-align: middle;
 }
 
-/* 子菜单弹出框 — 玻璃质感 */
+/* 隐藏子菜单标题右侧的下拉箭头 */
+:deep(.top-nav-menu .el-sub-menu__icon-arrow) {
+  display: none !important;
+}
+
+/* 子菜单弹出框 — 不透明背景 */
 :deep(.top-nav-menu .el-menu--popup) {
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   border: 1px solid var(--glass-border);
   padding: 4px;
+  background: #fff;
 }
 
 :deep(.top-nav-menu .el-menu--popup .el-menu-item) {
@@ -450,9 +457,7 @@ const getCurrentPageTitle = () => {
 /* ===== 面包屑行 ===== */
 .breadcrumb-row {
   height: var(--breadcrumb-bar-height, 42px);
-  background: var(--glass-bg-weak);
-  backdrop-filter: blur(var(--glass-blur));
-  -webkit-backdrop-filter: blur(var(--glass-blur));
+  background: #f8f9fa;
   border-top: 1px solid var(--glass-border-subtle);
 }
 
@@ -635,3 +640,4 @@ const getCurrentPageTitle = () => {
   border-width: 0;
 }
 </style>
+

@@ -302,10 +302,21 @@ body .el-table__fixed-body-wrapper .el-table__cell {
   padding: 20px 24px !important;
 }
 
-/* el-menu — 透明基色（sidebar 内使用） */
+/* el-menu — 菜单基色 */
 .el-menu {
-  --el-menu-bg-color: transparent;
+  --el-menu-bg-color: #fff;
   --el-menu-hover-bg-color: var(--glass-bg-hover);
+}
+
+/* 子菜单弹出框 — 不透明白色背景，隐藏 popper 箭头 */
+.el-menu--popup {
+  background: #fff !important;
+}
+.el-menu--popup-container {
+  background: #fff !important;
+}
+.el-menu--popup-container .el-popper__arrow {
+  display: none !important;
 }
 
 /* el-progress — 圆润进度条 */
