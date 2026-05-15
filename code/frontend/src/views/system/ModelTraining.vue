@@ -36,7 +36,7 @@
             </el-select>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" :loading="buildingDataset" @click="handleBuildDataset">构建数据集</el-button>
+            <el-button type="primary" :loading="buildingDataset" @click="handleBuildDataset"><el-icon><FolderAdd /></el-icon>构建数据集</el-button>
           </el-form-item>
         </el-form>
       </el-card>
@@ -49,7 +49,7 @@
           <el-table-column prop="size" label="大小" width="100" />
           <el-table-column label="操作" width="140" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="handlePreviewDataset(row)">预览</el-button>
+              <el-button link type="primary" size="small" @click="handlePreviewDataset(row)"><el-icon><View /></el-icon>预览</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -244,8 +244,8 @@
           </template>
         </el-alert>
         <template #footer>
-          <el-button @click="deployVisible = false">取消</el-button>
-          <el-button type="primary" :loading="deploying" @click="handleConfirmDeploy">确认部署</el-button>
+          <el-button @click="deployVisible = false"><el-icon><Close /></el-icon>取消</el-button>
+          <el-button type="primary" :loading="deploying" @click="handleConfirmDeploy"><el-icon><Check /></el-icon>确认部署</el-button>
         </template>
       </el-dialog>
     </template>
@@ -255,7 +255,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay, VideoPause, Tickets, Delete, Upload } from '@element-plus/icons-vue'
+import { VideoPlay, VideoPause, Tickets, Delete, Upload, FolderAdd, View, Close, Check } from '@element-plus/icons-vue'
 import {
   buildDataset, listDatasets, previewDataset,
   startTraining, listTrainingJobs, deleteTrainingJob, stopTraining, getTrainingStatus, deleteModel,

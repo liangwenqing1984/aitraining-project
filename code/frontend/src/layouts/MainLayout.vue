@@ -418,7 +418,6 @@ const getCurrentPageTitle = () => {
 
 /* 子菜单弹出框 — 不透明背景 */
 :deep(.top-nav-menu .el-menu--popup) {
-  border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   border: 1px solid var(--glass-border);
   padding: 4px;
@@ -426,7 +425,6 @@ const getCurrentPageTitle = () => {
 }
 
 :deep(.top-nav-menu .el-menu--popup .el-menu-item) {
-  border-radius: 6px;
   margin: 2px 4px;
   height: 40px;
   line-height: 40px;
@@ -573,14 +571,12 @@ const getCurrentPageTitle = () => {
 
 /* 自定义下拉菜单 */
 :deep(.custom-dropdown) {
-  border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   border: 1px solid #e5e7eb;
   padding: 4px;
 }
 
 :deep(.custom-dropdown .el-dropdown-menu__item) {
-  border-radius: 6px;
   padding: 10px 16px;
   margin: 2px 0;
   transition: all 0.2s ease;

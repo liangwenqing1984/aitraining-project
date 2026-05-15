@@ -18,8 +18,8 @@
             <el-input v-model="jobSearch.keyword" placeholder="职位ID/内容" clearable style="width: 200px" @keyup.enter="loadJobRecords" />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="handleJobSearch">搜索</el-button>
-            <el-button @click="handleJobReset">重置</el-button>
+            <el-button type="primary" @click="handleJobSearch"><el-icon><Search /></el-icon>搜索</el-button>
+            <el-button @click="handleJobReset"><el-icon><RefreshLeft /></el-icon>重置</el-button>
           </el-form-item>
         </el-form>
       </el-card>
@@ -90,10 +90,10 @@
           </template>
         </el-upload>
         <div v-if="pendingFiles.length > 0" style="margin-top: 12px; text-align: center">
-          <el-button type="primary" :loading="docUploading" @click="handleStartUpload">
+          <el-button type="primary" :loading="docUploading" @click="handleStartUpload"><el-icon><Upload /></el-icon>
             开始上传（已选 {{ pendingFiles.length }} 个文件）
           </el-button>
-          <el-button @click="handleClearPending">清空</el-button>
+          <el-button @click="handleClearPending"><el-icon><Delete /></el-icon>清空</el-button>
         </div>
         <div v-if="docUploading" class="uploading-hint">
           <el-icon class="is-loading"><Loading /></el-icon>
@@ -117,8 +117,8 @@
             <el-input v-model="docSearch.keyword" placeholder="标题/章节ID/路径" clearable style="width: 200px" @keyup.enter="loadDocRecords" />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="handleDocSearch">搜索</el-button>
-            <el-button @click="handleDocReset">重置</el-button>
+            <el-button type="primary" @click="handleDocSearch"><el-icon><Search /></el-icon>搜索</el-button>
+            <el-button @click="handleDocReset"><el-icon><RefreshLeft /></el-icon>重置</el-button>
           </el-form-item>
         </el-form>
       </el-card>
@@ -176,7 +176,7 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, UploadFilled, Loading } from '@element-plus/icons-vue'
+import { Delete, UploadFilled, Loading, Search, RefreshLeft, Upload } from '@element-plus/icons-vue'
 import type { UploadFile, UploadInstance } from 'element-plus'
 import { listJobEmbeddings, deleteRAGIndex } from '@/api/llm'
 import { listDocEmbeddings, deleteDocBySourceType, deleteDocBySection, uploadDocFiles } from '@/api/chat'

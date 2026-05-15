@@ -165,7 +165,6 @@ html, body, #app {
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border-subtle) !important;
-  border-radius: var(--radius-xl) !important;
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--transition-base), border-color var(--transition-base);
 }
@@ -192,8 +191,6 @@ html, body, #app {
   --el-table-header-bg-color: rgba(102, 126, 234, 0.04);
   --el-table-row-hover-bg-color: var(--glass-bg-hover);
   --el-table-border-color: var(--color-border-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
 }
 
 .el-table th.el-table__cell {
@@ -228,7 +225,6 @@ body .el-table__fixed-body-wrapper .el-table__cell {
 
 /* el-button — 微交互增强 */
 .el-button {
-  border-radius: var(--radius-md) !important;
   font-weight: 500;
   letter-spacing: 0.2px;
   transition: all var(--transition-base) !important;
@@ -255,7 +251,6 @@ body .el-table__fixed-body-wrapper .el-table__cell {
 
 /* el-tag — 柔和标签 */
 .el-tag {
-  border-radius: var(--radius-sm) !important;
   font-weight: 500;
   letter-spacing: 0.2px;
 }
@@ -265,7 +260,6 @@ body .el-table__fixed-body-wrapper .el-table__cell {
   background: var(--color-bg-input) !important;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-radius: var(--radius-md) !important;
   border: 1px solid var(--color-border) !important;
   box-shadow: none !important;
   transition: all var(--transition-base) !important;
@@ -282,7 +276,6 @@ body .el-table__fixed-body-wrapper .el-table__cell {
 
 /* el-pagination — 融入玻璃主题 */
 .el-pagination .el-pager li {
-  border-radius: var(--radius-sm) !important;
   transition: all var(--transition-base);
 }
 
@@ -292,7 +285,6 @@ body .el-table__fixed-body-wrapper .el-table__cell {
 
 /* el-dialog — 玻璃弹窗 */
 .el-dialog {
-  border-radius: var(--radius-xl) !important;
   overflow: hidden;
 }
 
@@ -319,14 +311,9 @@ body .el-table__fixed-body-wrapper .el-table__cell {
   display: none !important;
 }
 
-/* el-progress — 圆润进度条 */
+/* el-progress — 进度条 */
 .el-progress-bar__outer {
-  border-radius: 10px !important;
   background: rgba(0, 0, 0, 0.06) !important;
-}
-
-.el-progress-bar__inner {
-  border-radius: 10px !important;
 }
 
 /* el-skeleton — 适配玻璃背景 */
@@ -342,7 +329,6 @@ body .el-table__fixed-body-wrapper .el-table__cell {
   backdrop-filter: blur(var(--glass-blur-strong));
   -webkit-backdrop-filter: blur(var(--glass-blur-strong));
   border: 1px solid var(--glass-border) !important;
-  border-radius: var(--radius-lg) !important;
   box-shadow: var(--shadow-lg) !important;
   overflow: hidden;
 }

@@ -9,8 +9,8 @@
           <el-input v-model="searchForm.keyword" placeholder="公司名/职位名/JobID" clearable style="width: 200px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
+          <el-button type="primary" @click="handleSearch"><el-icon><Search /></el-icon>搜索</el-button>
+          <el-button @click="handleReset"><el-icon><RefreshLeft /></el-icon>重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -144,7 +144,7 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="dialogVisible = false" :disabled="saving" size="default">取消</el-button>
+          <el-button @click="dialogVisible = false" :disabled="saving" size="default"><el-icon><Close /></el-icon>取消</el-button>
           <el-button type="primary" size="default" @click="handleSave" :loading="saving">
             <el-icon v-if="!saving"><Check /></el-icon>
             <span>{{ saving ? '保存中...' : '保存修改' }}</span>
@@ -159,7 +159,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
-import { Edit, Delete, Check } from '@element-plus/icons-vue'
+import { Edit, Delete, Check, Search, RefreshLeft, Close } from '@element-plus/icons-vue'
 import { listEnrichments, updateEnrichment, deleteEnrichment } from '@/api/llm'
 
 const records = ref<any[]>([])

@@ -6,8 +6,8 @@
           <el-input v-model="searchForm.keyword" placeholder="角色名称/编码" clearable style="width: 220px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
+          <el-button type="primary" @click="handleSearch"><el-icon><Search /></el-icon>搜索</el-button>
+          <el-button @click="handleReset"><el-icon><RefreshLeft /></el-icon>重置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -184,7 +184,7 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="dialogVisible = false" :disabled="saving" size="default">取消</el-button>
+          <el-button @click="dialogVisible = false" :disabled="saving" size="default"><el-icon><Close /></el-icon>取消</el-button>
           <el-button type="primary" size="default" @click="handleSave" :loading="saving">
             <el-icon v-if="!saving"><Check /></el-icon>
             <span>{{ saving ? '保存中...' : (editingId ? '保存修改' : '创建角色') }}</span>
@@ -201,7 +201,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
   Plus, Edit, Delete, UserFilled, InfoFilled, Menu,
-  User, Lock, Check, WarningFilled,
+  User, Lock, Check, WarningFilled, Search, RefreshLeft, Close,
 } from '@element-plus/icons-vue'
 import {
   getRoles, createRole, updateRole, deleteRole, getAllPermissions, getMenuTree, getRole,

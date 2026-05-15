@@ -156,7 +156,7 @@
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="dialogVisible = false" :disabled="saving" size="default">取消</el-button>
+          <el-button @click="dialogVisible = false" :disabled="saving" size="default"><el-icon><Close /></el-icon>取消</el-button>
           <el-button type="primary" size="default" @click="handleSave" :loading="saving">
             <el-icon v-if="!saving"><Check /></el-icon>
             <span>{{ saving ? '保存中...' : (editingId ? '保存修改' : '创建菜单') }}</span>
@@ -173,7 +173,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
   Plus, Edit, Delete, Refresh, Menu, InfoFilled, Setting,
-  EditPen, Link, Picture, Document, Check,
+  EditPen, Link, Picture, Document, Check, Close,
 } from '@element-plus/icons-vue'
 import {
   getMenus, getMenuTree, createMenu, updateMenu, deleteMenu,
