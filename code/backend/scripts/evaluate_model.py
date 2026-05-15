@@ -15,6 +15,13 @@ import os
 import sys
 import random
 
+# 设置 HuggingFace 镜像，与训练脚本保持一致
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+os.environ.setdefault("HF_HUB_ENABLE_HF_XET", "0")
+# 禁止在线下载，强制使用本地文件（已训练模型自带 config/code）
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["HF_HUB_OFFLINE"] = "1"
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained embedding model")
@@ -42,6 +49,55 @@ def load_training_data(dataset_path: str):
     return pairs
 
 
+def prepare_model_config(model_dir: str):
+    """修复模型的 config.json，使 auto_map 指向本地文件而非 HF 远程模块。
+
+    已训练模型的 config.json 中 auto_map 引用了原始 nomic-ai/nomic-bert-2048
+    动态模块，与本地 configuration_hf_nomic_bert.py 的类不匹配，导致 ValueError。
+    此函数将 modeling 文件从 HF 缓存复制到模型目录并改写 auto_map 为本地引用。
+    """
+    config_path = os.path.join(model_dir, "config.json")
+    with open(config_path, "r", encoding="utf-8") as f:
+        config = json.load(f)
+
+    auto_map = config.get("auto_map", {})
+    if not auto_map:
+        return  # 无需处理
+
+    # 检查是否有指向远程模块的条目 (格式: repo_id--file.Class)
+    has_remote = any("--" in v for v in auto_map.values())
+    if not has_remote:
+        return  # 已经都是本地引用
+
+    # 查找 HF 缓存中的 modeling_hf_nomic_bert.py
+    import glob as _glob
+    cache_base = os.path.expanduser("~/.cache/huggingface/modules/transformers_modules")
+    modeling_file = "modeling_hf_nomic_bert.py"
+    candidates = _glob.glob(os.path.join(cache_base, "**", modeling_file), recursive=True)
+
+    if candidates:
+        src = candidates[0]
+        dst = os.path.join(model_dir, modeling_file)
+        if not os.path.exists(dst):
+            import shutil
+            shutil.copy2(src, dst)
+            print(f"Copied {modeling_file} from cache to model directory")
+
+    # 改写 auto_map：去掉 "repo_id--" 前缀，指向本地文件
+    new_auto_map = {}
+    for key, value in auto_map.items():
+        if "--" in value:
+            _, cls_path = value.split("--", 1)
+            new_auto_map[key] = cls_path
+        else:
+            new_auto_map[key] = value
+
+    config["auto_map"] = new_auto_map
+    with open(config_path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
+    print(f"Fixed auto_map in config.json: {new_auto_map}")
+
+
 def main():
     args = parse_args()
 
@@ -52,6 +108,9 @@ def main():
     if not os.path.exists(args.dataset):
         print(f"ERROR: Dataset file not found: {args.dataset}", file=sys.stderr)
         sys.exit(1)
+
+    # 修复可能存在的 remote auto_map 引用问题
+    prepare_model_config(args.model)
 
     print(f"Loading training data from {args.dataset}...")
     pairs = load_training_data(args.dataset)
@@ -79,7 +138,7 @@ def main():
         sys.exit(1)
 
     print(f"Loading model from {args.model}...")
-    model = SentenceTransformer(args.model, trust_remote_code=True)
+    model = SentenceTransformer(args.model, trust_remote_code=True, local_files_only=True)
 
     metrics = {}
 
@@ -124,10 +183,20 @@ def main():
     metrics["accuracy_top1"] = round(correct_top1 / sample_size, 4)
     print(f"Top-1 Accuracy: {metrics['accuracy_top1']}")
 
-    # Write metrics.json
+    # Write metrics.json (convert NaN to null for valid JSON)
+    import math
+    def nan_to_none(obj):
+        if isinstance(obj, dict):
+            return {k: nan_to_none(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [nan_to_none(v) for v in obj]
+        if isinstance(obj, float) and math.isnan(obj):
+            return None
+        return obj
+
     metrics_path = os.path.join(args.model, "metrics.json")
     with open(metrics_path, "w", encoding="utf-8") as f:
-        json.dump(metrics, f, indent=2)
+        json.dump(nan_to_none(metrics), f, indent=2)
     print(f"Metrics written to {metrics_path}")
 
 

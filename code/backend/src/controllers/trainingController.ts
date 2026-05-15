@@ -466,6 +466,8 @@ export async function evaluateModel(req: Request, res: Response) {
         ...process.env,
         PYTHONUNBUFFERED: '1',
         PYTHONIOENCODING: 'utf-8',
+        HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com',
+        HF_HUB_ENABLE_HF_XET: '0',
       },
     });
 
@@ -476,16 +478,17 @@ export async function evaluateModel(req: Request, res: Response) {
 
     child.on('close', (code: number) => {
       console.log(`[Training] 评估完成, exit code: ${code}`);
+      const tail = (s: string, n: number) => s.split('\n').slice(-n).join('\n').trim();
       if (code === 0) {
-        // 读取 metrics.json 返回
         const metricsPath = path.join(modelPath, 'metrics.json');
         let metrics = {};
         if (fs.existsSync(metricsPath)) {
           try { metrics = JSON.parse(fs.readFileSync(metricsPath, 'utf-8')); } catch {}
         }
-        res.json({ success: true, data: { metrics, stdout, stderr } });
+        res.json({ success: true, data: { metrics, stdout: tail(stdout, 20), stderr: tail(stderr, 20) } });
       } else {
-        res.status(500).json({ success: false, error: '评估脚本执行失败', stdout, stderr });
+        const detail = [stderr.trim(), stdout.trim()].filter(Boolean).join('\n');
+        res.status(500).json({ success: false, error: `评估脚本退出码 ${code}\n${detail}`, stdout: tail(stdout, 20), stderr: tail(stderr, 20) });
       }
     });
 

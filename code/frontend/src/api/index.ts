@@ -105,7 +105,8 @@ api.interceptors.response.use(
     
     // 友好的错误提示
     if (error.response) {
-      const message = error.response.data?.message || '请求失败';
+      const data = error.response.data || {};
+      const message = data.error || data.message || '请求失败';
       ElMessage.error(message);
     } else if (error.code === 'ECONNABORTED') {
       ElMessage.error('请求超时，请稍后重试');

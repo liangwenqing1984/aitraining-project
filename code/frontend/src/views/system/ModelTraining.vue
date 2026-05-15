@@ -144,12 +144,8 @@
           </el-table-column>
           <el-table-column label="评估" width="120">
             <template #default="{ row }">
-              <span v-if="row.metrics?.accuracy_top1">
-                准确率 {{ (row.metrics.accuracy_top1 * 100).toFixed(1) }}%
-              </span>
-              <span v-else-if="row.metrics?.eval_pearson">
-                Pearson {{ Number(row.metrics.eval_pearson).toFixed(3) }}
-              </span>
+              <span v-if="row.metrics?.accuracy_top1 != null">准确率 {{ (row.metrics.accuracy_top1 * 100).toFixed(1) }}%</span>
+              <span v-else-if="row.metrics?.eval_pearson != null">Pearson {{ Number(row.metrics.eval_pearson).toFixed(3) }}</span>
               <span v-else>-</span>
             </template>
           </el-table-column>
@@ -195,13 +191,11 @@
           <el-table-column prop="path" label="路径" min-width="280" show-overflow-tooltip />
           <el-table-column label="评估指标" width="200">
             <template #default="{ row }">
-              <template v-if="row.metrics?.accuracy_top1">
-                Top-1 准确率: {{ (row.metrics.accuracy_top1 * 100).toFixed(1) }}%
-              </template>
-              <template v-if="row.metrics?.eval_pearson">
-                Pearson: {{ Number(row.metrics.eval_pearson).toFixed(3) }}
-              </template>
-              <template v-if="!row.metrics?.accuracy_top1 && !row.metrics?.eval_pearson">-</template>
+              <div v-if="row.metrics?.accuracy_top1 != null || row.metrics?.eval_pearson != null">
+                <div v-if="row.metrics?.accuracy_top1 != null">Top-1 准确率: {{ (row.metrics.accuracy_top1 * 100).toFixed(1) }}%</div>
+                <div v-if="row.metrics?.eval_pearson != null">Pearson: {{ Number(row.metrics.eval_pearson).toFixed(3) }}</div>
+              </div>
+              <span v-else>-</span>
             </template>
           </el-table-column>
           <el-table-column label="大小" width="110" align="right">
@@ -545,15 +539,33 @@ async function handleDoEvaluate() {
   try {
     const res: any = await evaluateModel(evalTarget.value.path, evalForm.datasetPath)
     if (res.success) {
-      ElMessage.success(`评估完成 — Pearson: ${res.data.metrics.eval_pearson?.toFixed(4) || 'N/A'}, Top-1: ${res.data.metrics.accuracy_top1 != null ? (res.data.metrics.accuracy_top1 * 100).toFixed(1) + '%' : 'N/A'}`)
+      const pearson = res.data.metrics?.eval_pearson
+      const top1 = res.data.metrics?.accuracy_top1
+      ElMessage.success(`评估完成 — Pearson: ${pearson != null ? Number(pearson).toFixed(4) : 'N/A'}, Top-1: ${top1 != null ? (top1 * 100).toFixed(1) + '%' : 'N/A'}`)
       evalVisible.value = false
       await loadModels()
+    } else {
+      showEvalError(res.error || '评估失败', res.stdout, res.stderr)
     }
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || '评估失败')
+    const data = e.response?.data
+    if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+      ElMessage({ type: 'error', message: '评估请求超时（3分钟），模型加载或计算耗时过长，请检查网络和 Python 环境', duration: 15000, showClose: true })
+    } else if (data) {
+      showEvalError(data.error || '评估失败', data.stdout, data.stderr)
+    } else {
+      ElMessage({ type: 'error', message: '评估失败: ' + (e.message || '未知错误'), duration: 15000, showClose: true })
+    }
   } finally {
     evaluating.value = false
   }
+}
+
+function showEvalError(error: string, stdout?: string, stderr?: string) {
+  let msg = error
+  if (stderr) msg += '\n\n[stderr]\n' + stderr
+  if (stdout) msg += '\n\n[stdout]\n' + stdout
+  ElMessage({ type: 'error', message: msg, duration: 20000, showClose: true })
 }
 
 async function handleConfirmDeploy() {
