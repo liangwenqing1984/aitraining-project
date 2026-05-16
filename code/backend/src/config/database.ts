@@ -1028,8 +1028,8 @@ HTML内容（前5000字符）:
         FROM sp_menus pm
         WHERE pm.name = '提示词管理'
           AND pm.parent_id = (SELECT id FROM sp_menus WHERE name = '系统管理' AND parent_id IS NULL)
-          AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = $1 AND parent_id = pm.id)
-      `, [name, path, icon, sortOrder]);
+          AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = $5 AND parent_id = pm.id)
+      `, [name, path, icon, sortOrder, name]);
     }
 
     // 内部岗位 sortOrder: 7 → 8（为提示词管理让位）
