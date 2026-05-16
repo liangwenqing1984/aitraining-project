@@ -67,6 +67,7 @@ const menuGroups = [
       { id: 'feat-embedding', label: '文本向量化' },
       { id: 'feat-proxy', label: 'IP 代理池' },
       { id: 'feat-resume', label: '简历筛选匹配' },
+      { id: 'feat-prompts', label: '提示词工程' },
       { id: 'feat-aibot', label: 'AI 问答机器人' },
       { id: 'feat-doc-upload', label: '文档向量索引' },
       { id: 'feat-training', label: '语义模型训练' },
@@ -2445,6 +2446,89 @@ npm run dev
   <li><strong>解析模型</strong>：路由到 taskType='resume-parse' 的 LLM（推荐 DeepSeek V4 Pro），需设置 maxTokens ≥ 16384 防止推理 token 耗尽</li>
   <li><strong>相似度算子</strong>：pgvector <code><=></code> 余弦距离</li>
 </ul>`
+  },
+  'feat-prompts': {
+    title: '提示词工程',
+    content: `<h3>系统提示词一览</h3>
+
+<p>所有 LLM 调用的 System/User Prompt 均硬编码在 <code>code/backend/src/services/llm/prompts.ts</code>，共 5 套提示词模板，覆盖数据增强、市场分析、Text-to-SQL、简历解析、反爬检测 5 个场景。</p>
+
+<h4>1. ENRICHMENT — 数据增强</h4>
+<table>
+  <tr><th>项目</th><th>说明</th></tr>
+  <tr><td>触发入口</td><td>数据管理 → 任务列表 → 点击"AI增强"按钮</td></tr>
+  <tr><td>System Prompt</td><td>招聘数据标准化专家角色，8项标准化规则</td></tr>
+  <tr><td>User Prompt</td><td>动态拼接企业名称、职位名称、薪资范围、工作城市、经营范围等原始字段</td></tr>
+  <tr><td>输出格式</td><td>JSON：salary_monthly_min/max、job_category_l1/l2、company_industry、key_skills、required_skills、preferred_skills、education_normalized、experience_years_min/max、benefits、work_mode</td></tr>
+  <tr><td>模型路由</td><td>taskType='enrichment'，推荐 DeepSeek V4 Pro</td></tr>
+</table>
+
+<p><strong>System Prompt 核心规则：</strong></p>
+<ul>
+  <li>薪资标准化：将"10K-15K"、"1万-1.5万/月"等转换为月薪数值（元）</li>
+  <li>职位分类：L1 含技术/产品/运营/市场/销售/设计/金融/人力资源/行政/客服/物流/教育/医疗/建筑/制造/其他 共 15 类</li>
+  <li>公司行业：从经营范围、企业名称、职位标签综合推断（互联网/金融/教育/医疗/制造/房地产/零售/物流/能源/媒体/咨询/IT服务/建筑/其他）</li>
+  <li>技能提取：key_skills 全部技能、required_skills 必备技能、preferred_skills 加分技能</li>
+  <li>学历标准化：博士/硕士/本科/大专/高中/不限</li>
+  <li>福利提取：五险一金、年终奖、带薪年假、双休、餐补、交通补贴、住房补贴、股票期权、弹性工作</li>
+  <li>工作模式：远程/现场/混合（默认现场）</li>
+</ul>
+
+<h4>2. INSIGHTS — 市场洞察</h4>
+<table>
+  <tr><th>项目</th><th>说明</th></tr>
+  <tr><td>触发入口</td><td>智能分析 → AI 市场洞察 → 选择文件 → 生成报告</td></tr>
+  <tr><td>System Prompt</td><td>招聘市场分析专家角色</td></tr>
+  <tr><td>分析维度</td><td>薪资水平、技能需求、行业对比、城市对比、学历/经验要求、关键趋势</td></tr>
+  <tr><td>输出格式</td><td>JSON：title、summary（200字摘要）、sections（章节数组含 heading/body/key_insight）、charts_config（ECharts 图表配置数组含 chart_type 和 echarts_option）</td></tr>
+</table>
+
+<h4>3. NL_QUERY — 自然语言查询（Text-to-SQL）</h4>
+<table>
+  <tr><th>项目</th><th>说明</th></tr>
+  <tr><td>触发入口</td><td>智能查询 → 数据问答 → 输入自然语言问题</td></tr>
+  <tr><td>System Prompt</td><td>SQL 查询助手角色，含完整 DB schema（sp_job_enrichments、sp_tasks、sp_csv_files、sp_jobs 四张表的字段详解）</td></tr>
+  <tr><td>安全约束</td><td>仅生成 SELECT 语句，绝对禁止 INSERT/UPDATE/DELETE/DROP，LIMIT 最多 500 条</td></tr>
+  <tr><td>JOIN 规则</td><td>必须 LEFT JOIN sp_jobs e ON ... AND e.job_id = j.job_id 获取原始字段，禁止 SELECT *，必须显式列出全部字段</td></tr>
+  <tr><td>JSONB 处理</td><td>数组字段用 <code>@></code> 操作符，不能用 = 比较</td></tr>
+  <tr><td>输出格式</td><td>JSON：sql、params[]、explanation、needs_app_filter、app_filter_reason</td></tr>
+</table>
+
+<p><strong>System Prompt 中内置的完整 DB Schema：</strong></p>
+<ul>
+  <li><strong>sp_job_enrichments</strong> — AI 增强后的标准化数据：salary_monthly_min/max、salary_annual_estimate、job_category_l1/l2、company_industry、key_skills(JSONB)、required_skills(JSONB)、preferred_skills(JSONB)、education_normalized、experience_years_min/max、benefits(JSONB)、work_mode</li>
+  <li><strong>sp_jobs</strong> — 原始爬取数据：company_name、job_name、work_city、salary_range、education、work_experience、job_category、data_source、raw_data(JSONB)</li>
+  <li><strong>sp_tasks</strong> — 采集任务：id、name、source、config(JSONB)、status、progress、record_count</li>
+  <li><strong>sp_csv_files</strong> — 上传文件：id、task_id、filename、filepath、record_count、source</li>
+</ul>
+
+<h4>4. RESUME_PARSE — 简历结构化解析</h4>
+<table>
+  <tr><th>项目</th><th>说明</th></tr>
+  <tr><td>触发入口</td><td>场景应用 → HR助手 → 简历筛选 → 上传简历文件（PDF/Word）</td></tr>
+  <tr><td>System Prompt</td><td>专业简历解析专家角色，18 个提取字段</td></tr>
+  <tr><td>提取字段</td><td>name、email、phone、education_level（高中/大专/本科/硕士/博士）、school、major、graduation_year、work_years、skills[]、skill_levels{}、desired_position、desired_city、desired_salary_min/max、job_type、projects[]、certifications[]、languages[]、self_evaluation、parse_confidence</td></tr>
+  <tr><td>关键规则</td><td>学历取最高值、技能去重统一大小写（react→React、nodejs→Node.js、spring boot→Spring Boot）、年薪÷12→月薪、输出纯 JSON 不含代码块标记</td></tr>
+  <tr><td>文本限制</td><td>简历文本截取前 4000 字符送入 LLM，需设置 maxTokens ≥ 16384</td></tr>
+</table>
+
+<h4>5. ANTI_CRAWL — AI 反爬检测</h4>
+<table>
+  <tr><th>项目</th><th>说明</th></tr>
+  <tr><td>触发入口</td><td>数据采集 → 爬虫运行中自动触发（检测目标网站反爬机制）</td></tr>
+  <tr><td>System Prompt</td><td>网页安全分析专家角色</td></tr>
+  <tr><td>分类类型</td><td>normal（正常页面）、captcha（验证码页）、waf（安全拦截页）、login（需登录）、error（错误页）、empty（空白页）</td></tr>
+  <tr><td>输出格式</td><td>JSON：page_type、confidence(0-1)、indicators[]（可疑特征列表）、reason（判断理由）</td></tr>
+  <tr><td>文本限制</td><td>HTML 截取前 5000 字符</td></tr>
+</table>
+
+<h4>提示词修改指南</h4>
+<ol>
+  <li>编辑 <code>code/backend/src/services/llm/prompts.ts</code> 中对应的 export 常量</li>
+  <li>重启后端服务使修改生效（<code>npm run dev</code> 或 <code>pm2 restart</code>）</li>
+  <li>如修改输出 JSON 格式，需同步更新对应 TS 类型定义和前端解析逻辑</li>
+  <li>User Prompt 中的 <code>\${变量}</code> 为 TypeScript 模板字符串插值，动态拼接上下文数据</li>
+</ol>`
   },
   'feat-aibot': {
     title: 'AI 问答机器人',

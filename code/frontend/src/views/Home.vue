@@ -114,16 +114,16 @@ const highlights = [
   },
   {
     icon: Files, color: '#26a69a', bg: '#e0f2f1', route: '/rag/resume',
-    title: '简历职位匹配', desc: '上传简历自动向量化，与职位库语义匹配，按相似度排序推荐最匹配岗位', docSection: 'feat-resume',
-    detail: `<p>基于 <strong>向量语义匹配</strong> 将简历文本与职位库进行余弦相似度检索，快速找到最匹配的岗位。</p>
+    title: '简历-岗位智能匹配', desc: '简历LLM结构化解析 + 内部岗位硬规则筛选 + 向量语义综合打分，AI全流程人岗精准匹配', docSection: 'feat-resume',
+    detail: `<p>基于 <strong>LLM 简历解析 + 硬规则引擎 + 向量语义匹配</strong> 的三阶段人岗匹配，输出可解释的综合评分和推荐等级。</p>
 <table>
-  <tr><td>📋 多格式上传</td><td>支持 PDF（pdf-parse）、Word（mammoth）、TXT 三种格式，上限 10MB，也支持直接粘贴简历文本</td></tr>
-  <tr><td>🧬 向量化匹配</td><td>简历文本 → LLM Embedding API 生成向量 → pgvector 余弦相似度检索全部职位 → 按相似度降序排列</td></tr>
-  <tr><td>📊 结果展示</td><td>匹配职位卡片列表，显示职位名称、公司、类别、城市及匹配度百分比</td></tr>
-  <tr><td>🔗 职位详情</td><td>点击卡片展开完整 JD，查看薪资范围、技能要求、学历经验等 AI 增强后的结构化字段</td></tr>
-  <tr><td>⚡ 即时反馈</td><td>上传即匹配，无需等待，匹配结果实时返回</td></tr>
+  <tr><td>📋 简历结构化解析</td><td>DeepSeek V4 Pro 从 PDF/Word/TXT 提取姓名、学历、学校、技能（含等级）、工作年限、项目经历等 20+ 结构化字段，支持批量上传</td></tr>
+  <tr><td>🏢 内部岗位管理</td><td>HR 自建岗位 JD 库（标题/部门/描述/要求），配置学历、经验年限、必备技能等硬性筛选规则，支持技能加分权重设定</td></tr>
+  <tr><td>🎯 智能筛选打分</td><td>硬规则过滤（40分）+ 向量语义相似度（40分）+ 技能匹配加分（20分）→ 综合评分 + strong/moderate/weak/rejected 四档推荐</td></tr>
+  <tr><td>📊 简历库管理</td><td>分页列表浏览、批量删除、人工修正解析结果、一键导出 Excel 评估报告</td></tr>
+  <tr><td>💡 可解释评分</td><td>明细分项展示：教育匹配、经验匹配、必备技能/偏好技能/多余技能各维度的通过状态和加分明细</td></tr>
 </table>
-<p style="margin-top:8px;color:#909399;font-size:12px">基于 pgvector + Ollama Embedding 的纯语义匹配，后续可扩展 LLM 多维度评分和评估报告</p>`
+<p style="margin-top:8px;color:#909399;font-size:12px">技术栈：DeepSeek V4 Pro + pgvector + 硬规则引擎 + 综合打分模型 + Element Plus + 自训练语义向量模型</p>`
   },
 ]
 

@@ -13,8 +13,8 @@
           <el-upload
             ref="uploadRef"
             :auto-upload="false"
-            :multiple="screenMode !== 'match'"
-            :limit="screenMode !== 'match' ? 10 : 1"
+            :multiple="true"
+            :limit="10"
             accept=".docx,.doc,.pdf,.txt"
             :show-file-list="false"
             :on-change="handleFileChange"
@@ -24,8 +24,7 @@
               <el-icon :size="32" color="#667eea"><UploadFilled /></el-icon>
               <div class="upload-text">
                 <span>拖拽或<em>点击上传</em>简历文件</span>
-                <span class="upload-hint" v-if="screenMode === 'match'">支持 Word / PDF / TXT，最大 10MB</span>
-                <span class="upload-hint" v-else>支持多文件批量上传，单次最多 10 个文件</span>
+                <span class="upload-hint">支持多文件批量上传，单次最多 10 个文件</span>
               </div>
             </div>
           </el-upload>
@@ -53,24 +52,11 @@
           <div class="option-row mode-switch">
             <span class="option-label">处理模式</span>
             <el-radio-group v-model="screenMode" size="small" @change="clearFile">
-              <el-radio-button value="match">职位匹配</el-radio-button>
               <el-radio-button value="screen">内部筛选</el-radio-button>
               <el-radio-button value="parse">结构解析</el-radio-button>
             </el-radio-group>
           </div>
-          <template v-if="screenMode === 'match'">
-            <div class="option-row">
-              <span class="option-label">返回数量</span>
-              <el-slider v-model="searchLimit" :min="5" :max="50" :step="5" show-stops size="small" style="width: 140px" />
-              <span class="option-value">{{ searchLimit }}</span>
-            </div>
-            <div class="option-row">
-              <span class="option-label">相似度 ≥</span>
-              <el-slider v-model="minSimilarity" :min="0.3" :max="0.9" :step="0.05" show-stops size="small" style="width: 140px" />
-              <span class="option-value">{{ (minSimilarity * 100).toFixed(0) }}%</span>
-            </div>
-          </template>
-          <div v-else-if="screenMode === 'parse'" class="parse-mode-hint">
+          <div v-if="screenMode === 'parse'" class="parse-mode-hint">
             <el-icon><InfoFilled /></el-icon>
             <span>上传简历后，AI 将自动提取学历、技能、工作经验等结构化信息</span>
           </div>
@@ -92,33 +78,20 @@
           </div>
         </div>
 
-        <el-button
-          v-if="screenMode === 'match'"
-          type="primary"
-          :loading="matching"
-          :disabled="!resumeText.trim() || resumeText.trim().length < 10"
-          @click="doMatch"
-          style="width: 100%; margin-top: 12px"
-        >
-          <el-icon><Search /></el-icon> 开始匹配职位
-        </el-button>
       </div>
 
       <!-- 右侧：匹配结果 -->
       <div class="result-panel">
         <div class="result-header">
           <h3>匹配结果</h3>
-          <span v-if="matchResult" class="result-meta">
-            共 {{ matchResult.count }} 条 · 耗时 {{ matchTime }}ms
-            <template v-if="matchResult.fullTextLength">
-              · 解析 {{ matchResult.fullTextLength }} 字符
-            </template>
+          <span v-if="screeningResult" class="result-meta">
+            共 {{ screeningResult.totalJobsCompared }} 个岗位参与筛选
           </span>
         </div>
 
-        <div v-if="!matchResult && !parsedResume && !screeningResult && !matching && !screening && !fileUploading" class="result-placeholder">
+        <div v-if="!parsedResume && !screeningResult && !screening && !fileUploading" class="result-placeholder">
           <el-icon :size="48" color="#c0c4cc"><Document /></el-icon>
-          <p>上传简历文件或粘贴文本后开始匹配</p>
+          <p>上传简历文件或粘贴文本后开始处理</p>
           <div class="placeholder-tips">
             <span class="tip-label">支持的文件格式：</span>
             <ul>
@@ -126,60 +99,15 @@
               <li>PDF 文件 (.pdf)</li>
               <li>纯文本 (.txt)</li>
             </ul>
-            <span class="tip-label" style="display:block; margin-top:8px;">匹配原理：</span>
-            <p style="margin:4px 0 0; font-size:12px; color:#909399;">简历文本 → 语义向量 → 与职位向量库余弦相似度匹配。简历内容越详细，匹配越精准。</p>
+            <span class="tip-label" style="display:block; margin-top:8px;">两种处理模式：</span>
+            <p style="margin:4px 0 0; font-size:12px; color:#909399;"><b>内部筛选：</b>LLM解析简历 → 硬规则过滤 + 语义打分 + 技能加分 → 综合推荐等级</p>
+            <p style="margin:4px 0 0; font-size:12px; color:#909399;"><b>结构解析：</b>AI 自动提取学历、技能、工作经验等 20+ 结构化字段</p>
           </div>
         </div>
 
-        <div v-if="matching || fileUploading" class="searching-hint">
+        <div v-if="fileUploading" class="searching-hint">
           <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-          <span>{{ fileUploading ? '正在解析文件并匹配职位...' : '正在匹配职位...' }}</span>
-        </div>
-
-        <div v-if="matchResult && !matching && !fileUploading" class="result-list">
-          <!-- 文件解析文本预览 -->
-          <el-alert
-            v-if="matchResult.fileName"
-            type="success"
-            :closable="false"
-            show-icon
-            style="margin-bottom: 16px"
-          >
-            <template #title>
-              已解析: {{ matchResult.fileName }} ({{ matchResult.fullTextLength }} 字符)
-            </template>
-          </el-alert>
-
-          <div
-            v-for="(item, idx) in matchResult.results"
-            :key="item.jobId"
-            class="result-card"
-            :style="{ animationDelay: idx * 0.05 + 's' }"
-          >
-            <div class="card-header">
-              <span class="card-title">{{ item.jobName || '未知职位' }}</span>
-              <el-tag
-                :type="item.similarity > 0.8 ? 'success' : item.similarity > 0.6 ? 'warning' : 'info'"
-                size="small"
-              >
-                匹配度 {{ (item.similarity * 100).toFixed(0) }}%
-              </el-tag>
-            </div>
-            <div class="card-company" v-if="item.companyName">
-              <el-icon><OfficeBuilding /></el-icon> {{ item.companyName }}
-            </div>
-            <div class="card-tags">
-              <el-tag v-if="item.jobCategoryL1" size="small" effect="plain">{{ item.jobCategoryL1 }}</el-tag>
-              <el-tag v-if="item.jobCategoryL2" size="small" effect="plain">{{ item.jobCategoryL2 }}</el-tag>
-              <el-tag v-if="item.companyIndustry" size="small" effect="plain" type="success">{{ item.companyIndustry }}</el-tag>
-              <el-tag v-if="item.workCity" size="small" effect="plain" type="warning">{{ item.workCity }}</el-tag>
-            </div>
-            <div class="card-text" v-if="item.textContent">
-              {{ truncateText(item.textContent, 200) }}
-            </div>
-          </div>
-
-          <el-empty v-if="matchResult.results.length === 0" description="未找到匹配的职位，请尝试调整相似度阈值或提供更详细的简历描述" :image-size="80" />
+          <span>正在解析文件...</span>
         </div>
 
         <!-- 结构化解析结果 -->
@@ -365,24 +293,17 @@ import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Loading, UploadFilled, Document, OfficeBuilding, CircleCheck, CircleClose, InfoFilled, FolderAdd, Download } from '@element-plus/icons-vue'
 import type { UploadFile, UploadInstance } from 'element-plus'
-import { matchResume, uploadResume, parseResume, screenResume, saveScreeningResult, exportScreeningExcel, type RAGSearchResult, type ParsedResume, type ScreeningResponse } from '@/api/llm'
+import { parseResume, screenResume, saveScreeningResult, exportScreeningExcel, type ParsedResume, type ScreeningResponse } from '@/api/llm'
 import { listInternalJobs, type InternalJob } from '@/api/internalJob'
 
 const uploadRef = ref<UploadInstance>()
 const resumeText = ref('')
 const fileName = ref('')
 const fileCount = ref(0)
-const matching = ref(false)
 const fileUploading = ref(false)
 const savingHistory = ref(false)
-const matchResult = ref<{
-  fileName?: string; resumeText: string; fullTextLength?: number;
-  results: RAGSearchResult[]; count: number
-} | null>(null)
-const matchTime = ref(0)
 const searchLimit = ref(20)
-const minSimilarity = ref(0.3)
-const screenMode = ref<'match' | 'parse' | 'screen'>('match')  // 匹配模式 / 解析模式 / 筛选模式
+const screenMode = ref<'parse' | 'screen'>('screen')  // 筛选模式 / 解析模式
 const parsedResume = ref<ParsedResume | null>(null)
 const parsing = ref(false)
 
@@ -420,7 +341,6 @@ async function doScreen() {
     })
     if (res.success) {
       screeningResult.value = res.data
-      matchTime.value = Date.now() - start
       ElMessage.success(`筛选完成，${res.data.totalJobsCompared} 个岗位中返回 ${res.data.results.length} 条结果`)
     } else {
       ElMessage.error(res.error || '筛选失败')
@@ -445,65 +365,26 @@ async function handleFileChange(file: UploadFile) {
   const files = uploadRef.value?.uploadFiles || []
   fileCount.value = files.length
 
-  if (screenMode.value !== 'match' && files.length > 1) {
+  if (files.length > 1) {
     // 多文件模式：先显示文件名，等待后续处理
     fileName.value = files.map(f => f.name).join(', ')
     return
   }
 
   fileName.value = raw.name
-  matchResult.value = null
   parsedResume.value = null
   screeningResult.value = null
   fileUploading.value = true
-  const start = Date.now()
 
   try {
-    if (screenMode.value === 'parse' || screenMode.value === 'screen') {
-      // 多文件批量解析
-      const batchFiles = files.map(f => f.raw!).filter(Boolean)
-      if (batchFiles.length > 1) {
-        const { batchParseResumes } = await import('@/api/llm')
-        const res: any = await batchParseResumes(batchFiles)
-        if (res.success) {
-          ElMessage.success(`批量解析完成: 成功 ${res.data.successCount} 个, 失败 ${res.data.failCount} 个`)
-          if (res.data.results.length === 1 && res.data.results[0].success) {
-            parsedResume.value = res.data.results[0]
-          }
-        } else {
-          ElMessage.error(res.error || '解析失败')
-          fileName.value = ''
-        }
-      } else {
-        const res: any = await parseResume(raw)
-        if (res.success) {
-          parsedResume.value = res.data
-          matchTime.value = Date.now() - start
-          resumeText.value = ''
-          ElMessage.success('简历解析成功' + (screenMode.value === 'screen' ? '，请选择目标岗位后点击筛选' : ''))
-        } else {
-          ElMessage.error(res.error || '解析失败')
-          fileName.value = ''
-        }
-      }
+    const res: any = await parseResume(raw)
+    if (res.success) {
+      parsedResume.value = res.data
+      resumeText.value = ''
+      ElMessage.success('简历解析成功' + (screenMode.value === 'screen' ? '，请选择目标岗位后点击筛选' : ''))
     } else {
-      const res: any = await uploadResume(raw, {
-        limit: searchLimit.value,
-        minSimilarity: minSimilarity.value,
-      })
-      if (res.success) {
-        matchResult.value = res.data
-        matchTime.value = Date.now() - start
-        resumeText.value = ''
-        if (res.data.count === 0) {
-          ElMessage.info('未找到匹配的职位，请尝试降低相似度阈值')
-        } else {
-          ElMessage.success(`匹配完成，找到 ${res.data.count} 个职位`)
-        }
-      } else {
-        ElMessage.error(res.error || '匹配失败')
-        fileName.value = ''
-      }
+      ElMessage.error(res.error || '解析失败')
+      fileName.value = ''
     }
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || '文件上传或解析失败')
@@ -516,7 +397,6 @@ async function handleFileChange(file: UploadFile) {
 function clearFile() {
   fileName.value = ''
   fileCount.value = 0
-  matchResult.value = null
   parsedResume.value = null
   screeningResult.value = null
   uploadRef.value?.clearFiles()
@@ -557,39 +437,6 @@ async function exportCurrentScreening() {
     ElMessage.success('导出成功')
   } catch {
     ElMessage.error('导出失败')
-  }
-}
-
-async function doMatch() {
-  const text = resumeText.value.trim()
-  if (!text || text.length < 10) {
-    ElMessage.warning('简历文本内容太短，请至少输入10个字符')
-    return
-  }
-
-  fileName.value = ''
-  matching.value = true
-  matchResult.value = null
-  const start = Date.now()
-
-  try {
-    const res: any = await matchResume(text, {
-      limit: searchLimit.value,
-      minSimilarity: minSimilarity.value,
-    })
-    if (res.success) {
-      matchResult.value = res.data
-      matchTime.value = Date.now() - start
-      if (res.data.count === 0) {
-        ElMessage.info('未找到匹配的职位，请尝试降低相似度阈值或提供更详细的简历描述')
-      }
-    } else {
-      ElMessage.error(res.error || '匹配失败')
-    }
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || '匹配失败，请检查服务状态')
-  } finally {
-    matching.value = false
   }
 }
 

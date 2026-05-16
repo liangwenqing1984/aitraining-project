@@ -20,15 +20,13 @@ const userInfo = ref<any>({
   loginType: 'oauth2'
 })
 
-const isSubPage = computed(() => {
-  return route.path.startsWith('/crawler/') && route.path !== '/crawler'
-})
-
 const isFullScreen = computed(() => route.path === '/daping')
 
 interface MenuItem {
   path?: string; title: string; icon: any; children?: MenuItem[]
 }
+
+interface BreadcrumbItem { title: string; path?: string }
 
 // 图标名称 → 组件映射（markRaw 避免 Vue 深度响应式包装）
 const namedIcons: Record<string, any> = {
@@ -47,24 +45,18 @@ const defaultMenuItems: MenuItem[] = [
   { path: '/analysis', title: '智能分析', icon: namedIcons.PieChart },
   { path: '/dashboard', title: '数据看板', icon: namedIcons.DataAnalysis },
   { path: '/daping', title: '数据大屏', icon: namedIcons.Monitor },
-  { path: '/query', title: '智能查询', icon: namedIcons.ChatDotRound },
   {
-    title: '场景应用', icon: namedIcons.Monitor,
+    title: '智能查询', icon: namedIcons.ChatDotRound,
     children: [
-      {
-        title: 'HR助手', icon: namedIcons.UserFilled,
-        children: [
-          { path: '/rag/resume', title: '简历筛选', icon: namedIcons.User },
-          { path: '/rag/resume-library', title: '简历库', icon: namedIcons.Collection },
-          { path: '/system/internal-jobs', title: '内部岗位', icon: namedIcons.Briefcase },
-        ]
-      },
+      { path: '/query', title: '数据问答', icon: namedIcons.ChatDotRound },
+      { path: '/rag', title: '职位搜索', icon: namedIcons.Search },
     ]
   },
   {
-    title: '语义搜索', icon: namedIcons.Search,
+    title: '模型管理', icon: namedIcons.TrendCharts,
     children: [
-      { path: '/rag', title: '职位搜索', icon: namedIcons.Search },
+      { path: '/system/training', title: '模型训练', icon: namedIcons.TrendCharts },
+      { path: '/settings/llm', title: '模型配置', icon: namedIcons.Setting },
     ]
   },
   {
@@ -79,10 +71,16 @@ const defaultMenuItems: MenuItem[] = [
     ]
   },
   {
-    title: '模型管理', icon: namedIcons.TrendCharts,
+    title: '场景应用', icon: namedIcons.Monitor,
     children: [
-      { path: '/system/training', title: '模型训练', icon: namedIcons.TrendCharts },
-      { path: '/settings/llm', title: '模型配置', icon: namedIcons.Setting },
+      {
+        title: 'HR助手', icon: namedIcons.UserFilled,
+        children: [
+          { path: '/rag/resume', title: '简历筛选', icon: namedIcons.User },
+          { path: '/rag/resume-library', title: '简历库', icon: namedIcons.Collection },
+          { path: '/system/internal-jobs', title: '内部岗位', icon: namedIcons.Briefcase },
+        ]
+      },
     ]
   },
   {
@@ -196,20 +194,32 @@ onMounted(() => {
   }
 })
 
-// 获取当前页面标题（递归搜索嵌套菜单）
-function findPageTitle(items: MenuItem[]): string {
+// 获取面包屑路径（递归搜索，返回从根到当前页的完整层级）
+function findBreadcrumbPath(items: MenuItem[], targetPath: string, ancestors: BreadcrumbItem[] = []): BreadcrumbItem[] | null {
   for (const item of items) {
-    if (item.path && (item.path === route.path || route.path.startsWith(item.path + '/'))) {
-      return item.title
+    const current: BreadcrumbItem = { title: item.title, path: item.path }
+    if (item.path && (item.path === targetPath || targetPath.startsWith(item.path + '/'))) {
+      return [...ancestors, current]
     }
     if (item.children) {
-      const found = findPageTitle(item.children)
+      const found = findBreadcrumbPath(item.children, targetPath, [...ancestors, current])
       if (found) return found
     }
   }
-  return ''
+  return null
 }
-const getCurrentPageTitle = () => findPageTitle(menuItems.value)
+const breadcrumbPath = computed(() => {
+  const path = findBreadcrumbPath(menuItems.value, route.path) || []
+  // 排除首页（模板中已固定渲染），保留完整菜单层级
+  const filtered = path.filter(crumb => crumb.path !== '/home')
+  // 如果当前路径比菜单叶子更深（如 /crawler/xxx 子页），追加 route.meta.title
+  const last = filtered[filtered.length - 1]
+  if (last && last.path !== route.path) {
+    const metaTitle = route.meta?.title as string | undefined
+    if (metaTitle) filtered.push({ title: metaTitle })
+  }
+  return filtered
+})
 </script>
 
 <template>
@@ -316,12 +326,12 @@ const getCurrentPageTitle = () => findPageTitle(menuItems.value)
         <div class="breadcrumb-area">
           <el-breadcrumb separator="/">
             <el-breadcrumb-item :to="{ path: '/home' }">首页</el-breadcrumb-item>
-            <template v-if="isSubPage">
-              <el-breadcrumb-item :to="{ path: '/crawler' }">数据采集</el-breadcrumb-item>
-              <el-breadcrumb-item>{{ route.meta.title }}</el-breadcrumb-item>
-            </template>
-            <el-breadcrumb-item v-else-if="route.path !== '/home'">
-              {{ getCurrentPageTitle() }}
+            <el-breadcrumb-item
+              v-for="(crumb, idx) in breadcrumbPath"
+              :key="idx"
+              :to="idx < breadcrumbPath.length - 1 && crumb.path ? { path: crumb.path } : undefined"
+            >
+              {{ crumb.title }}
             </el-breadcrumb-item>
           </el-breadcrumb>
         </div>

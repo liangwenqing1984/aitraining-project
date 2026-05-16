@@ -230,26 +230,6 @@ export function deleteEnrichment(taskId: string, jobId: string): Promise<ApiResp
 
 // ==================== 简历筛选 ====================
 
-// 简历文本匹配职位
-export function matchResume(resumeText: string, options?: {
-  limit?: number
-  minSimilarity?: number
-}): Promise<ApiResponse<{ resumeText: string; results: RAGSearchResult[]; count: number }>> {
-  return api.post('/rag/resume/match', { resumeText, ...options })
-}
-
-// 上传简历文件并匹配职位
-export function uploadResume(file: File, options?: {
-  limit?: number
-  minSimilarity?: number
-}): Promise<ApiResponse<{ fileName: string; resumeText: string; fullTextLength: number; results: RAGSearchResult[]; count: number }>> {
-  const formData = new FormData()
-  formData.append('file', file)
-  if (options?.limit) formData.append('limit', String(options.limit))
-  if (options?.minSimilarity) formData.append('minSimilarity', String(options.minSimilarity))
-  return api.post('/rag/resume/upload', formData)
-}
-
 // 简历结构化解析接口
 export interface ParsedResume {
   id: number

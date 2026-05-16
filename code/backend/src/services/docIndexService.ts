@@ -134,6 +134,17 @@ export const DOC_SECTIONS: DocSection[] = [
     content: `<p>系统集成第三方HTTP正向代理池(jhao104/proxy_pool)，为爬虫提供动态IP轮换能力。代理池默认地址http://127.0.0.1:5010，连续失败保护(maxConsecutiveFailures=5)。代理健康检查checkHealth()：获取代理后访问目标站验证可用性(8s超时，仅2xx视为可用，禁止重定向，最多3次尝试)。智联使用浏览器级代理(--proxy-server参数)，51job使用axios回退路径代理(浏览器走直连)。容错降级策略：代理池不可达→跳过代理直连；隧道失败→自动切换+浏览器重启；全部不可用→降级直连模式。</p>`
   },
   {
+    sectionId: 'feat-prompts',
+    title: '提示词工程',
+    content: `<p>所有 LLM 调用的 System/User Prompt 均硬编码在 <code>code/backend/src/services/llm/prompts.ts</code>，共 5 套提示词模板。</p>
+<h4>1. ENRICHMENT 数据增强</h4><p>招聘数据标准化专家，8项规则：薪资标准化(元)、职位分类(15大类)、公司行业(14类)、技能提取(key/required/preferred)、学历标准化、福利提取、工作模式。触发入口：数据管理→任务列表→AI增强按钮。</p>
+<h4>2. INSIGHTS 市场洞察</h4><p>招聘市场分析专家，6个分析维度：薪资水平、技能需求、行业对比、城市对比、学历/经验要求、关键趋势。输出含 title/summary/sections/charts_config。</p>
+<h4>3. NL_QUERY 自然语言查询(Text-to-SQL)</h4><p>SQL查询助手，System Prompt含完整DB schema（sp_job_enrichments/sp_jobs/sp_tasks/sp_csv_files四表字段详解）。安全约束：仅SELECT、禁止DML/DDL、LIMIT 500、必须LEFT JOIN sp_jobs、禁止SELECT *。JSONB数组用@>操作符。</p>
+<h4>4. RESUME_PARSE 简历解析</h4><p>专业简历解析专家，18个提取字段：基本信息(name/email/phone)、教育(education_level/school/major/graduation_year)、工作(work_years/skills/skill_levels)、求职意向(desired_position/city/salary)、项目经验(projects[])、证书语言(certifications[]/languages[])。学历取最高、技能去重统一大小写、纯JSON输出无标记。</p>
+<h4>5. ANTI_CRAWL 反爬检测</h4><p>网页安全分析专家，6种页面分类：normal/captcha/waf/login/error/empty。输出page_type+confidence+indicators+reason。</p>
+<h4>修改指南</h4><p>编辑prompts.ts→重启后端→如修改JSON格式需同步更新TS类型和解析逻辑。</p>`
+  },
+  {
     sectionId: 'tech-stack',
     title: '技术栈',
     content: `<h3>前端</h3><p>Vue 3(Composition API)、Element Plus(UI组件库)、Pinia(状态管理)、Vue Router(路由)、ECharts 6(数据可视化)、Socket.IO Client(WebSocket通信)、Axios(HTTP客户端)、Vite(构建工具)、marked(Markdown渲染)。</p><h3>后端</h3><p>Node.js+Express(Web服务框架)、TypeScript(类型安全)、PostgreSQL/SeaboxSQL(数据存储)、Puppeteer(浏览器自动化爬虫)、Socket.IO(实时推送)、ExcelJS(Excel读写)、AES-256-GCM(API Key加密存储)。</p><h3>AI模型支持</h3><p>DeepSeek(v4-pro)、OpenAI(GPT-4o)、智谱(GLM)、Anthropic(Claude)、Ollama(Qwen/Llama本地部署)。</p>`
@@ -515,6 +526,8 @@ const DOC_KEYWORD_MAP: Record<string, string[]> = {
   '菜单': ['系统管理', '菜单', '导航', '侧边栏'],
   '系统管理': ['系统管理', 'RBAC', '用户', '角色', '权限', '菜单'],
   'rbac': ['系统管理', 'RBAC', '用户', '角色', '权限', '菜单'],
+  '提示词': ['提示词', 'prompt', 'System Prompt', 'ENRICHMENT', 'NL_QUERY', 'RESUME_PARSE'],
+  'prompt': ['提示词', 'prompt', 'System Prompt', 'ENRICHMENT', 'NL_QUERY', 'RESUME_PARSE'],
 };
 
 export async function searchDocs(
