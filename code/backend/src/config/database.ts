@@ -997,9 +997,9 @@ HTML内容（前5000字符）:
         INSERT INTO sp_prompts (category, prompt_type, name, content, variables, is_active, sort_order)
         SELECT $1, $2, $3, $4, $5, true, 0
         WHERE NOT EXISTS (
-          SELECT 1 FROM sp_prompts WHERE category = $1 AND prompt_type = $2
+          SELECT 1 FROM sp_prompts WHERE category = $6 AND prompt_type = $7
         )
-      `, [p.category, p.promptType, p.name, p.content, JSON.stringify(p.variables)]);
+      `, [p.category, p.promptType, p.name, p.content, JSON.stringify(p.variables), p.category, p.promptType]);
     }
 
     // ==================== 种子菜单：提示词管理 ====================
