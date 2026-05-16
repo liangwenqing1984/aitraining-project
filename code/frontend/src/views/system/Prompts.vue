@@ -116,7 +116,10 @@ const route = useRoute()
 const list = ref<PromptRecord[]>([])
 const loading = ref(false)
 
-const category = computed(() => route.params.category as string)
+const category = computed(() => {
+  const segments = route.path.split('/')
+  return segments[segments.length - 1]
+})
 const categoryLabel = computed(() => CATEGORY_LABELS[category.value] || category.value)
 
 const dialogVisible = ref(false)
