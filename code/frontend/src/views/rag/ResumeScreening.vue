@@ -306,6 +306,7 @@ const fileUploadingCount = ref(0)
 const fileUploading = computed(() => fileUploadingCount.value > 0)
 const processingUids = new Set<number>()
 const pendingFileKeys = new Set<string>()
+let batchClearDone = false
 const savingHistory = ref(false)
 const searchLimit = ref(20)
 const screenMode = ref<'parse' | 'screen'>('screen')
@@ -448,8 +449,10 @@ async function handleFileChange(file: UploadFile) {
   fileCount.value = files.length
   fileName.value = files.map(f => f.name).join(', ')
 
-  if (files.length === 1) {
+  // 新批次首个文件到达时清空旧解析结果，避免残留数据混入
+  if (!batchClearDone) {
     parsedResumes.value = []
+    batchClearDone = true
   }
   screeningResult.value = null
   fileUploadingCount.value++
@@ -477,6 +480,10 @@ async function handleFileChange(file: UploadFile) {
   } finally {
     fileUploadingCount.value--
     pendingFileKeys.delete(fileKey)
+    // 整批文件处理完毕，允许下一批次清空
+    if (pendingFileKeys.size === 0) {
+      batchClearDone = false
+    }
   }
 }
 
@@ -486,6 +493,8 @@ function clearFile() {
   parsedResumes.value = []
   screeningResult.value = null
   processingUids.clear()
+  pendingFileKeys.clear()
+  batchClearDone = false
   uploadRef.value?.clearFiles()
 }
 
