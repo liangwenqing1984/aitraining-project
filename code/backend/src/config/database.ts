@@ -1054,6 +1054,14 @@ HTML内容（前5000字符）:
       )
     `);
 
+    // 种子菜单：隐藏"智能分析"、"数据大屏"、"关于"
+    for (const name of ['智能分析', '数据大屏', '关于']) {
+      await client.query(`
+        UPDATE sp_menus SET hidden = true
+        WHERE name = $1 AND parent_id IS NULL AND hidden = false
+      `, [name]);
+    }
+
     console.log('✅ PostgreSQL数据库表初始化完成');
   } catch (error) {
     console.error('❌ 数据库初始化失败:', error);

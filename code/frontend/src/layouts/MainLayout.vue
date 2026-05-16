@@ -42,9 +42,7 @@ const namedIcons: Record<string, any> = {
 const defaultMenuItems: MenuItem[] = [
   { path: '/home', title: '首页', icon: namedIcons.HomeFilled },
   { path: '/crawler', title: '数据采集', icon: namedIcons.Monitor },
-  { path: '/analysis', title: '智能分析', icon: namedIcons.PieChart },
   { path: '/dashboard', title: '数据看板', icon: namedIcons.DataAnalysis },
-  { path: '/daping', title: '数据大屏', icon: namedIcons.Monitor },
   {
     title: '智能查询', icon: namedIcons.ChatDotRound,
     children: [
@@ -100,7 +98,6 @@ const defaultMenuItems: MenuItem[] = [
       { path: '/aibot', title: '问答机器人', icon: namedIcons.ChatDotRound },
     ]
   },
-  { path: '/about', title: '关于', icon: namedIcons.InfoFilled }
 ]
 
 const menuItems = shallowRef<MenuItem[]>(defaultMenuItems)

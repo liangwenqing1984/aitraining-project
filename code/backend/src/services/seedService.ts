@@ -62,8 +62,8 @@ export async function runSeed(): Promise<void> {
       { name: '首页', path: '/home', icon: 'HomeFilled', sortOrder: 1 },
       { name: '数据采集', path: '/crawler', icon: 'Monitor', sortOrder: 2 },
       { name: '数据管理', path: '/files', icon: 'Files', sortOrder: 3 },
-      { name: '智能分析', path: '/analysis', icon: 'PieChart', sortOrder: 4 },
-      { name: '数据大屏', path: '/daping', icon: 'Monitor', sortOrder: 5 },
+      { name: '智能分析', path: '/analysis', icon: 'PieChart', sortOrder: 4, hidden: true },
+      { name: '数据大屏', path: '/daping', icon: 'Monitor', sortOrder: 5, hidden: true },
       { name: '数据看板', path: '/dashboard', icon: 'DataAnalysis', sortOrder: 6 },
     ];
 
@@ -71,7 +71,7 @@ export async function runSeed(): Promise<void> {
     for (const m of menus) {
       const menu = await menuService.createMenu({
         name: m.name, path: m.path, icon: m.icon,
-        sortOrder: m.sortOrder, hidden: false,
+        sortOrder: m.sortOrder, hidden: (m as any).hidden ?? false,
       } as any);
       menuIds[m.name] = menu.id!;
       console.log(`[Seed] 菜单: ${m.name} (id=${menu.id})`);
@@ -212,7 +212,7 @@ export async function runSeed(): Promise<void> {
 
     // 剩余独立菜单
     await menuService.createMenu({
-      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 12, hidden: false,
+      name: '关于', path: '/about', icon: 'InfoFilled', sortOrder: 12, hidden: true,
     } as any);
 
     // Step 4: 创建管理员角色
