@@ -195,6 +195,25 @@ export interface AntiCrawlResult {
   reason: string;
 }
 
+// ==================== 提示词管理类型 ====================
+
+export type PromptCategory = 'enrichment' | 'insights' | 'query' | 'resume-parse' | 'anti-crawl';
+export type PromptType = 'system' | 'user';
+
+export interface PromptRecord {
+  id?: number;
+  category: PromptCategory;
+  promptType: PromptType;
+  name: string;
+  content: string;
+  variables: string[];
+  description?: string;
+  isActive: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 // ==================== 系统管理 RBAC 类型 ====================
 
 export interface SystemUser {

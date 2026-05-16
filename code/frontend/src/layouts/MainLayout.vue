@@ -5,7 +5,7 @@ import { getUserInfo, logout as authLogout } from '@/utils/auth'
 import {
   HomeFilled, Monitor, Files, TrendCharts, DataAnalysis, Search,
   Setting, User, UserFilled, Lock, Menu as MenuIcon, Document, InfoFilled,
-  PieChart, ChatDotRound, Headset, Collection, Briefcase,
+  PieChart, ChatDotRound, Headset, Collection, Briefcase, Edit,
 } from '@element-plus/icons-vue'
 import { getMenuTree, type SystemMenu } from '@/api/system'
 
@@ -35,7 +35,7 @@ const namedIcons: Record<string, any> = {
   Setting: markRaw(Setting), User: markRaw(User), UserFilled: markRaw(UserFilled),
   Lock: markRaw(Lock), Menu: markRaw(MenuIcon), Document: markRaw(Document), InfoFilled: markRaw(InfoFilled),
   PieChart: markRaw(PieChart), ChatDotRound: markRaw(ChatDotRound), Headset: markRaw(Headset),
-  Collection: markRaw(Collection), Briefcase: markRaw(Briefcase),
+  Collection: markRaw(Collection), Briefcase: markRaw(Briefcase), Edit: markRaw(Edit),
 }
 
 // 默认菜单（API 故障时的兜底）
@@ -68,6 +68,16 @@ const defaultMenuItems: MenuItem[] = [
       { path: '/system/menus', title: '菜单管理', icon: namedIcons.Menu },
       { path: '/system/enrichment', title: '增强数据管理', icon: namedIcons.DataAnalysis },
       { path: '/system/vectors', title: '文本向量管理', icon: namedIcons.Search },
+      {
+        title: '提示词管理', icon: namedIcons.Edit,
+        children: [
+          { path: '/system/prompts/enrichment', title: '数据增强', icon: namedIcons.DataAnalysis },
+          { path: '/system/prompts/insights', title: '市场洞察', icon: namedIcons.TrendCharts },
+          { path: '/system/prompts/query', title: 'NL查询', icon: namedIcons.ChatDotRound },
+          { path: '/system/prompts/resume-parse', title: '简历解析', icon: namedIcons.Document },
+          { path: '/system/prompts/anti-crawl', title: '反爬检测', icon: namedIcons.Lock },
+        ]
+      },
     ]
   },
   {

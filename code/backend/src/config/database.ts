@@ -483,6 +483,26 @@ async function initDatabase() {
       )
     `);
 
+    // ==================== 提示词管理表 ====================
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sp_prompts (
+        id SERIAL PRIMARY KEY,
+        category VARCHAR(50) NOT NULL,
+        prompt_type VARCHAR(20) NOT NULL,
+        name VARCHAR(100) NOT NULL,
+        content TEXT NOT NULL,
+        variables JSONB DEFAULT '[]',
+        description VARCHAR(255),
+        is_active BOOLEAN DEFAULT true,
+        sort_order INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query('CREATE INDEX IF NOT EXISTS idx_prompts_category ON sp_prompts(category)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_prompts_active ON sp_prompts(category, prompt_type, is_active)');
+
     // ==================== 问答机器人表 ====================
 
     // 文档向量表（存储帮助文档的向量化片段）
@@ -697,6 +717,341 @@ async function initDatabase() {
       SELECT '内部岗位', '/system/internal-jobs', 'Briefcase', m.id, 7, NULL, false
       FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
       AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '内部岗位')
+    `);
+
+    // ==================== 种子提示词数据 ====================
+
+    const seedPrompts: Array<{ category: string; promptType: string; name: string; content: string; variables: string[] }> = [
+      // ===== ENRICHMENT =====
+      {
+        category: 'enrichment', promptType: 'system', name: '数据增强系统提示词',
+        content: `你是一个招聘数据标准化专家。你的任务是将原始的招聘信息转换为结构化数据。
+
+规则：
+1. 薪资标准化：将"10K-15K"或"1万-1.5万/月"等格式转换为月薪的数值（单位：元）。如果无法确定，返回null。
+2. 职位分类：
+   - L1（一级）：技术、产品、运营、市场、销售、设计、金融、人力资源、行政、客服、物流、教育、医疗、建筑、制造、其他
+   - L2（二级）：更细分，如 后端开发、前端开发、数据分析、测试、产品经理、UI设计 等
+3. 公司行业分类：根据企业名称、经营范围、职位标签综合判断。选项：互联网、金融、教育、医疗、制造、房地产、零售、物流、能源、媒体、咨询、IT服务、建筑、其他
+4. 技能提取：从职位描述和职位标签中提取技术关键词。key_skills 列出所有技能，required_skills 列出必备技能，preferred_skills 列出加分技能（如"优先"、"加分"等字样修饰的）
+5. 学历标准化：将"本科及以上"、"大专"等规范化为 博士/硕士/本科/大专/高中/不限
+6. 福利提取：从职位描述中提取：五险一金、年终奖、带薪年假、双休、餐补、交通补贴、住房补贴、股票期权、弹性工作 等
+7. 工作模式：根据工作地址、工作性质判断。含"远程"→远程，含"驻场"→现场，无明确说明→现场（默认）
+
+重要提示：
+- 公司行业：优先从经营范围推断，其次从企业名称（如XX科技→IT服务，XX食品→制造），再结合职位类别
+- 工作模式：大多数传统企业职位默认为"现场"，只有明确提到远程/混合才标记
+- 尽可能推断，减少不必要的null值
+
+请严格按照以下JSON格式输出，不要输出其他内容：
+{
+  "salary_monthly_min": 数字或null,
+  "salary_monthly_max": 数字或null,
+  "salary_annual_estimate": 数字或null,
+  "job_category_l1": "技术|产品|运营|..." 或 null,
+  "job_category_l2": "后端开发|前端开发|..." 或 null,
+  "company_industry": "互联网|金融|..." 或 null,
+  "key_skills": ["技能1", "技能2"],
+  "required_skills": ["必备技能1"],
+  "preferred_skills": ["加分技能1"],
+  "education_normalized": "本科|硕士|..." 或 null,
+  "experience_years_min": 数字或null,
+  "experience_years_max": 数字或null,
+  "benefits": ["福利1", "福利2"],
+  "work_mode": "远程|现场|混合" 或 null
+}`,
+        variables: [],
+      },
+      {
+        category: 'enrichment', promptType: 'user', name: '数据增强用户提示词',
+        content: `请分析以下职位信息并进行标准化：
+
+企业名称：\${companyName}
+职位名称：\${jobName}
+职位分类：\${jobCategory}
+薪资范围：\${salaryRange}
+工作城市：\${workCity}
+工作地址：\${workAddress}
+工作经验：\${workExperience}
+学历要求：\${education}
+公司性质：\${companyNature}
+公司规模：\${companyScale}
+经营范围：\${businessScope}
+职位标签：\${jobTags}
+工作性质：\${workType}
+职位描述：\${jobDescription}`,
+        variables: ['companyName','jobName','jobCategory','salaryRange','workCity','workAddress','workExperience','education','companyNature','companyScale','businessScope','jobTags','workType','jobDescription'],
+      },
+      // ===== INSIGHTS =====
+      {
+        category: 'insights', promptType: 'system', name: '市场洞察系统提示词',
+        content: `你是一个招聘市场分析专家。你的任务是基于爬取的招聘数据，生成专业的市场分析报告。
+
+分析维度：
+1. 薪资水平：整体分布、分位数、与城市/行业交叉分析
+2. 技能需求：热门技能排行、技能组合趋势
+3. 行业对比：不同行业的薪资和需求量对比
+4. 城市对比：不同城市的岗位分布和薪资差异
+5. 学历/经验要求：企业对应聘者的硬性要求分析
+6. 关键发现和趋势
+
+请用中文输出。格式要求：
+- 使用Markdown格式
+- 包含具体的数字和百分比
+- 每个分析点配上关键洞察
+- 如果数据不足以支撑某个结论，坦诚说明
+
+输出JSON格式：
+{
+  "title": "报告标题",
+  "summary": "200字以内的摘要",
+  "sections": [
+    {
+      "heading": "章节标题（Markdown ## 格式）",
+      "body": "章节正文（Markdown 格式，可包含表格、列表）",
+      "key_insight": "本章节最重要的一个发现"
+    }
+  ],
+  "charts_config": [
+    {
+      "title": "图表标题",
+      "chart_type": "bar|pie|line|scatter",
+      "echarts_option": { /* ECharts option 对象 */ }
+    }
+  ]
+}`,
+        variables: [],
+      },
+      {
+        category: 'insights', promptType: 'user', name: '市场洞察用户提示词',
+        content: `请基于以下招聘数据统计生成深度分析报告：
+
+数据概览：
+- 总职位数：\${totalJobs}
+- 覆盖城市数：\${cityCount}
+- 数据时间范围：\${dateRange}
+
+薪资分布：
+\${salaryDistribution}
+
+城市分布（Top 10）：
+\${cityDistribution}
+
+学历分布：
+\${educationDistribution}
+
+经验要求分布：
+\${experienceDistribution}
+
+公司性质分布：
+\${companyNatureDistribution}
+
+热门职位（Top 10）：
+\${topJobs}
+
+热门技能：
+\${topSkills}`,
+        variables: ['totalJobs','cityCount','dateRange','salaryDistribution','cityDistribution','educationDistribution','experienceDistribution','companyNatureDistribution','topJobs','topSkills'],
+      },
+      // ===== NL_QUERY =====
+      {
+        category: 'query', promptType: 'system', name: 'NL查询系统提示词',
+        content: `你是一个SQL查询助手。用户会用自然语言询问招聘数据的问题，你需要将其转换为PostgreSQL查询。
+
+数据库表结构（schema: liangwenqing）：
+
+=== sp_job_enrichments 表（核心：AI增强后的标准化职位数据）===
+- id (VARCHAR), task_id (VARCHAR FK), job_id (VARCHAR UNIQUE)
+- salary_monthly_min (INTEGER) — 月薪下限（元）
+- salary_monthly_max (INTEGER) — 月薪上限（元）
+- salary_annual_estimate (INTEGER) — 估算年薪（元）
+- job_category_l1 (VARCHAR) — 一级分类：技术/产品/运营/市场/销售/设计/金融/人力资源/行政/客服/物流/教育/医疗/建筑/制造/其他
+- job_category_l2 (VARCHAR) — 二级分类：后端开发/前端开发/数据分析/测试/产品经理/UI设计等
+- company_industry (VARCHAR) — 公司行业：互联网/金融/教育/医疗/制造/房地产/零售/物流/能源/媒体/咨询/IT服务/建筑/其他
+- key_skills (JSONB) — 所有技能列表 ["Java","Spring","MySQL"]
+- required_skills (JSONB) — 必备技能
+- preferred_skills (JSONB) — 加分技能
+- education_normalized (VARCHAR) — 学历：博士/硕士/本科/大专/高中/不限
+- experience_years_min (INTEGER) — 经验年限下限
+- experience_years_max (INTEGER) — 经验年限上限
+- benefits (JSONB) — 福利列表
+- work_mode (VARCHAR) — 远程/现场/混合
+- model_used (VARCHAR), enriched_at (TIMESTAMP)
+
+sp_tasks 表（任务）：
+- id (VARCHAR), name, source, config (JSONB), status, progress, record_count
+- created_at, updated_at
+
+sp_csv_files 表（文件）：
+- id (VARCHAR), task_id (VARCHAR FK), filename, filepath, record_count, source
+- created_at
+
+sp_jobs 表（原始爬取职位数据，与 Excel 同步入库）：
+- id (VARCHAR), task_id (VARCHAR FK), job_id (VARCHAR), data_source (VARCHAR)
+- company_name (VARCHAR), job_name (VARCHAR), work_city (VARCHAR)
+- salary_range (VARCHAR), education (VARCHAR), work_experience (VARCHAR)
+- job_category (VARCHAR), raw_data (JSONB — 完整原始字段)
+- created_at (TIMESTAMP)
+- UNIQUE(task_id, job_id)，用于幂等重跑
+
+注意事项：
+1. 仅生成SELECT语句，绝对禁止INSERT/UPDATE/DELETE/DROP等
+2. **极其重要 — 必须返回全部字段**：
+   - 必须用: FROM sp_job_enrichments e LEFT JOIN sp_jobs j ON e.task_id = j.task_id AND e.job_id = j.job_id
+   - SELECT 必须包含 sp_jobs 全部字段: j.company_name, j.job_name, j.work_city, j.salary_range, j.education, j.work_experience, j.job_category, j.data_source
+   - SELECT 必须包含 sp_job_enrichments 全部字段: e.salary_monthly_min, e.salary_monthly_max, e.salary_annual_estimate, e.job_category_l1, e.job_category_l2, e.company_industry, e.key_skills, e.required_skills, e.preferred_skills, e.education_normalized, e.experience_years_min, e.experience_years_max, e.benefits, e.work_mode
+   - 禁止使用 SELECT * — 必须显式列出上述全部字段
+   - 除非用户明确要求只查询特定字段，否则始终返回上述全部字段
+3. 按薪资排序用 e.salary_monthly_max DESC 或 e.salary_monthly_min DESC
+4. 统计查询用 COUNT(*)，分组用 GROUP BY — 统计查询也尽量保留上述字段
+5. JSONB 数组字段不能直接在 WHERE 中用 = 比较，需要用 @> 操作符
+6. LIMIT最多500条
+7. 如果用户指定了 task_id，加上 WHERE e.task_id='xxx' 过滤
+
+输出JSON格式：
+{
+  "sql": "SELECT ... FROM ... WHERE ... LIMIT ?",
+  "params": ["参数1", "参数2"],
+  "explanation": "用中文简述这条SQL查询了什么",
+  "needs_app_filter": true或false,
+  "app_filter_reason": "如果需要应用层过滤，说明原因"
+}`,
+        variables: [],
+      },
+      {
+        category: 'query', promptType: 'user', name: 'NL查询用户提示词',
+        content: `用户问题：\${question}
+
+请生成对应的SQL查询。`,
+        variables: ['question'],
+      },
+      // ===== RESUME_PARSE =====
+      {
+        category: 'resume-parse', promptType: 'system', name: '简历解析系统提示词',
+        content: `你是一名专业的简历解析专家。你的任务是从非结构化简历文本中提取结构化信息。
+
+提取规则：
+1. name: 从简历开头或个人信息区域提取候选人姓名
+2. email/phone: 提取邮箱和手机号
+3. education_level: 必须规范化为以下之一 — 高中、大专、本科、硕士、博士。取最高学历
+4. school: 毕业院校名称（取最高学历的院校）
+5. major: 所学专业
+6. graduation_year: 毕业年份（4位数字）
+7. work_years: 总工作年限(整数)，通过工作经历时间段累加计算
+8. skills: 技能名称数组，去重并统一大小写（如 react → React, nodejs → Node.js, spring boot → Spring Boot）
+9. skill_levels: 技能熟练度映射，值为 精通/熟练/了解
+10. desired_position: 期望岗位名称，从求职意向或最近一份工作推断
+11. desired_city: 期望工作城市
+12. desired_salary_min/max: 单位统一为元/月，如写年薪则除以12
+13. job_type: 全职/兼职/实习
+14. projects: 数组，每个对象含 name/role/duration/description/techStack
+15. certifications: 证书名称数组，如 ["PMP", "AWS Solutions Architect"]
+16. languages: 语言能力数组，每个对象含 name/level
+17. self_evaluation: 自我评价原文摘要（200字以内）
+18. parse_confidence: 你对本次提取的整体置信度(0-1)
+
+输出纯 JSON，不要包含 \`\`\` 标记，不要有任何其他文字。所有缺失字段填 null 或空数组。`,
+        variables: [],
+      },
+      {
+        category: 'resume-parse', promptType: 'user', name: '简历解析用户提示词',
+        content: `请解析以下简历文本并提取结构化信息：
+
+\${resumeText}`,
+        variables: ['resumeText'],
+      },
+      // ===== ANTI_CRAWL =====
+      {
+        category: 'anti-crawl', promptType: 'system', name: '反爬检测系统提示词',
+        content: `你是一个网页安全分析专家。分析给定HTML片段，判断页面类型。
+
+分类标准：
+- normal: 正常职位列表/详情页
+- captcha: 验证码页面（包含验证码、滑块、图形验证等）
+- waf: WAF安全拦截页面（包含"安全验证"、"拦截"、"Security"等）
+- login: 需要登录的页面（包含登录表单）
+- error: 错误页面（404、500等）
+- empty: 空白页或内容极少
+
+输出JSON格式：
+{
+  "page_type": "normal|captcha|waf|login|error|empty",
+  "confidence": 0.0-1.0,
+  "indicators": ["发现的可疑特征1", "特征2"],
+  "reason": "判断理由"
+}`,
+        variables: [],
+      },
+      {
+        category: 'anti-crawl', promptType: 'user', name: '反爬检测用户提示词',
+        content: `URL: \${url}
+
+HTML内容（前5000字符）:
+\${html}`,
+        variables: ['url', 'html'],
+      },
+    ];
+
+    for (const p of seedPrompts) {
+      await client.query(`
+        INSERT INTO sp_prompts (category, prompt_type, name, content, variables, is_active, sort_order)
+        SELECT $1, $2, $3, $4, $5, true, 0
+        WHERE NOT EXISTS (
+          SELECT 1 FROM sp_prompts WHERE category = $1 AND prompt_type = $2
+        )
+      `, [p.category, p.promptType, p.name, p.content, JSON.stringify(p.variables)]);
+    }
+
+    // ==================== 种子菜单：提示词管理 ====================
+
+    // 提示词管理父菜单 (sortOrder 7 under 系统管理)
+    await client.query(`
+      INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+      SELECT '提示词管理', NULL, 'Edit', m.id, 7, NULL, false
+      FROM sp_menus m WHERE m.name = '系统管理' AND m.parent_id IS NULL
+      AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = '提示词管理')
+    `);
+
+    // 5 个子菜单
+    const promptSubMenus = [
+      ['数据增强', '/system/prompts/enrichment', 'DataAnalysis', 1],
+      ['市场洞察', '/system/prompts/insights', 'TrendCharts', 2],
+      ['NL查询', '/system/prompts/query', 'ChatDotRound', 3],
+      ['简历解析', '/system/prompts/resume-parse', 'Document', 4],
+      ['反爬检测', '/system/prompts/anti-crawl', 'Lock', 5],
+    ];
+
+    for (const [name, path, icon, sortOrder] of promptSubMenus) {
+      await client.query(`
+        INSERT INTO sp_menus (name, path, icon, parent_id, sort_order, component, hidden)
+        SELECT $1, $2, $3, pm.id, $4, NULL, false
+        FROM sp_menus pm
+        WHERE pm.name = '提示词管理'
+          AND pm.parent_id = (SELECT id FROM sp_menus WHERE name = '系统管理' AND parent_id IS NULL)
+          AND NOT EXISTS (SELECT 1 FROM sp_menus WHERE name = $1 AND parent_id = pm.id)
+      `, [name, path, icon, sortOrder]);
+    }
+
+    // 内部岗位 sortOrder: 7 → 8（为提示词管理让位）
+    await client.query(`
+      UPDATE sp_menus SET sort_order = 8
+      WHERE name = '内部岗位'
+        AND parent_id = (SELECT id FROM sp_menus WHERE name = '系统管理' AND parent_id IS NULL)
+        AND sort_order = 7
+    `);
+
+    // 授权：将提示词管理及其子菜单授予已有角色（跟随系统管理其他子菜单的权限）
+    await client.query(`
+      INSERT INTO sp_role_menus (role_id, menu_id)
+      SELECT DISTINCT rm.role_id, pm.id
+      FROM sp_role_menus rm
+      CROSS JOIN sp_menus pm
+      WHERE pm.name IN ('提示词管理', '数据增强', '市场洞察', 'NL查询', '简历解析', '反爬检测')
+      AND rm.menu_id IN (SELECT id FROM sp_menus WHERE name IN ('用户管理', '角色管理', '权限管理', '菜单管理'))
+      AND NOT EXISTS (
+        SELECT 1 FROM sp_role_menus rm2
+        WHERE rm2.role_id = rm.role_id AND rm2.menu_id = pm.id
+      )
     `);
 
     console.log('✅ PostgreSQL数据库表初始化完成');

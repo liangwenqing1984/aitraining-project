@@ -1,6 +1,5 @@
 import { db } from '../../config/database';
 import { llmService } from './index';
-import { INSIGHTS_SYSTEM, INSIGHTS_USER } from './prompts';
 import { io } from '../../app';
 import crypto from 'crypto';
 
@@ -218,9 +217,22 @@ export async function generateInsights(fileId: string): Promise<MarketReport> {
 
   emitProgress(fileId, `统计数据构建完成（${stats.totalJobs} 条职位），正在调用 AI 生成报告...`);
 
-  const result = await llmService.callLLM(
-    INSIGHTS_SYSTEM,
-    INSIGHTS_USER(stats),
+  const insightsVars = {
+    totalJobs: stats.totalJobs || 0,
+    cityCount: stats.cityCount || 0,
+    dateRange: stats.dateRange || '未知',
+    salaryDistribution: JSON.stringify(stats.salaryDistribution || {}, null, 2),
+    cityDistribution: JSON.stringify(stats.cityDistribution || {}, null, 2),
+    educationDistribution: JSON.stringify(stats.educationDistribution || {}, null, 2),
+    experienceDistribution: JSON.stringify(stats.experienceDistribution || {}, null, 2),
+    companyNatureDistribution: JSON.stringify(stats.companyNatureDistribution || {}, null, 2),
+    topJobs: JSON.stringify(stats.topJobs || [], null, 2),
+    topSkills: JSON.stringify(stats.topSkills || [], null, 2),
+  };
+
+  const result = await llmService.callLLMWithPrompts(
+    'insights',
+    insightsVars,
     {
       taskType: 'insights',
       temperature: 0.3,
@@ -486,9 +498,22 @@ export async function generateAllInsights(): Promise<MarketReport> {
 
   console.log(`[Insights] 全量统计完成（${stats.totalJobs} 条职位），调用 AI 生成报告...`);
 
-  const result = await llmService.callLLM(
-    INSIGHTS_SYSTEM,
-    INSIGHTS_USER(stats),
+  const insightsVars = {
+    totalJobs: stats.totalJobs || 0,
+    cityCount: stats.cityCount || 0,
+    dateRange: stats.dateRange || '未知',
+    salaryDistribution: JSON.stringify(stats.salaryDistribution || {}, null, 2),
+    cityDistribution: JSON.stringify(stats.cityDistribution || {}, null, 2),
+    educationDistribution: JSON.stringify(stats.educationDistribution || {}, null, 2),
+    experienceDistribution: JSON.stringify(stats.experienceDistribution || {}, null, 2),
+    companyNatureDistribution: JSON.stringify(stats.companyNatureDistribution || {}, null, 2),
+    topJobs: JSON.stringify(stats.topJobs || [], null, 2),
+    topSkills: JSON.stringify(stats.topSkills || [], null, 2),
+  };
+
+  const result = await llmService.callLLMWithPrompts(
+    'insights',
+    insightsVars,
     {
       taskType: 'insights',
       temperature: 0.3,

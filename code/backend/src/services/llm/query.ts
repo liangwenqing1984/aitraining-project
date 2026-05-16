@@ -1,6 +1,5 @@
 import { db } from '../../config/database';
 import { llmService } from './index';
-import { NL_QUERY_SYSTEM, NL_QUERY_USER } from './prompts';
 import crypto from 'crypto';
 
 function extractJSON(text: string): any {
@@ -78,9 +77,9 @@ export async function executeNLQuery(
     : '';
   const schema = `sp_job_enrichments（核心增强数据表，主表）LEFT JOIN sp_jobs（原始职位数据表，ON task_id+job_id）`;
 
-  const llmResult = await llmService.callLLM(
-    NL_QUERY_SYSTEM,
-    NL_QUERY_USER(question + taskContext, schema),
+  const llmResult = await llmService.callLLMWithPrompts(
+    'query',
+    { question: question + taskContext },
     {
       taskType: 'query',
       temperature: 0.1,

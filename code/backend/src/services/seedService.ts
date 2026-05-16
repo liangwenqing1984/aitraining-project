@@ -167,6 +167,29 @@ export async function runSeed(): Promise<void> {
       console.log(`[Seed]   子菜单: ${child.name} (id=${m.id})`);
     }
 
+    // 提示词管理父菜单 + 5个子菜单 (sortOrder 7 under 系统管理)
+    const promptMenu = await menuService.createMenu({
+      name: '提示词管理', icon: 'Edit', parentId: sysMenu.id, sortOrder: 7, hidden: false,
+    } as any);
+    sysChildIds.push(promptMenu.id!);
+    console.log(`[Seed]   子菜单: 提示词管理 (id=${promptMenu.id})`);
+
+    const promptChildren = [
+      { name: '数据增强', path: '/system/prompts/enrichment', icon: 'DataAnalysis', sortOrder: 1 },
+      { name: '市场洞察', path: '/system/prompts/insights', icon: 'TrendCharts', sortOrder: 2 },
+      { name: 'NL查询', path: '/system/prompts/query', icon: 'ChatDotRound', sortOrder: 3 },
+      { name: '简历解析', path: '/system/prompts/resume-parse', icon: 'Document', sortOrder: 4 },
+      { name: '反爬检测', path: '/system/prompts/anti-crawl', icon: 'Lock', sortOrder: 5 },
+    ];
+    for (const child of promptChildren) {
+      const m = await menuService.createMenu({
+        name: child.name, path: child.path, icon: child.icon, parentId: promptMenu.id,
+        sortOrder: child.sortOrder, hidden: false,
+      } as any);
+      sysChildIds.push(m.id!);
+      console.log(`[Seed]     提示词子菜单: ${child.name} (id=${m.id})`);
+    }
+
     // Step 3: 创建系统帮助父菜单 + 子菜单
     const helpMenu = await menuService.createMenu({
       name: '系统帮助', icon: 'Headset', sortOrder: 11, hidden: false,

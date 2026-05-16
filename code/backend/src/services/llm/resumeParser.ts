@@ -1,7 +1,6 @@
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import { llmService } from './index';
-import { RESUME_PARSE_SYSTEM, RESUME_PARSE_USER } from './prompts';
 
 /**
  * 从文件 buffer 中提取文本
@@ -65,9 +64,9 @@ export interface ParsedResume {
  */
 export async function parseResumeStructure(resumeText: string): Promise<ParsedResume> {
   const startTime = Date.now();
-  const result = await llmService.callLLM(
-    RESUME_PARSE_SYSTEM,
-    RESUME_PARSE_USER(resumeText),
+  const result = await llmService.callLLMWithPrompts(
+    'resume-parse',
+    { resumeText: resumeText.substring(0, 4000) },
     { taskType: 'resume-parse', responseFormat: 'json', temperature: 0.1, maxTokens: 16384 }
   );
 

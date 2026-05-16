@@ -1,7 +1,9 @@
 import { LLMCallOptions, LLMCallResult, LLMConfig, LLMProvider, LLMTaskType, EmbeddingResult } from '../../types';
+import type { PromptCategory } from '../../types';
 import { db } from '../../config/database';
 import { CloudProvider } from './providers/cloud';
 import { LocalProvider } from './providers/local';
+import { resolvePrompts } from './promptResolver';
 import crypto from 'crypto';
 
 const ENCRYPTION_KEY = process.env.LLM_ENCRYPTION_KEY || 'aitraining-llm-secret-key-2026';
@@ -124,6 +126,15 @@ export class LLMService {
       ...result,
       duration: Date.now() - startTime,
     };
+  }
+
+  async callLLMWithPrompts(
+    category: PromptCategory,
+    userPromptVars: Record<string, any>,
+    options: LLMCallOptions
+  ): Promise<LLMCallResult> {
+    const { systemPrompt, userPrompt } = await resolvePrompts(category, userPromptVars);
+    return this.callLLM(systemPrompt, userPrompt, options);
   }
 
   async embed(text: string): Promise<EmbeddingResult> {

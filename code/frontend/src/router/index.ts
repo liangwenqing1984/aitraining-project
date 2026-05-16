@@ -209,6 +209,36 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '模型训练', parent: '模型管理' }
       },
       {
+        path: 'system/prompts/enrichment',
+        name: 'SystemPromptsEnrichment',
+        component: () => import('@/views/system/Prompts.vue'),
+        meta: { title: '数据增强', parent: '提示词管理' }
+      },
+      {
+        path: 'system/prompts/insights',
+        name: 'SystemPromptsInsights',
+        component: () => import('@/views/system/Prompts.vue'),
+        meta: { title: '市场洞察', parent: '提示词管理' }
+      },
+      {
+        path: 'system/prompts/query',
+        name: 'SystemPromptsQuery',
+        component: () => import('@/views/system/Prompts.vue'),
+        meta: { title: 'NL查询', parent: '提示词管理' }
+      },
+      {
+        path: 'system/prompts/resume-parse',
+        name: 'SystemPromptsResumeParse',
+        component: () => import('@/views/system/Prompts.vue'),
+        meta: { title: '简历解析', parent: '提示词管理' }
+      },
+      {
+        path: 'system/prompts/anti-crawl',
+        name: 'SystemPromptsAntiCrawl',
+        component: () => import('@/views/system/Prompts.vue'),
+        meta: { title: '反爬检测', parent: '提示词管理' }
+      },
+      {
         path: 'about',
         name: 'About',
         component: () => import('@/views/About.vue'),

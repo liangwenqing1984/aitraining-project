@@ -1,5 +1,4 @@
 import { llmService } from './index';
-import { ANTI_CRAWL_SYSTEM, ANTI_CRAWL_USER } from './prompts';
 
 export interface PageClassification {
   pageType: 'normal' | 'captcha' | 'waf' | 'login' | 'error' | 'empty';
@@ -32,9 +31,9 @@ export async function classifyPage(html: string, url: string): Promise<PageClass
   lastClassificationTime = now;
 
   try {
-    const result = await llmService.callLLM(
-      ANTI_CRAWL_SYSTEM,
-      ANTI_CRAWL_USER(html, url),
+    const result = await llmService.callLLMWithPrompts(
+      'anti-crawl',
+      { html: html.substring(0, 5000), url },
       {
         taskType: 'anti-crawl',
         temperature: 0.1,

@@ -1,6 +1,5 @@
 import { db } from '../../config/database';
 import { llmService } from './index';
-import { ENRICHMENT_SYSTEM, ENRICHMENT_USER } from './prompts';
 import { io } from '../../app';
 import crypto from 'crypto';
 
@@ -243,7 +242,7 @@ async function enrichSingleJob(
     jobTags: row['职位标签'] || '',
     workType: row['工作性质'] || '',
     workAddress: row['工作地址'] || '',
-    jobDescription: row['职位描述'] || '',
+    jobDescription: (row['职位描述'] || '').substring(0, 1500),
   };
 
   const jobId = row['_jobId'] || row['职位ID'] || `${taskId}_${Date.now()}`;
@@ -255,9 +254,9 @@ async function enrichSingleJob(
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const result = await Promise.race([
-        llmService.callLLM(
-          ENRICHMENT_SYSTEM,
-          ENRICHMENT_USER(jobData),
+        llmService.callLLMWithPrompts(
+          'enrichment',
+          jobData,
           {
             taskType: 'enrichment',
             temperature: attempt === 0 ? 0.1 : 0.3,
