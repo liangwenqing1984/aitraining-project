@@ -72,7 +72,7 @@
               <el-slider v-model="searchLimit" :min="5" :max="50" :step="5" show-stops size="small" style="width: 140px" />
               <span class="option-value">{{ searchLimit }}</span>
             </div>
-            <el-button type="primary" :loading="screening" :disabled="!parsedResume && (!resumeText.trim() || resumeText.trim().length < 10)" @click="doScreen" style="width:100%; margin-top: 8px">
+            <el-button type="primary" :loading="screening" :disabled="parsedResumes.length === 0 && (!resumeText.trim() || resumeText.trim().length < 10)" @click="doScreen" style="width:100%; margin-top: 8px">
               <el-icon><Search /></el-icon> 开始智能筛选
             </el-button>
           </div>
@@ -89,7 +89,7 @@
           </span>
         </div>
 
-        <div v-if="!parsedResume && !screeningResult && !screening && !fileUploading" class="result-placeholder">
+        <div v-if="parsedResumes.length === 0 && !screeningResult && !screening && !fileUploading" class="result-placeholder">
           <el-icon :size="48" color="#c0c4cc"><Document /></el-icon>
           <p>上传简历文件或粘贴文本后开始处理</p>
           <div class="placeholder-tips">
@@ -111,92 +111,86 @@
         </div>
 
         <!-- 结构化解析结果 -->
-        <div v-if="parsedResume && !fileUploading && !(screenMode === 'screen' && screeningResult)" class="parsed-result">
-          <el-alert type="success" :closable="false" show-icon style="margin-bottom: 16px">
+        <div v-if="parsedResumes.length > 0 && !fileUploading && !(screenMode === 'screen' && screeningResult)" class="parsed-result">
+          <el-alert type="success" :closable="false" show-icon style="margin-bottom: 12px">
             <template #title>
-              解析完成 · 置信度 {{ (parsedResume.parseConfidence * 100).toFixed(0) }}%
+              解析完成 · {{ parsedResumes.length }} 份简历
             </template>
           </el-alert>
 
-          <div class="parsed-section">
-            <h4 class="section-title">基本信息</h4>
-            <el-descriptions :column="2" size="small" border>
-              <el-descriptions-item label="姓名">{{ parsedResume.name || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="学历">{{ parsedResume.educationLevel || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="邮箱">{{ parsedResume.email || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="电话">{{ parsedResume.phone || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="毕业院校">{{ parsedResume.school || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="专业">{{ parsedResume.major || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="毕业年份">{{ parsedResume.graduationYear || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="工作年限">{{ parsedResume.workYears != null ? parsedResume.workYears + ' 年' : '--' }}</el-descriptions-item>
-            </el-descriptions>
-          </div>
-
-          <div class="parsed-section" v-if="parsedResume.desiredPosition || parsedResume.desiredCity">
-            <h4 class="section-title">求职意向</h4>
-            <el-descriptions :column="3" size="small" border>
-              <el-descriptions-item label="期望岗位">{{ parsedResume.desiredPosition || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="期望城市">{{ parsedResume.desiredCity || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="工作类型">{{ parsedResume.jobType || '--' }}</el-descriptions-item>
-              <el-descriptions-item label="期望薪资" v-if="parsedResume.desiredSalaryMin || parsedResume.desiredSalaryMax">
-                {{ parsedResume.desiredSalaryMin ? (parsedResume.desiredSalaryMin / 1000).toFixed(1) + 'K' : '?' }} - {{ parsedResume.desiredSalaryMax ? (parsedResume.desiredSalaryMax / 1000).toFixed(1) + 'K' : '?' }}
-              </el-descriptions-item>
-            </el-descriptions>
-          </div>
-
-          <div class="parsed-section" v-if="parsedResume.skills.length">
-            <h4 class="section-title">技能标签</h4>
-            <div class="skill-tags">
-              <el-tag
-                v-for="skill in parsedResume.skills"
-                :key="skill"
-                size="small"
-                effect="plain"
-                style="margin: 2px"
-              >
-                {{ skill }}
-                <template v-if="parsedResume.skillLevels?.[skill]">
-                  · {{ parsedResume.skillLevels[skill] }}
-                </template>
-              </el-tag>
-            </div>
-          </div>
-
-          <div class="parsed-section" v-if="parsedResume.projects.length">
-            <h4 class="section-title">项目经验</h4>
-            <el-collapse>
-              <el-collapse-item
-                v-for="(proj, idx) in parsedResume.projects"
-                :key="idx"
-                :title="proj.name || '项目 ' + (idx + 1)"
-              >
-                <div v-if="proj.role" style="margin-bottom:4px"><strong>角色：</strong>{{ proj.role }}</div>
-                <div v-if="proj.duration" style="margin-bottom:4px"><strong>时长：</strong>{{ proj.duration }}</div>
-                <div v-if="proj.description" style="margin-bottom:4px">{{ proj.description }}</div>
-                <div v-if="proj.techStack?.length">
-                  <strong>技术栈：</strong>
-                  <el-tag v-for="t in proj.techStack" :key="t" size="small" style="margin:1px">{{ t }}</el-tag>
+          <el-collapse v-model="expandResumeId" accordion>
+            <el-collapse-item v-for="(pr, idx) in parsedResumes" :key="pr.id || idx" :name="String(pr.id || idx)">
+              <template #title>
+                <div style="display:flex; align-items:center; gap:12px; width:100%">
+                  <span style="font-weight:600">{{ pr.name || '简历 ' + (idx + 1) }}</span>
+                  <el-tag size="small" v-if="pr.educationLevel">{{ pr.educationLevel }}</el-tag>
+                  <el-tag size="small" type="info" v-if="pr.workYears != null">{{ pr.workYears }}年经验</el-tag>
+                  <span style="font-size:12px; color:#909399; margin-left:auto">置信度 {{ (pr.parseConfidence * 100).toFixed(0) }}%</span>
                 </div>
-              </el-collapse-item>
-            </el-collapse>
-          </div>
+              </template>
 
-          <div class="parsed-section" v-if="parsedResume.certifications.length">
-            <h4 class="section-title">证书</h4>
-            <el-tag v-for="c in parsedResume.certifications" :key="c" size="small" type="success" style="margin:2px">{{ c }}</el-tag>
-          </div>
+              <div class="parsed-section">
+                <h4 class="section-title">基本信息</h4>
+                <el-descriptions :column="2" size="small" border>
+                  <el-descriptions-item label="姓名">{{ pr.name || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="学历">{{ pr.educationLevel || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="邮箱">{{ pr.email || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="电话">{{ pr.phone || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="毕业院校">{{ pr.school || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="专业">{{ pr.major || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="毕业年份">{{ pr.graduationYear || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="工作年限">{{ pr.workYears != null ? pr.workYears + ' 年' : '--' }}</el-descriptions-item>
+                </el-descriptions>
+              </div>
 
-          <div class="parsed-section" v-if="parsedResume.languages.length">
-            <h4 class="section-title">语言能力</h4>
-            <div v-for="(lang, idx) in parsedResume.languages" :key="idx">
-              <el-tag size="small" type="info">{{ lang.name }}: {{ lang.level }}</el-tag>
-            </div>
-          </div>
+              <div class="parsed-section" v-if="pr.desiredPosition || pr.desiredCity">
+                <h4 class="section-title">求职意向</h4>
+                <el-descriptions :column="3" size="small" border>
+                  <el-descriptions-item label="期望岗位">{{ pr.desiredPosition || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="期望城市">{{ pr.desiredCity || '--' }}</el-descriptions-item>
+                  <el-descriptions-item label="工作类型">{{ pr.jobType || '--' }}</el-descriptions-item>
+                </el-descriptions>
+              </div>
 
-          <div class="parsed-section" v-if="parsedResume.selfEvaluation">
-            <h4 class="section-title">自我评价</h4>
-            <p class="self-eval-text">{{ parsedResume.selfEvaluation }}</p>
-          </div>
+              <div class="parsed-section" v-if="pr.skills.length">
+                <h4 class="section-title">技能标签</h4>
+                <div class="skill-tags">
+                  <el-tag v-for="skill in pr.skills" :key="skill" size="small" effect="plain" style="margin:2px">{{ skill }}</el-tag>
+                </div>
+              </div>
+
+              <div class="parsed-section" v-if="pr.projects?.length">
+                <h4 class="section-title">项目经验</h4>
+                <div v-for="(proj, pidx) in pr.projects" :key="pidx" style="margin-bottom:8px; padding:8px; background:#f5f7fa; border-radius:4px">
+                  <div style="font-weight:600">{{ proj.name || '项目 ' + (pidx + 1) }}</div>
+                  <div v-if="proj.role || proj.duration" style="font-size:12px; color:#606266; margin:4px 0">
+                    <span v-if="proj.role">{{ proj.role }}</span>
+                    <span v-if="proj.role && proj.duration"> · </span>
+                    <span v-if="proj.duration">{{ proj.duration }}</span>
+                  </div>
+                  <div v-if="proj.description" style="font-size:12px; color:#909399">{{ proj.description }}</div>
+                  <div v-if="proj.techStack?.length" style="margin-top:4px">
+                    <el-tag v-for="t in proj.techStack" :key="t" size="small" style="margin:1px">{{ t }}</el-tag>
+                  </div>
+                </div>
+              </div>
+
+              <div class="parsed-section" v-if="pr.certifications?.length">
+                <h4 class="section-title">证书</h4>
+                <el-tag v-for="c in pr.certifications" :key="c" size="small" type="success" style="margin:2px">{{ c }}</el-tag>
+              </div>
+
+              <div class="parsed-section" v-if="pr.languages?.length">
+                <h4 class="section-title">语言能力</h4>
+                <el-tag v-for="(lang, lidx) in pr.languages" :key="lidx" size="small" type="info" style="margin:2px">{{ lang.name }}: {{ lang.level }}</el-tag>
+              </div>
+
+              <div class="parsed-section" v-if="pr.selfEvaluation">
+                <h4 class="section-title">自我评价</h4>
+                <p class="self-eval-text">{{ pr.selfEvaluation }}</p>
+              </div>
+            </el-collapse-item>
+          </el-collapse>
         </div>
 
         <!-- 智能筛选结果 -->
@@ -224,6 +218,7 @@
               <div>
                 <span class="screen-job-title">{{ item.internalJobTitle }}</span>
                 <span v-if="item.department" class="screen-dept">{{ item.department }}</span>
+                <el-tag v-if="item._resumeName" size="small" type="info" effect="plain" style="margin-left:6px">{{ item._resumeName }}</el-tag>
               </div>
               <div style="display:flex; align-items:center; gap: 8px;">
                 <el-tag
@@ -289,7 +284,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Loading, UploadFilled, Document, OfficeBuilding, CircleCheck, CircleClose, InfoFilled, FolderAdd, Download } from '@element-plus/icons-vue'
 import type { UploadFile, UploadInstance } from 'element-plus'
@@ -303,8 +298,10 @@ const fileCount = ref(0)
 const fileUploading = ref(false)
 const savingHistory = ref(false)
 const searchLimit = ref(20)
-const screenMode = ref<'parse' | 'screen'>('screen')  // 筛选模式 / 解析模式
-const parsedResume = ref<ParsedResume | null>(null)
+const screenMode = ref<'parse' | 'screen'>('screen')
+const parsedResumes = ref<ParsedResume[]>([])
+const parsedResume = computed(() => parsedResumes.value[0] || null)
+const expandResumeId = ref('')
 const parsing = ref(false)
 
 // 内部筛选模式
@@ -322,31 +319,73 @@ async function loadInternalJobs() {
 
 async function doScreen() {
   const text = resumeText.value.trim()
-  const resumeId = parsedResume.value?.id
-  if (!resumeId && (!text || text.length < 10)) {
+  const hasParsedResumes = parsedResumes.value.length > 0
+  if (!hasParsedResumes && (!text || text.length < 10)) {
     ElMessage.warning('请先上传简历文件进行解析，或粘贴简历文本')
     return
   }
 
   screening.value = true
   screeningResult.value = null
-  const start = Date.now()
 
   try {
-    const res: any = await screenResume({
-      resumeId: resumeId || undefined,
-      resumeText: resumeId ? undefined : text,
-      internalJobId: selectedJobId.value || undefined,
-      limit: searchLimit.value,
-    })
-    if (res.success) {
-      screeningResult.value = res.data
-      ElMessage.success(`筛选完成，${res.data.totalJobsCompared} 个岗位中返回 ${res.data.results.length} 条结果`)
+    if (hasParsedResumes) {
+      // 逐份筛选，合并结果
+      let totalCompared = 0
+      const allResults: any[] = []
+      let failCount = 0
+
+      for (const pr of parsedResumes.value) {
+        if (!pr.id) continue
+        try {
+          const res: any = await screenResume({
+            resumeId: pr.id,
+            internalJobId: selectedJobId.value || undefined,
+            limit: searchLimit.value,
+          })
+          if (res.success) {
+            totalCompared = res.data.totalJobsCompared
+            for (const r of res.data.results) {
+              r._resumeName = pr.name || `简历 #${pr.id}`
+              r._resumeId = pr.id
+            }
+            allResults.push(...res.data.results)
+          }
+        } catch (_e: any) {
+          failCount++
+        }
+      }
+
+      // 按总分降序重排
+      allResults.sort((a, b) => {
+        if (a.hardRules?.passed !== b.hardRules?.passed) return a.hardRules?.passed ? -1 : 1
+        return b.totalScore - a.totalScore
+      })
+
+      screeningResult.value = {
+        resumeId: 0,
+        resumeName: `${parsedResumes.value.length} 份简历`,
+        totalJobsCompared: totalCompared,
+        results: allResults.slice(0, searchLimit.value),
+      } as any
+
+      const hint = failCount > 0 ? `（${failCount} 份筛选失败）` : ''
+      ElMessage.success(`筛选完成：${parsedResumes.value.length} 份简历 × ${totalCompared} 个岗位，返回 ${allResults.length} 条${hint}`)
     } else {
-      ElMessage.error(res.error || '筛选失败')
+      const res: any = await screenResume({
+        resumeText: text,
+        internalJobId: selectedJobId.value || undefined,
+        limit: searchLimit.value,
+      })
+      if (res.success) {
+        screeningResult.value = res.data
+        ElMessage.success(`筛选完成，${res.data.totalJobsCompared} 个岗位中返回 ${res.data.results.length} 条结果`)
+      } else {
+        ElMessage.error(res.error || '筛选失败')
+      }
     }
-  } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || '筛选失败')
+  } catch (_e: any) {
+    // 错误提示已由全局拦截器处理
   } finally {
     screening.value = false
   }
@@ -361,34 +400,28 @@ async function handleFileChange(file: UploadFile) {
     return
   }
 
-  // 获取当前已选文件列表（el-upload 的 uploadFiles）
   const files = uploadRef.value?.uploadFiles || []
   fileCount.value = files.length
+  fileName.value = files.map(f => f.name).join(', ')
 
-  if (files.length > 1) {
-    // 多文件模式：先显示文件名，等待后续处理
-    fileName.value = files.map(f => f.name).join(', ')
-    return
+  if (files.length === 1) {
+    // 首次选择，清空旧结果
+    parsedResumes.value = []
   }
-
-  fileName.value = raw.name
-  parsedResume.value = null
   screeningResult.value = null
   fileUploading.value = true
 
   try {
     const res: any = await parseResume(raw)
     if (res.success) {
-      parsedResume.value = res.data
+      parsedResumes.value = [...parsedResumes.value, res.data]
       resumeText.value = ''
-      ElMessage.success('简历解析成功' + (screenMode.value === 'screen' ? '，请选择目标岗位后点击筛选' : ''))
+      ElMessage.success(`简历解析成功 (${parsedResumes.value.length}/${files.length})`)
     } else {
-      ElMessage.error(res.error || '解析失败')
-      fileName.value = ''
+      ElMessage.error(res.error || `${raw.name} 解析失败`)
     }
   } catch (e: any) {
-    ElMessage.error(e.response?.data?.error || '文件上传或解析失败')
-    fileName.value = ''
+    ElMessage.error(e.response?.data?.error || `${raw.name} 解析失败`)
   } finally {
     fileUploading.value = false
   }
@@ -397,7 +430,7 @@ async function handleFileChange(file: UploadFile) {
 function clearFile() {
   fileName.value = ''
   fileCount.value = 0
-  parsedResume.value = null
+  parsedResumes.value = []
   screeningResult.value = null
   uploadRef.value?.clearFiles()
 }
@@ -407,7 +440,7 @@ async function saveToHistory() {
   savingHistory.value = true
   try {
     const res: any = await saveScreeningResult({
-      resumeId: parsedResume.value?.id,
+      resumeId: parsedResumes.value[0]?.id || 0,
       results: screeningResult.value.results,
     })
     if (res.success) {

@@ -420,8 +420,19 @@ export async function screenResume(req: Request, res: Response) {
 
     res.json({ success: true, data: result });
   } catch (e: any) {
-    console.error('[RAG] screenResume error:', e.message);
-    res.status(500).json({ success: false, error: e.message });
+    const msg: string = e.message || '';
+    console.error('[RAG] screenResume error:', msg, e.stack);
+
+    if (msg.includes('简历不存在')) {
+      return res.status(404).json({ success: false, error: msg });
+    }
+    if (msg.includes('没有可匹配的内部岗位')) {
+      return res.status(400).json({ success: false, error: msg });
+    }
+    if (msg.includes('请提供简历') || msg.includes('至少10个字符')) {
+      return res.status(400).json({ success: false, error: msg });
+    }
+    res.status(500).json({ success: false, error: msg || '筛选服务内部错误' });
   }
 }
 

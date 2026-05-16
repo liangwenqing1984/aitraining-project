@@ -48,6 +48,14 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
   const limit = Math.min(50, Math.max(1, params.limit || 20));
   const minScore = params.minScore || 0;
 
+  console.log('[Matching] 开始简历筛选:', {
+    hasResumeId: !!params.resumeId,
+    hasResumeText: !!params.resumeText,
+    hasJobId: !!params.internalJobId,
+    limit,
+    minScore,
+  });
+
   // 1. 获取简历数据和向量
   let resumeData: any;
   let resumeEmbedding: number[] | null = null;
@@ -59,13 +67,21 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
     if (resumeData.embedding) {
       resumeEmbedding = parseVector(resumeData.embedding);
     } else if (resumeData.rawText) {
-      const { embedding } = await generateEmbedding(resumeData.rawText.substring(0, 2000));
-      resumeEmbedding = embedding;
+      try {
+        const { embedding } = await generateEmbedding(resumeData.rawText.substring(0, 2000));
+        resumeEmbedding = embedding;
+      } catch (e: any) {
+        console.warn(`[Matching] 简历 embedding 生成失败，将仅使用硬性规则匹配: ${e.message}`);
+      }
     }
   } else if (params.resumeText) {
     resumeData = { rawText: params.resumeText, name: '手动输入', skills: [], educationLevel: null, workYears: null };
-    const { embedding } = await generateEmbedding(params.resumeText.substring(0, 2000));
-    resumeEmbedding = embedding;
+    try {
+      const { embedding } = await generateEmbedding(params.resumeText.substring(0, 2000));
+      resumeEmbedding = embedding;
+    } catch (e: any) {
+      console.warn(`[Matching] 简历文本 embedding 生成失败，将仅使用硬性规则匹配: ${e.message}`);
+    }
   } else {
     throw new Error('请提供简历 ID 或简历文本');
   }
@@ -120,9 +136,12 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
       const jobEmb = parseVector(job.embedding);
       similarity = cosineSimilarity(resumeEmbedding, jobEmb) * 100;
     } else if (resumeEmbedding && job.embeddingText) {
-      // fallback: 为岗位实时生成 embedding
-      const { embedding } = await generateEmbedding(job.embeddingText.substring(0, 2000));
-      similarity = cosineSimilarity(resumeEmbedding, embedding) * 100;
+      try {
+        const { embedding } = await generateEmbedding(job.embeddingText.substring(0, 2000));
+        similarity = cosineSimilarity(resumeEmbedding, embedding) * 100;
+      } catch (e: any) {
+        console.warn(`[Matching] 岗位 embedding 生成失败 id=${job.id}: ${e.message}`);
+      }
     }
 
     // 技能匹配计算
