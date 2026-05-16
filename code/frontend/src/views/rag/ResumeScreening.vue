@@ -305,6 +305,7 @@ const fileCount = ref(0)
 const fileUploadingCount = ref(0)
 const fileUploading = computed(() => fileUploadingCount.value > 0)
 const processingUids = new Set<number>()
+const pendingFileKeys = new Set<string>()
 const savingHistory = ref(false)
 const searchLimit = ref(20)
 const screenMode = ref<'parse' | 'screen'>('screen')
@@ -423,7 +424,7 @@ async function handleFileChange(file: UploadFile) {
     return
   }
 
-  // 防止 Element Plus drag 模式重复触发 on-change
+  // 防止 Element Plus drag 模式重复触发 on-change（uid 级）
   if (processingUids.has(file.uid)) return
   processingUids.add(file.uid)
 
@@ -431,8 +432,17 @@ async function handleFileChange(file: UploadFile) {
 
   if (raw.size > 10 * 1024 * 1024) {
     ElMessage.error('文件大小不能超过 10MB')
+    processingUids.delete(file.uid)
     return
   }
+
+  // 文件内容级去重：同一文件在并发上传时可能因 uid 不同而绕过 processingUids
+  const fileKey = `${raw.name}_${raw.size}`
+  if (pendingFileKeys.has(fileKey)) {
+    processingUids.delete(file.uid)
+    return
+  }
+  pendingFileKeys.add(fileKey)
 
   const files = uploadRef.value?.uploadFiles || []
   fileCount.value = files.length
@@ -447,7 +457,7 @@ async function handleFileChange(file: UploadFile) {
   try {
     const res: any = await parseResume(raw)
     if (res.success) {
-      // 防止同一简历重复加入（同 ID）
+      // 防止同一简历重复加入（同 ID，API 返回后检查）
       if (res.data?.id && parsedResumes.value.some(pr => pr.id === res.data.id)) {
         ElMessage.info(`${raw.name} 已存在，跳过重复添加 (${parsedResumes.value.length}/${files.length})`)
       } else {
@@ -466,6 +476,7 @@ async function handleFileChange(file: UploadFile) {
     ElMessage.error(e.response?.data?.error || `${raw.name} 解析失败`)
   } finally {
     fileUploadingCount.value--
+    pendingFileKeys.delete(fileKey)
   }
 }
 

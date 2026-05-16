@@ -63,16 +63,34 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
   if (params.resumeId) {
     resumeData = await db.prepare('SELECT * FROM sp_resumes WHERE id = ?').get(params.resumeId) as any;
     if (!resumeData) throw new Error('简历不存在');
-    // 获取已有 embedding 或实时生成
-    if (resumeData.embedding) {
-      resumeEmbedding = parseVector(resumeData.embedding);
-    } else if (resumeData.rawText) {
+
+    // 拼接结构化关键字段用于 embedding，更具区分度
+    const discriminativeText = buildResumeDiscriminativeText(resumeData);
+    if (discriminativeText) {
+      try {
+        const { embedding } = await generateEmbedding(discriminativeText);
+        resumeEmbedding = embedding;
+        console.log(`[Matching] 使用结构化文本生成 embedding (${discriminativeText.length} 字符)`);
+      } catch (e: any) {
+        console.warn(`[Matching] 结构化 embedding 生成失败: ${e.message}`);
+      }
+    }
+
+    // 结构化字段为空时，优先用原始文本实时生成新 embedding，避免使用旧预存向量
+    if (!resumeEmbedding && resumeData.rawText) {
       try {
         const { embedding } = await generateEmbedding(resumeData.rawText.substring(0, 2000));
         resumeEmbedding = embedding;
+        console.log(`[Matching] 使用原始文本生成 embedding (${resumeData.rawText.length} 字符)`);
       } catch (e: any) {
-        console.warn(`[Matching] 简历 embedding 生成失败，将仅使用硬性规则匹配: ${e.message}`);
+        console.warn(`[Matching] 原始文本 embedding 生成失败: ${e.message}`);
       }
+    }
+
+    // 最后回退：预存 embedding（兼容无 rawText 的旧数据）
+    if (!resumeEmbedding && resumeData.embedding) {
+      resumeEmbedding = parseVector(resumeData.embedding);
+      console.log('[Matching] 回退使用预存 embedding');
     }
   } else if (params.resumeText) {
     resumeData = { rawText: params.resumeText, name: '手动输入', skills: [], educationLevel: null, workYears: null };
@@ -190,6 +208,63 @@ export async function screenResumeAgainstJobs(params: ScreenRequest): Promise<{
     totalJobsCompared: jobs.length,
     results: results.slice(0, limit),
   };
+}
+
+/**
+ * 从简历结构化字段构建区分性文本（用于 embedding 生成）
+ * 相比原始简历文本，聚焦关键差异字段，让不同岗位方向的简历产生更有区分度的向量
+ */
+function buildResumeDiscriminativeText(data: any): string {
+  const parts: string[] = [];
+
+  // 期望岗位 — 最核心的区分维度
+  if (data.desiredPosition) parts.push(`期望岗位: ${data.desiredPosition}`);
+
+  // 技能 — 岗位方向的核心差异
+  let skills: string[] = [];
+  if (typeof data.skills === 'string') {
+    try { skills = JSON.parse(data.skills); } catch { skills = []; }
+  } else if (Array.isArray(data.skills)) {
+    skills = data.skills;
+  }
+  if (skills.length > 0) parts.push(`技能: ${skills.join(', ')}`);
+
+  // 学历 + 专业
+  if (data.educationLevel) parts.push(`学历: ${data.educationLevel}`);
+  if (data.major) parts.push(`专业: ${data.major}`);
+  if (data.school) parts.push(`毕业院校: ${data.school}`);
+
+  // 工作年限
+  if (data.workYears != null) parts.push(`工作年限: ${data.workYears}年`);
+
+  // 项目经验（摘要）
+  let projects: any[] = [];
+  if (typeof data.projects === 'string') {
+    try { projects = JSON.parse(data.projects); } catch { projects = []; }
+  } else if (Array.isArray(data.projects)) {
+    projects = data.projects;
+  }
+  if (projects.length > 0) {
+    const projSummary = projects.slice(0, 3).map((p: any) =>
+      [p.name, p.role, p.techStack?.slice(0, 5)?.join(',')].filter(Boolean).join('|')
+    ).join('; ');
+    parts.push(`项目: ${projSummary}`);
+  }
+
+  // 证书
+  let certs: string[] = [];
+  if (typeof data.certifications === 'string') {
+    try { certs = JSON.parse(data.certifications); } catch { certs = []; }
+  } else if (Array.isArray(data.certifications)) {
+    certs = data.certifications;
+  }
+  if (certs.length > 0) parts.push(`证书: ${certs.join(', ')}`);
+
+  // 期望城市 + 工作类型
+  if (data.desiredCity) parts.push(`期望城市: ${data.desiredCity}`);
+  if (data.jobType) parts.push(`工作类型: ${data.jobType}`);
+
+  return parts.join('; ');
 }
 
 function checkHardRules(params: {
