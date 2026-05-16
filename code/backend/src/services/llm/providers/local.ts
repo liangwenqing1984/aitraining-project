@@ -32,17 +32,19 @@ export class LocalProvider {
       body.prompt = userPrompt;
     }
 
+    const timeoutMs = (options as any).timeoutMs || 60000;
     const controller = new AbortController();
     if (options.signal) {
       options.signal.addEventListener('abort', () => controller.abort());
     }
+    const timeout = setTimeout(() => controller.abort(new Error(`Ollama 调用超时（${timeoutMs}ms）`)), timeoutMs);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal,
-    });
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '未知错误');

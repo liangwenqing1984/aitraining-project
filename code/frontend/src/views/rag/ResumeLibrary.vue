@@ -260,14 +260,17 @@
           show-icon
         >
           <template #title>
-            共 {{ batchResults.total }} 个文件，成功 {{ batchResults.successCount }} 个，失败 {{ batchResults.failCount }} 个
+            共 {{ batchResults.total }} 个文件，成功 {{ batchResults.successCount }} 个
+            <template v-if="batchResults.duplicateCount > 0">，去重 {{ batchResults.duplicateCount }} 个</template>
+            <template v-if="batchResults.failCount > 0">，失败 {{ batchResults.failCount }} 个</template>
           </template>
         </el-alert>
         <el-table :data="batchResults.results" size="small" style="margin-top:8px" max-height="300">
           <el-table-column prop="fileName" label="文件名" min-width="180" show-overflow-tooltip />
           <el-table-column label="状态" width="80">
             <template #default="{ row }">
-              <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+              <el-tag v-if="row.duplicate" type="info" size="small">已存在</el-tag>
+              <el-tag v-else :type="row.success ? 'success' : 'danger'" size="small">
                 {{ row.success ? '成功' : '失败' }}
               </el-tag>
             </template>
@@ -471,8 +474,7 @@ async function doBatchDelete() {
 
 async function exportResumes() {
   try {
-    const res = await exportResumesExcel({ keyword: searchKeyword.value || undefined })
-    const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const blob = await exportResumesExcel({ keyword: searchKeyword.value || undefined })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

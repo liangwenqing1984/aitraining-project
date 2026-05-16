@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import multer from 'multer';
+import crypto from 'crypto';
 import ExcelJS from 'exceljs';
 import { db } from '../config/database';
 import { indexJobEmbeddings, semanticSearch, getEmbeddingStats } from '../services/llm/rag';
@@ -230,14 +231,34 @@ export const parseResume = [
         return res.status(400).json({ success: false, error: '解析出的简历文本内容太短（至少10个字符）' });
       }
 
+      // 文件内容去重：相同文件 MD5 不重复入库
+      const fileHash = crypto.createHash('md5').update(file.buffer).digest('hex');
+      const existing = await db.prepare('SELECT * FROM sp_resumes WHERE file_hash = ?').get(fileHash) as any;
+      if (existing) {
+        console.log(`[RAG] 简历已存在，返回已解析数据: ${fileName} (hash=${fileHash}, id=${existing.id})`);
+        // 从 DB 读取完整已解析数据，JSON 字段需 parse
+        const jsonFields = ['skills', 'skillLevels', 'projects', 'certifications', 'languages'];
+        const data: any = { id: existing.id, textLength: resumeText.length, duplicate: true };
+        for (const key of Object.keys(existing)) {
+          if (key === 'id' || key === 'textLength' || key === 'duplicate') continue;
+          const val = existing[key];
+          if (jsonFields.includes(key) && typeof val === 'string') {
+            try { data[key] = JSON.parse(val); } catch { data[key] = val; }
+          } else {
+            data[key] = val;
+          }
+        }
+        return res.json({ success: true, data, message: '该文件已解析过，返回已有记录' });
+      }
+
       const parsed = await parseResumeStructure(resumeText);
 
       const result = await db.prepare(`
-        INSERT INTO sp_resumes (original_filename, raw_text, name, email, phone, education_level, school, major, graduation_year, work_years, skills, skill_levels, desired_position, desired_city, desired_salary_min, desired_salary_max, job_type, projects, certifications, languages, self_evaluation, parse_confidence, parsed_by_model)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sp_resumes (original_filename, file_hash, raw_text, name, email, phone, education_level, school, major, graduation_year, work_years, skills, skill_levels, desired_position, desired_city, desired_salary_min, desired_salary_max, job_type, projects, certifications, languages, self_evaluation, parse_confidence, parsed_by_model)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         RETURNING id
       `).run(
-        fileName, resumeText, parsed.name, parsed.email, parsed.phone,
+        fileName, fileHash, resumeText, parsed.name, parsed.email, parsed.phone,
         parsed.educationLevel, parsed.school, parsed.major, parsed.graduationYear,
         parsed.workYears, JSON.stringify(parsed.skills), JSON.stringify(parsed.skillLevels),
         parsed.desiredPosition, parsed.desiredCity, parsed.desiredSalaryMin,
@@ -447,21 +468,47 @@ export async function saveScreeningResult(req: Request, res: Response) {
       return res.status(400).json({ success: false, error: '请提供筛选结果' });
     }
 
-    let resumeName = '未知';
-    if (resumeId) {
-      const r = await db.prepare('SELECT name, original_filename FROM sp_resumes WHERE id = ?').get(Number(resumeId)) as any;
-      if (r) resumeName = r.name || r.originalFilename || '未知';
+    // 批量查询简历名称缓存
+    const resumeNameCache = new Map<number, string>();
+    async function getResumeName(rid: number): Promise<string> {
+      if (resumeNameCache.has(rid)) return resumeNameCache.get(rid)!;
+      const r = await db.prepare('SELECT name, original_filename FROM sp_resumes WHERE id = ?').get(rid) as any;
+      const name = r ? (r.name || r.originalFilename || '未知') : '未知';
+      resumeNameCache.set(rid, name);
+      return name;
     }
 
     let saved = 0;
     for (const item of results) {
+      // 优先使用每条结果自带的 resumeId，兼容旧接口（顶层 resumeId）
+      const itemResumeId = item.resumeId || resumeId || null;
+      const itemResumeName = itemResumeId
+        ? await getResumeName(Number(itemResumeId))
+        : '未知';
+
       await db.prepare(`
         INSERT INTO sp_screening_results (resume_id, internal_job_id, resume_name, internal_job_title, department, total_score, recommendation, hard_rules_passed, education_passed, experience_passed, skills_passed, similarity, skill_bonus, score_breakdown, full_result, created_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (resume_id, internal_job_id) DO UPDATE SET
+          resume_name = EXCLUDED.resume_name,
+          internal_job_title = EXCLUDED.internal_job_title,
+          department = EXCLUDED.department,
+          total_score = EXCLUDED.total_score,
+          recommendation = EXCLUDED.recommendation,
+          hard_rules_passed = EXCLUDED.hard_rules_passed,
+          education_passed = EXCLUDED.education_passed,
+          experience_passed = EXCLUDED.experience_passed,
+          skills_passed = EXCLUDED.skills_passed,
+          similarity = EXCLUDED.similarity,
+          skill_bonus = EXCLUDED.skill_bonus,
+          score_breakdown = EXCLUDED.score_breakdown,
+          full_result = EXCLUDED.full_result,
+          created_by = EXCLUDED.created_by,
+          created_at = CURRENT_TIMESTAMP
       `).run(
-        resumeId || null,
+        itemResumeId,
         item.internalJobId || null,
-        resumeName,
+        itemResumeName,
         item.internalJobTitle,
         item.department || '',
         item.totalScore,
@@ -540,12 +587,18 @@ export async function getScreeningHistory(req: Request, res: Response) {
  */
 export async function exportScreeningExcel(req: Request, res: Response) {
   try {
-    const { resumeId, internalJobId } = req.query;
+    const { resumeId, resumeIds, internalJobId } = req.query;
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
 
-    if (resumeId) {
+    if (resumeIds) {
+      const ids = String(resumeIds).split(',').map(Number).filter(n => !isNaN(n));
+      if (ids.length > 0) {
+        where += ` AND resume_id IN (${ids.map(() => '?').join(',')})`;
+        params.push(...ids);
+      }
+    } else if (resumeId) {
       where += ' AND resume_id = ?';
       params.push(Number(resumeId));
     }
@@ -586,18 +639,18 @@ export async function exportScreeningExcel(req: Request, res: Response) {
 
     for (const row of rows) {
       sheet.addRow({
-        resumeName: row.resume_name,
-        internalJobTitle: row.internal_job_title,
+        resumeName: row.resumeName,
+        internalJobTitle: row.internalJobTitle,
         department: row.department,
-        totalScore: row.total_score,
+        totalScore: row.totalScore,
         recommendation: recMap[row.recommendation] || row.recommendation,
-        hardRulesPassed: row.hard_rules_passed ? '通过' : '淘汰',
-        educationPassed: row.education_passed ? '通过' : '未通过',
-        experiencePassed: row.experience_passed ? '通过' : '未通过',
-        skillsPassed: row.skills_passed ? '通过' : '未通过',
+        hardRulesPassed: row.hardRulesPassed ? '通过' : '淘汰',
+        educationPassed: row.educationPassed ? '通过' : '未通过',
+        experiencePassed: row.experiencePassed ? '通过' : '未通过',
+        skillsPassed: row.skillsPassed ? '通过' : '未通过',
         similarity: row.similarity ? `${(row.similarity * 100).toFixed(1)}%` : '0%',
-        skillBonus: row.skill_bonus,
-        createdAt: row.created_at,
+        skillBonus: row.skillBonus,
+        createdAt: row.createdAt,
       });
     }
 
@@ -637,6 +690,7 @@ export const batchParseResumes = [
       const results: any[] = [];
       let successCount = 0;
       let failCount = 0;
+      let duplicateCount = 0;
 
       for (const file of files) {
         try {
@@ -649,14 +703,35 @@ export const batchParseResumes = [
             continue;
           }
 
+          // 文件内容去重
+          const fileHash = crypto.createHash('md5').update(file.buffer).digest('hex');
+          const existing = await db.prepare('SELECT * FROM sp_resumes WHERE file_hash = ?').get(fileHash) as any;
+          if (existing) {
+            console.log(`[RAG] 批量-简历已存在，返回已解析数据: ${fileName} (id=${existing.id})`);
+            const jsonFields = ['skills', 'skillLevels', 'projects', 'certifications', 'languages'];
+            const item: any = { id: existing.id, fileName, success: true, duplicate: true };
+            for (const key of Object.keys(existing)) {
+              if (key === 'id' || key === 'fileName' || key === 'success' || key === 'duplicate') continue;
+              const val = existing[key];
+              if (jsonFields.includes(key) && typeof val === 'string') {
+                try { item[key] = JSON.parse(val); } catch { item[key] = val; }
+              } else {
+                item[key] = val;
+              }
+            }
+            results.push(item);
+            duplicateCount++;
+            continue;
+          }
+
           const parsed = await parseResumeStructure(resumeText);
 
           const result = await db.prepare(`
-            INSERT INTO sp_resumes (original_filename, raw_text, name, email, phone, education_level, school, major, graduation_year, work_years, skills, skill_levels, desired_position, desired_city, desired_salary_min, desired_salary_max, job_type, projects, certifications, languages, self_evaluation, parse_confidence, parsed_by_model)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sp_resumes (original_filename, file_hash, raw_text, name, email, phone, education_level, school, major, graduation_year, work_years, skills, skill_levels, desired_position, desired_city, desired_salary_min, desired_salary_max, job_type, projects, certifications, languages, self_evaluation, parse_confidence, parsed_by_model)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             RETURNING id
           `).run(
-            fileName, resumeText, parsed.name, parsed.email, parsed.phone,
+            fileName, fileHash, resumeText, parsed.name, parsed.email, parsed.phone,
             parsed.educationLevel, parsed.school, parsed.major, parsed.graduationYear,
             parsed.workYears, JSON.stringify(parsed.skills), JSON.stringify(parsed.skillLevels),
             parsed.desiredPosition, parsed.desiredCity, parsed.desiredSalaryMin,
@@ -686,12 +761,12 @@ export const batchParseResumes = [
         }
       }
 
-      console.log(`[RAG] 批量解析完成: ${files.length} 个文件, 成功 ${successCount}, 失败 ${failCount}`);
+      console.log(`[RAG] 批量解析完成: ${files.length} 个文件, 成功 ${successCount}, 去重 ${duplicateCount}, 失败 ${failCount}`);
 
       res.json({
         success: true,
-        data: { total: files.length, successCount, failCount, results },
-        message: `批量解析完成: 成功 ${successCount} 个, 失败 ${failCount} 个`,
+        data: { total: files.length, successCount, duplicateCount, failCount, results },
+        message: `批量解析完成: 成功 ${successCount} 个, 去重 ${duplicateCount} 个, 失败 ${failCount} 个`,
       });
     } catch (e: any) {
       console.error('[RAG] batchParseResumes error:', e.message);
@@ -787,22 +862,22 @@ export async function exportResumesExcel(req: Request, res: Response) {
         name: row.name || '',
         email: row.email || '',
         phone: row.phone || '',
-        educationLevel: row.education_level || '',
+        educationLevel: row.educationLevel || '',
         school: row.school || '',
         major: row.major || '',
-        graduationYear: row.graduation_year || '',
-        workYears: row.work_years || '',
+        graduationYear: row.graduationYear || '',
+        workYears: row.workYears || '',
         skills: Array.isArray(skills) ? skills.join(', ') : '',
-        desiredPosition: row.desired_position || '',
-        desiredCity: row.desired_city || '',
-        desiredSalaryMin: row.desired_salary_min || '',
-        desiredSalaryMax: row.desired_salary_max || '',
-        jobType: row.job_type || '',
+        desiredPosition: row.desiredPosition || '',
+        desiredCity: row.desiredCity || '',
+        desiredSalaryMin: row.desiredSalaryMin || '',
+        desiredSalaryMax: row.desiredSalaryMax || '',
+        jobType: row.jobType || '',
         certifications: Array.isArray(certs) ? certs.join(', ') : '',
-        selfEvaluation: (row.self_evaluation || '').substring(0, 500),
-        parseConfidence: row.parse_confidence ? `${(row.parse_confidence * 100).toFixed(0)}%` : '',
-        originalFilename: row.original_filename || '',
-        createdAt: row.created_at || '',
+        selfEvaluation: (row.selfEvaluation || '').substring(0, 500),
+        parseConfidence: row.parseConfidence ? `${(row.parseConfidence * 100).toFixed(0)}%` : '',
+        originalFilename: row.originalFilename || '',
+        createdAt: row.createdAt || '',
       });
     }
 

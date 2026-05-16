@@ -5,7 +5,10 @@
       <div class="history-panel">
         <div class="panel-header">
           <h3>查询历史</h3>
-          <el-button size="small" text @click="loadHistory">刷新</el-button>
+          <div class="panel-actions">
+            <el-button size="small" text @click="newQuery">新建查询</el-button>
+            <el-button size="small" text @click="loadHistory">刷新</el-button>
+          </div>
         </div>
         <div class="history-list">
           <div
@@ -15,8 +18,17 @@
             :class="{ active: currentQuery?.id === item.id }"
             @click="selectHistory(item)"
           >
-            <div class="history-query">{{ item.userQuery }}</div>
-            <div class="history-meta">{{ item.resultCount }} 条结果 · {{ formatTime(item.createdAt) }}</div>
+            <div class="history-text" @click="selectHistory(item)">
+              <div class="history-query">{{ item.userQuery }}</div>
+              <div class="history-meta">{{ item.resultCount }} 条结果 · {{ formatTime(item.createdAt) }}</div>
+            </div>
+            <el-button
+              class="history-delete"
+              :icon="Delete"
+              text
+              size="small"
+              @click.stop="handleDeleteHistory(item)"
+            />
           </div>
           <el-empty v-if="history.length === 0" description="暂无查询记录" :image-size="60" />
         </div>
@@ -127,8 +139,9 @@
 <script setup lang="ts">
 import { ref, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ChatDotRound, User, Cpu, Promotion } from '@element-plus/icons-vue'
-import { executeNLQuery, getNLQueryHistory, getEnrichmentStatus, type NLQueryResult } from '@/api/llm'
+import { ChatDotRound, User, Cpu, Promotion, Delete } from '@element-plus/icons-vue'
+import { executeNLQuery, getNLQueryHistory, deleteNLQuery, getEnrichmentStatus, type NLQueryResult } from '@/api/llm'
+import { ElMessageBox } from 'element-plus'
 import { taskApi } from '@/api/task'
 
 interface Message {
@@ -264,6 +277,12 @@ function selectHistory(item: NLQueryResult) {
   ]
 }
 
+function newQuery() {
+  currentQuery.value = null
+  messages.value = []
+  inputText.value = ''
+}
+
 async function loadHistory() {
   try {
     const res: any = await getNLQueryHistory()
@@ -271,6 +290,26 @@ async function loadHistory() {
       history.value = res.data || []
     }
   } catch {}
+}
+
+async function handleDeleteHistory(item: NLQueryResult) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除查询"${item.userQuery.slice(0, 30)}..."？`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '确定', cancelButtonText: '取消' }
+    )
+    const res: any = await deleteNLQuery(item.id)
+    if (res.success) {
+      if (currentQuery.value?.id === item.id) {
+        newQuery()
+      }
+      loadHistory()
+      ElMessage.success('已删除')
+    } else {
+      ElMessage.error(res.error || '删除失败')
+    }
+  } catch { /* cancelled */ }
 }
 
 function scrollToBottom() {
@@ -311,15 +350,20 @@ onMounted(() => {
   padding: 12px 16px; border-bottom: 1px solid #e4e7ed;
 }
 .panel-header h3 { margin: 0; font-size: 14px; }
+.panel-actions { display: flex; gap: 4px; }
 .history-list { flex: 1; overflow-y: auto; padding: 8px; }
 .history-item {
+  display: flex; align-items: flex-start; gap: 4px;
   padding: 10px 12px; border-radius: 6px; cursor: pointer; margin-bottom: 4px;
   transition: background 0.2s;
 }
 .history-item:hover { background: #e8f4ff; }
 .history-item.active { background: #d9ecff; }
+.history-text { flex: 1; min-width: 0; }
 .history-query { font-size: 13px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .history-meta { font-size: 11px; color: #909399; margin-top: 4px; }
+.history-delete { opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
+.history-item:hover .history-delete { opacity: 1; }
 
 .chat-panel { flex: 1; display: flex; flex-direction: column; }
 .chat-header {

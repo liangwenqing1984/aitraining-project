@@ -253,6 +253,7 @@ async function initDatabase() {
         CREATE TABLE IF NOT EXISTS sp_resumes (
           id SERIAL PRIMARY KEY,
           original_filename VARCHAR(500),
+          file_hash VARCHAR(64),
           raw_text TEXT,
           name VARCHAR(100),
           email VARCHAR(200),
@@ -285,6 +286,7 @@ async function initDatabase() {
         CREATE TABLE IF NOT EXISTS sp_resumes (
           id SERIAL PRIMARY KEY,
           original_filename VARCHAR(500),
+          file_hash VARCHAR(64),
           raw_text TEXT,
           name VARCHAR(100),
           email VARCHAR(200),
@@ -312,6 +314,14 @@ async function initDatabase() {
         )
       `);
     }
+
+    // 迁移：sp_resumes 添加 file_hash 列和唯一索引
+    try {
+      await client.query('ALTER TABLE sp_resumes ADD COLUMN IF NOT EXISTS file_hash VARCHAR(64)');
+    } catch (e: any) {
+      if (e.code !== '42701') console.warn('[Database] file_hash migration:', e.message);
+    }
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_resumes_file_hash ON sp_resumes(file_hash)').catch(() => {});
 
     // 创建 sp_internal_jobs 表（HR 内部岗位 JD 管理）
     if (pgvectorAvailable) {
@@ -395,6 +405,16 @@ async function initDatabase() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_screening_results_resume ON sp_screening_results(resume_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_screening_results_job ON sp_screening_results(internal_job_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_screening_results_created ON sp_screening_results(created_at DESC)');
+    // 唯一约束：相同简历+相同岗位只保留最新一条筛选结果
+    await client.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'uq_screening_resume_job'
+        ) THEN
+          ALTER TABLE sp_screening_results ADD CONSTRAINT uq_screening_resume_job UNIQUE (resume_id, internal_job_id);
+        END IF;
+      END $$;
+    `).catch(() => {});
 
     // ==================== 系统管理 RBAC 表 ====================
 

@@ -53,10 +53,12 @@ export class CloudProvider {
       // Some Anthropic-compatible proxies need these headers
     }
 
+    const timeoutMs = (options as any).timeoutMs || 60000;
     const controller = new AbortController();
     if (options.signal) {
       options.signal.addEventListener('abort', () => controller.abort());
     }
+    const timeout = setTimeout(() => controller.abort(new Error(`LLM 调用超时（${timeoutMs}ms）`)), timeoutMs);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -66,7 +68,7 @@ export class CloudProvider {
       },
       body: JSON.stringify(body),
       signal: controller.signal,
-    });
+    }).finally(() => clearTimeout(timeout));
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => '未知错误');

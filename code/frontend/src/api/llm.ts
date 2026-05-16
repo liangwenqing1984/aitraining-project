@@ -110,7 +110,7 @@ export interface NLQueryResult {
 
 // 执行自然语言查询
 export function executeNLQuery(question: string, taskId?: string): Promise<ApiResponse<NLQueryResult>> {
-  return api.post('/llm/query', { question, taskId })
+  return api.post('/llm/query', { question, taskId }, { timeout: 120000 })
 }
 
 // 获取查询历史
@@ -359,6 +359,7 @@ export function getScreeningHistory(params?: {
 
 export function exportScreeningExcel(params?: {
   resumeId?: number
+  resumeIds?: string
   internalJobId?: number
 }): Promise<any> {
   return api.get('/rag/resume/screening/export', { params, responseType: 'blob' })

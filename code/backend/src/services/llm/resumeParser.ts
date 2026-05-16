@@ -61,54 +61,75 @@ export interface ParsedResume {
 
 /**
  * 使用 LLM 从简历文本中提取结构化信息
+ * 带递进重试：推理模型思考消耗大，content 为空时自动提升 maxTokens
  */
 export async function parseResumeStructure(resumeText: string): Promise<ParsedResume> {
   const startTime = Date.now();
-  const result = await llmService.callLLMWithPrompts(
-    'resume-parse',
-    { resumeText: resumeText.substring(0, 4000) },
-    { taskType: 'resume-parse', responseFormat: 'json', temperature: 0.1, maxTokens: 16384 }
-  );
+  const truncatedText = resumeText.substring(0, 4000);
 
-  let parsed: any;
-  const content = result.content.trim();
-  // 尝试去掉可能的 markdown 代码块标记
-  const jsonStr = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-  try {
-    parsed = JSON.parse(jsonStr);
-  } catch {
-    // 兜底：提最后一个 JSON 对象
-    const m = jsonStr.match(/\{[\s\S]*\}/);
-    if (m) {
-      parsed = JSON.parse(m[0]);
-    } else {
-      throw new Error('LLM 未返回有效的 JSON');
+  let lastError: Error | null = null;
+  const tokenLimits = [16384, 32768, 49152];
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const result = await llmService.callLLMWithPrompts(
+        'resume-parse',
+        { resumeText: truncatedText },
+        { taskType: 'resume-parse', responseFormat: 'json', temperature: 0.1, maxTokens: tokenLimits[attempt] }
+      );
+
+      const content = (result.content || '').trim();
+      if (!content) {
+        console.error(`[ResumeParser] LLM 返回空内容 (attempt=${attempt + 1}), tokensUsed=${JSON.stringify(result.tokensUsed)}`);
+        throw new Error('LLM 返回空内容（推理模型思考过程可能占满了 token 限制）');
+      }
+
+      // 尝试去掉可能的 markdown 代码块标记
+      const jsonStr = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+      let parsed: any;
+      try {
+        parsed = JSON.parse(jsonStr);
+      } catch {
+        const m = jsonStr.match(/\{[\s\S]*\}/);
+        if (m) {
+          parsed = JSON.parse(m[0]);
+        } else {
+          throw new Error('LLM 未返回有效的 JSON');
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      console.log(`[ResumeParser] LLM 解析完成 (attempt=${attempt + 1}), 耗时 ${duration}ms, 置信度 ${parsed.parse_confidence}`);
+
+      return {
+        name: parsed.name || null,
+        email: parsed.email || null,
+        phone: parsed.phone || null,
+        educationLevel: parsed.education_level || null,
+        school: parsed.school || null,
+        major: parsed.major || null,
+        graduationYear: parsed.graduation_year || null,
+        workYears: parsed.work_years || null,
+        skills: Array.isArray(parsed.skills) ? parsed.skills : [],
+        skillLevels: parsed.skill_levels && typeof parsed.skill_levels === 'object' ? parsed.skill_levels : {},
+        desiredPosition: parsed.desired_position || null,
+        desiredCity: parsed.desired_city || null,
+        desiredSalaryMin: parsed.desired_salary_min || null,
+        desiredSalaryMax: parsed.desired_salary_max || null,
+        jobType: parsed.job_type || null,
+        projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+        certifications: Array.isArray(parsed.certifications) ? parsed.certifications : [],
+        languages: Array.isArray(parsed.languages) ? parsed.languages : [],
+        selfEvaluation: parsed.self_evaluation || null,
+        parseConfidence: parsed.parse_confidence || 0,
+      };
+    } catch (e: any) {
+      lastError = e;
+      if (attempt < 2) {
+        console.warn(`[ResumeParser] 第${attempt + 1}次解析失败，重试中 (maxTokens=${tokenLimits[attempt + 1]}): ${e.message}`);
+      }
     }
   }
 
-  const duration = Date.now() - startTime;
-  console.log(`[ResumeParser] LLM 解析完成, 耗时 ${duration}ms, 置信度 ${parsed.parse_confidence}`);
-
-  return {
-    name: parsed.name || null,
-    email: parsed.email || null,
-    phone: parsed.phone || null,
-    educationLevel: parsed.education_level || null,
-    school: parsed.school || null,
-    major: parsed.major || null,
-    graduationYear: parsed.graduation_year || null,
-    workYears: parsed.work_years || null,
-    skills: Array.isArray(parsed.skills) ? parsed.skills : [],
-    skillLevels: parsed.skill_levels && typeof parsed.skill_levels === 'object' ? parsed.skill_levels : {},
-    desiredPosition: parsed.desired_position || null,
-    desiredCity: parsed.desired_city || null,
-    desiredSalaryMin: parsed.desired_salary_min || null,
-    desiredSalaryMax: parsed.desired_salary_max || null,
-    jobType: parsed.job_type || null,
-    projects: Array.isArray(parsed.projects) ? parsed.projects : [],
-    certifications: Array.isArray(parsed.certifications) ? parsed.certifications : [],
-    languages: Array.isArray(parsed.languages) ? parsed.languages : [],
-    selfEvaluation: parsed.self_evaluation || null,
-    parseConfidence: parsed.parse_confidence || 0,
-  };
+  throw lastError || new Error('LLM 简历解析失败：3次重试均未返回有效结果');
 }

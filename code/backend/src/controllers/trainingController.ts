@@ -367,8 +367,8 @@ export async function deleteTrainingJob(req: Request, res: Response) {
       'SELECT model_output_path, dataset_path FROM sp_training_jobs WHERE id = $1'
     ).get(id) as any;
 
-    if (row?.model_output_path && fs.existsSync(row.model_output_path)) {
-      fs.rmSync(row.model_output_path, { recursive: true, force: true });
+    if (row?.modelOutputPath && fs.existsSync(row.modelOutputPath)) {
+      fs.rmSync(row.modelOutputPath, { recursive: true, force: true });
     }
 
     const result = await db.prepare(

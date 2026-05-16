@@ -295,7 +295,9 @@ const uploadRef = ref<UploadInstance>()
 const resumeText = ref('')
 const fileName = ref('')
 const fileCount = ref(0)
-const fileUploading = ref(false)
+const fileUploadingCount = ref(0)
+const fileUploading = computed(() => fileUploadingCount.value > 0)
+const processingUids = new Set<number>()
 const savingHistory = ref(false)
 const searchLimit = ref(20)
 const screenMode = ref<'parse' | 'screen'>('screen')
@@ -353,6 +355,7 @@ async function doScreen() {
           }
         } catch (_e: any) {
           failCount++
+          console.error('[doScreen] 单份简历筛选失败:', _e?.message || _e)
         }
       }
 
@@ -392,8 +395,17 @@ async function doScreen() {
 }
 
 async function handleFileChange(file: UploadFile) {
+  if (!file || !file.raw) {
+    console.error('[ResumeScreening] handleFileChange: file 或 file.raw 为空', file)
+    ElMessage.error('文件读取失败，请重试或刷新页面')
+    return
+  }
+
+  // 防止 Element Plus drag 模式重复触发 on-change
+  if (processingUids.has(file.uid)) return
+  processingUids.add(file.uid)
+
   const raw = file.raw
-  if (!raw) return
 
   if (raw.size > 10 * 1024 * 1024) {
     ElMessage.error('文件大小不能超过 10MB')
@@ -405,25 +417,28 @@ async function handleFileChange(file: UploadFile) {
   fileName.value = files.map(f => f.name).join(', ')
 
   if (files.length === 1) {
-    // 首次选择，清空旧结果
     parsedResumes.value = []
   }
   screeningResult.value = null
-  fileUploading.value = true
+  fileUploadingCount.value++
 
   try {
     const res: any = await parseResume(raw)
     if (res.success) {
-      parsedResumes.value = [...parsedResumes.value, res.data]
+      parsedResumes.value.push(res.data)
       resumeText.value = ''
-      ElMessage.success(`简历解析成功 (${parsedResumes.value.length}/${files.length})`)
+      if (res.data?.duplicate) {
+        ElMessage.info(`${raw.name} 已解析过，返回已有记录 (${parsedResumes.value.length}/${files.length})`)
+      } else {
+        ElMessage.success(`简历解析成功 (${parsedResumes.value.length}/${files.length})`)
+      }
     } else {
       ElMessage.error(res.error || `${raw.name} 解析失败`)
     }
   } catch (e: any) {
     ElMessage.error(e.response?.data?.error || `${raw.name} 解析失败`)
   } finally {
-    fileUploading.value = false
+    fileUploadingCount.value--
   }
 }
 
@@ -432,6 +447,7 @@ function clearFile() {
   fileCount.value = 0
   parsedResumes.value = []
   screeningResult.value = null
+  processingUids.clear()
   uploadRef.value?.clearFiles()
 }
 
@@ -439,9 +455,14 @@ async function saveToHistory() {
   if (!screeningResult.value) return
   savingHistory.value = true
   try {
+    // 每条结果携带自己的 resumeId（从 _resumeId 获取）
+    const resultsWithResumeId = screeningResult.value.results.map((item: any) => ({
+      ...item,
+      resumeId: item._resumeId || parsedResumes.value[0]?.id || null,
+    }))
     const res: any = await saveScreeningResult({
       resumeId: parsedResumes.value[0]?.id || 0,
-      results: screeningResult.value.results,
+      results: resultsWithResumeId,
     })
     if (res.success) {
       ElMessage.success(`已保存 ${res.data.saved} 条筛选结果到历史`)
@@ -457,10 +478,36 @@ async function saveToHistory() {
 
 async function exportCurrentScreening() {
   try {
-    const res = await exportScreeningExcel({
-      resumeId: parsedResume.value?.id,
-    })
-    const blob = new Blob([res.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    // 先保存到历史（确保 DB 有数据供导出）
+    if (screeningResult.value && screeningResult.value.results.length > 0) {
+      savingHistory.value = true
+      try {
+        const resultsWithResumeId = screeningResult.value.results.map((item: any) => ({
+          ...item,
+          resumeId: item._resumeId || parsedResumes.value[0]?.id || null,
+        }))
+        await saveScreeningResult({
+          resumeId: parsedResumes.value[0]?.id || 0,
+          results: resultsWithResumeId,
+        })
+      } catch { /* 保存失败不影响导出 */ }
+      savingHistory.value = false
+    }
+
+    // 多简历筛选时传多个 resumeId，单简历传单一 ID
+    const resumeIds = [...new Set(
+      screeningResult.value?.results
+        .map((r: any) => r._resumeId)
+        .filter(Boolean) || []
+    )] as number[]
+    const exportParams: any = {}
+    if (resumeIds.length === 1) {
+      exportParams.resumeId = resumeIds[0]
+    } else if (resumeIds.length > 1) {
+      exportParams.resumeIds = resumeIds.join(',')
+    }
+
+    const blob = await exportScreeningExcel(exportParams)
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
