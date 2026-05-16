@@ -213,13 +213,19 @@
             没有符合筛选条件的岗位，请尝试放宽筛选标准
           </div>
 
-          <div v-for="item in screeningResult.results" :key="item.internalJobId" class="screen-card" :class="{ 'hard-failed': !item.hardRules.passed }">
-            <div class="screen-card-header">
-              <div>
-                <span class="screen-job-title">{{ item.internalJobTitle }}</span>
-                <span v-if="item.department" class="screen-dept">{{ item.department }}</span>
-                <el-tag v-if="item._resumeName" size="small" type="info" effect="plain" style="margin-left:6px">{{ item._resumeName }}</el-tag>
-              </div>
+          <template v-for="group in groupedScreeningResults" :key="`group_${group.resumeId}`">
+            <div class="resume-group-header">
+              <el-icon><User /></el-icon>
+              <span>{{ group.resumeName }}</span>
+              <span class="group-count">{{ group.results.length }} 条匹配</span>
+            </div>
+
+            <div v-for="item in group.results" :key="`${item._resumeId || 0}_${item.internalJobId || 0}`" class="screen-card" :class="{ 'hard-failed': !item.hardRules.passed }">
+              <div class="screen-card-header">
+                <div>
+                  <span class="screen-job-title">{{ item.internalJobTitle }}</span>
+                  <span v-if="item.department" class="screen-dept">{{ item.department }}</span>
+                </div>
               <div style="display:flex; align-items:center; gap: 8px;">
                 <el-tag
                   :type="item.recommendation === 'strong' ? 'success' : item.recommendation === 'moderate' ? 'warning' : item.recommendation === 'weak' ? 'info' : 'danger'"
@@ -277,6 +283,7 @@
               </el-collapse-item>
             </el-collapse>
           </div>
+          </template>
         </div>
       </div>
     </div>
@@ -286,7 +293,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Search, Loading, UploadFilled, Document, OfficeBuilding, CircleCheck, CircleClose, InfoFilled, FolderAdd, Download } from '@element-plus/icons-vue'
+import { Search, Loading, UploadFilled, Document, OfficeBuilding, CircleCheck, CircleClose, InfoFilled, FolderAdd, Download, User } from '@element-plus/icons-vue'
 import type { UploadFile, UploadInstance } from 'element-plus'
 import { parseResume, screenResume, saveScreeningResult, exportScreeningExcel, type ParsedResume, type ScreeningResponse } from '@/api/llm'
 import { listInternalJobs, type InternalJob } from '@/api/internalJob'
@@ -311,6 +318,21 @@ const internalJobs = ref<InternalJob[]>([])
 const selectedJobId = ref<number | null>(null)
 const screening = ref(false)
 const screeningResult = ref<ScreeningResponse | null>(null)
+// 多简历结果按 _resumeId 分组
+const groupedScreeningResults = computed(() => {
+  if (!screeningResult.value) return []
+  const groups: { resumeId: number; resumeName: string; results: any[] }[] = []
+  const seen = new Map<number, any[]>()
+  for (const r of screeningResult.value.results) {
+    const key = r._resumeId || 0
+    if (!seen.has(key)) {
+      seen.set(key, [])
+      groups.push({ resumeId: key, resumeName: r._resumeName || `简历 #${key}`, results: seen.get(key)! })
+    }
+    seen.get(key)!.push(r)
+  }
+  return groups
+})
 
 async function loadInternalJobs() {
   try {
@@ -346,7 +368,7 @@ async function doScreen() {
             limit: searchLimit.value,
           })
           if (res.success) {
-            totalCompared = res.data.totalJobsCompared
+            totalCompared += res.data.totalJobsCompared
             for (const r of res.data.results) {
               r._resumeName = pr.name || `简历 #${pr.id}`
               r._resumeId = pr.id
@@ -425,12 +447,17 @@ async function handleFileChange(file: UploadFile) {
   try {
     const res: any = await parseResume(raw)
     if (res.success) {
-      parsedResumes.value.push(res.data)
-      resumeText.value = ''
-      if (res.data?.duplicate) {
-        ElMessage.info(`${raw.name} 已解析过，返回已有记录 (${parsedResumes.value.length}/${files.length})`)
+      // 防止同一简历重复加入（同 ID）
+      if (res.data?.id && parsedResumes.value.some(pr => pr.id === res.data.id)) {
+        ElMessage.info(`${raw.name} 已存在，跳过重复添加 (${parsedResumes.value.length}/${files.length})`)
       } else {
-        ElMessage.success(`简历解析成功 (${parsedResumes.value.length}/${files.length})`)
+        parsedResumes.value.push(res.data)
+        resumeText.value = ''
+        if (res.data?.duplicate) {
+          ElMessage.info(`${raw.name} 已解析过，返回已有记录 (${parsedResumes.value.length}/${files.length})`)
+        } else {
+          ElMessage.success(`简历解析成功 (${parsedResumes.value.length}/${files.length})`)
+        }
       }
     } else {
       ElMessage.error(res.error || `${raw.name} 解析失败`)
@@ -629,6 +656,14 @@ function truncateText(text: string, maxLen: number): string {
 .screen-options { display: flex; flex-direction: column; gap: 4px; }
 
 .screening-result { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.resume-group-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; margin: 16px 0 8px;
+  background: #ecf5ff; border-left: 3px solid #409eff;
+  border-radius: 4px; font-size: 14px; font-weight: 600; color: #303133;
+}
+.resume-group-header:first-child { margin-top: 0; }
+.group-count { font-size: 12px; font-weight: 400; color: #909399; margin-left: auto; }
 .screen-card {
   border: 1px solid #e4e7ed; border-radius: 8px;
   padding: 16px; margin-bottom: 12px;
