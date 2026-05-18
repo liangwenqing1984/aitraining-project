@@ -62,7 +62,7 @@
               <rect x="14" y="35" width="20" height="3" fill="#667eea" rx="1.5" opacity="0.9"/>
             </svg>
           </div>
-          <h1 class="card-title">高质量人才数据集</h1>
+          <h1 class="card-title">招聘职位智能采集与分析系统</h1>
           <p class="card-subtitle">AI 驱动的智能招聘数据采集与分析平台</p>
         </div>
 

@@ -2094,7 +2094,7 @@ npm run dev
   // ========== 数据库 ==========
   database: {
     title: '数据库表结构',
-    content: `<p>Schema: <code>liangwenqing</code>，共 <strong>15 张表</strong>（7 张业务表 + 5 张 RBAC 表 + 3 张关联表）。
+    content: `<p>Schema: <code>liangwenqing</code>，共 <strong>23 张表</strong>（15 张业务表 + 5 张 RBAC 表 + 3 张关联表）。时区: <code>Asia/Shanghai</code>。
 
 <h3>sp_tasks — 爬虫任务</h3>
 <table>
@@ -2191,6 +2191,108 @@ npm run dev
   <tr><td>generated_sql</td><td>TEXT</td><td>AI 生成的 SQL</td></tr>
   <tr><td>result_summary</td><td>TEXT</td><td>LLM 总结</td></tr>
   <tr><td>result_data</td><td>JSONB</td><td>查询结果</td></tr>
+</table>
+
+<h3>sp_resumes — 简历结构化解析</h3>
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>original_filename / file_hash</td><td>VARCHAR</td><td>原始文件名 / SHA-256 去重哈希</td></tr>
+  <tr><td>raw_text</td><td>TEXT</td><td>简历原始全文</td></tr>
+  <tr><td>name / email / phone</td><td>VARCHAR</td><td>基本信息</td></tr>
+  <tr><td>education_level / school / major / work_years</td><td>VARCHAR / INT</td><td>学历/院校/专业/工作年限</td></tr>
+  <tr><td>skills / skill_levels</td><td>JSONB</td><td>技能列表 / 熟练度映射</td></tr>
+  <tr><td>desired_position / desired_city</td><td>VARCHAR</td><td>求职意向</td></tr>
+  <tr><td>projects / certifications / languages</td><td>JSONB</td><td>项目/证书/语言</td></tr>
+  <tr><td>embedding</td><td>vector(768)</td><td>简历语义向量</td></tr>
+  <tr><td>parse_confidence</td><td>REAL</td><td>LLM 解析置信度 0-1</td></tr>
+</table>
+
+<h3>sp_internal_jobs — 内部岗位 JD</h3>
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>title / department</td><td>VARCHAR</td><td>岗位名称 / 部门</td></tr>
+  <tr><td>description / requirement</td><td>TEXT</td><td>岗位描述 / 任职要求</td></tr>
+  <tr><td>required_skills / preferred_skills</td><td>JSONB</td><td>必备/加分技能，skill_match_mode 支持 all/any</td></tr>
+  <tr><td>salary_min/max / headcount</td><td>INTEGER</td><td>月薪范围 / 招聘人数</td></tr>
+  <tr><td>status</td><td>VARCHAR(20)</td><td>open 招聘中 / closed 已关闭</td></tr>
+  <tr><td>embedding / embedding_text</td><td>vector(768) / TEXT</td><td>语义向量 / 向量化原文</td></tr>
+</table>
+
+<h3>sp_screening_results — 简历筛选结果</h3>
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>resume_id / internal_job_id</td><td>INT FK</td><td>简历/岗位外键</td></tr>
+  <tr><td>total_score</td><td>REAL</td><td>综合得分（满分 100）</td></tr>
+  <tr><td>recommendation</td><td>VARCHAR(20)</td><td>strong / moderate / weak / rejected</td></tr>
+  <tr><td>hard_rules_passed / education_passed / experience_passed / skills_passed</td><td>BOOLEAN</td><td>硬性规则逐项检查</td></tr>
+  <tr><td>similarity / skill_bonus</td><td>REAL</td><td>语义相似度 % / 技能加分</td></tr>
+  <tr><td>score_breakdown / full_result</td><td>JSONB</td><td>评分明细 / 完整结果快照</td></tr>
+  <tr><td>UNIQUE</td><td>(resume_id, internal_job_id)</td><td>同简历+同岗位仅保留最新</td></tr>
+</table>
+
+<h3>sp_prompts — 提示词模板</h3>
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>category / prompt_type</td><td>VARCHAR</td><td>分类（enrichment/insights/query/resume-parse/anti-crawl）/ 类型（system/user）</td></tr>
+  <tr><td>name / content</td><td>VARCHAR / TEXT</td><td>模板名称 / 提示词内容</td></tr>
+  <tr><td>variables</td><td>JSONB</td><td>模板变量（如 ["companyName","jobName"]）</td></tr>
+  <tr><td>is_active</td><td>BOOLEAN</td><td>启用状态</td></tr>
+</table>
+<p>种子数据：初始化时自动填充 10 条（5 个场景 × system+user 各 1 条）。</p>
+
+<h3>sp_doc_embeddings — 文档向量（pgvector）</h3>
+<table>
+  <tr><th>字段</th><th>类型</th><th>说明</th></tr>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>section_id / section_title</td><td>VARCHAR</td><td>章节/文件标识 / 标题</td></tr>
+  <tr><td>chunk_index</td><td>INT</td><td>文本片段序号</td></tr>
+  <tr><td>text_content</td><td>TEXT</td><td>片段原文</td></tr>
+  <tr><td>embedding</td><td>vector(768)</td><td>768 维向量</td></tr>
+  <tr><td>source_type</td><td>VARCHAR(50)</td><td>来源：doc_section/user_doc/diagnostic/design_doc/backend_source/frontend_source</td></tr>
+  <tr><td>file_path</td><td>VARCHAR(1000)</td><td>源文件路径</td></tr>
+  <tr><td>UNIQUE</td><td>(section_id, chunk_index)</td><td>章节+片段唯一</td></tr>
+</table>
+
+<h3>sp_chat_sessions — AI 对话会话</h3>
+<table>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>title</td><td>VARCHAR(200)</td><td>会话标题（默认"新对话"）</td></tr>
+</table>
+
+<h3>sp_chat_messages — 对话消息</h3>
+<table>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>session_id</td><td>INT FK → sp_chat_sessions</td><td>关联会话（级联删除）</td></tr>
+  <tr><td>role</td><td>VARCHAR(20)</td><td>user / assistant</td></tr>
+  <tr><td>content</td><td>TEXT</td><td>消息内容</td></tr>
+  <tr><td>sources</td><td>JSONB</td><td>引用文档来源</td></tr>
+</table>
+
+<h3>sp_training_jobs — 模型训练任务</h3>
+<table>
+  <tr><td>id</td><td>SERIAL PK</td><td>自增 ID</td></tr>
+  <tr><td>name / base_model</td><td>VARCHAR</td><td>任务名称 / 基座模型</td></tr>
+  <tr><td>dataset_config / params</td><td>JSONB</td><td>数据集配置 / 超参数（epochs/lr/batchSize）</td></tr>
+  <tr><td>status / progress</td><td>VARCHAR / REAL</td><td>pending→running→completed/failed / 0-100</td></tr>
+  <tr><td>metrics</td><td>JSONB</td><td>训练指标（loss 等）</td></tr>
+  <tr><td>dataset_path / model_output_path</td><td>TEXT</td><td>数据/模型输出路径</td></tr>
+</table>
+
+<h3>RBAC 权限体系（8 张表）</h3>
+<table>
+  <tr><th>表名</th><th>用途</th><th>核心字段</th></tr>
+  <tr><td>sp_users</td><td>系统用户</td><td>username, password_hash, real_name, email, phone, status</td></tr>
+  <tr><td>sp_roles</td><td>角色</td><td>name, code, description, status</td></tr>
+  <tr><td>sp_permissions</td><td>权限</td><td>name, code, resource, action, description</td></tr>
+  <tr><td>sp_menus</td><td>菜单树</td><td>name, path, icon, parent_id（自引用）, sort_order, component, hidden</td></tr>
+  <tr><td>sp_user_roles</td><td>用户-角色关联</td><td>(user_id, role_id) 联合主键，级联删除</td></tr>
+  <tr><td>sp_role_permissions</td><td>角色-权限关联</td><td>(role_id, permission_id) 联合主键，级联删除</td></tr>
+  <tr><td>sp_role_menus</td><td>角色-菜单关联</td><td>(role_id, menu_id) 联合主键，级联删除</td></tr>
+  <tr><td>sp_saved_queries</td><td>NL 查询历史</td><td>user_query, generated_sql, result_summary, result_data</td></tr>
 </table>`
   },
 
@@ -2369,38 +2471,46 @@ npm run dev
   // ========== 核心功能扩展 ==========
   'feat-resume': {
     title: '简历筛选匹配',
-    content: `<h4>三种处理模式</h4>
+    content: `<h4>两种处理模式</h4>
+<p>页面顶部通过<strong>单选按钮组</strong>切换处理模式，两种模式共用同一上传入口：</p>
 <table>
   <tr><th style="width:100px">模式</th><th>核心能力</th><th>适用场景</th></tr>
   <tr>
-    <td><strong>职位匹配</strong></td>
-    <td>将简历文本向量化，与外部招聘平台爬取的职位向量库做<strong>余弦相似度匹配</strong>，返回最相关的在招职位</td>
-    <td>帮候选人快速找到市场上匹配的外部职位</td>
-  </tr>
-  <tr>
     <td><strong>内部筛选</strong></td>
-    <td>简历先结构化解析 → 与公司<strong>内部岗位 JD</strong> 做三级融合打分（硬性规则 + 向量语义 + 技能加分）</td>
-    <td>HR 筛简历，判断候选人是否符合内部岗位要求</td>
+    <td>简历上传后自动 LLM 解析 → 与公司<strong>内部岗位 JD</strong> 逐份做三级融合打分（硬性规则 + 向量语义 + 技能加分）→ 按简历分组展示匹配结果</td>
+    <td>HR 批量筛简历，判断候选人是否符合内部岗位要求</td>
   </tr>
   <tr>
     <td><strong>结构解析</strong></td>
-    <td>用 LLM（DeepSeek V4 Pro）从非结构化简历中<strong>提取 18 个结构化字段</strong>（姓名/学历/技能/工作年限/项目经验/证书等），存入简历库并生成语义向量</td>
+    <td>用 LLM（DeepSeek V4 Pro）从非结构化简历中<strong>提取 20+ 结构化字段</strong>（姓名/学历/技能/工作年限/项目经验/证书等），存入简历库并生成语义向量</td>
     <td>批量数字化简历，建立可搜索的人才库</td>
   </tr>
 </table>
 
-<h4>三级融合打分引擎（内部筛选模式）</h4>
+<div style="margin: 12px 0; padding: 8px 14px; background: #fdf6ec; border-left: 4px solid #e6a23c; border-radius: 0 4px 4px 0;">
+<strong>注意：</strong>外部职位匹配（语义搜索）功能已迁移至 <strong>语义搜索 → 职位向量搜索</strong> 页面，不在本页面内。
+</div>
+
+<h4>内部筛选模式 — 操作流程</h4>
+<ol>
+  <li><strong>上传简历</strong>：拖拽或点击上传 .pdf / .docx / .doc / .txt 文件，支持多文件批量（单次最多 10 个，单文件 ≤ 10MB）。也可在下方文本框直接粘贴简历文本</li>
+  <li><strong>配置筛选参数</strong>：可选指定目标岗位（下拉选择内部岗位，留空则匹配全部在招岗位）；调整返回数量（5~50，默认 20）</li>
+  <li><strong>开始智能筛选</strong>：点击按钮后，多份简历<strong>逐份异步调用</strong>匹配引擎，每份简历的结果自动标注所属简历 ID 和姓名</li>
+  <li><strong>分组结果展示</strong>：所有简历的匹配结果按简历分组，每组显示蓝色标题栏（用户图标 + 简历名 + 匹配数），组内按总分降序排列</li>
+</ol>
+
+<h4>三级融合打分引擎</h4>
 <table>
   <tr><th>评分维度</th><th>满分</th><th>计算方式</th></tr>
   <tr>
     <td><strong>硬性规则</strong></td>
     <td>40 分</td>
-    <td>学历等级比较（高中:1 ~ 博士:5）+ 工作年限阈值 + 必备技能匹配（支持 all/any 模式）。全部通过得 40 分，任一不通过得 0 分（直接淘汰）</td>
+    <td>学历等级比较（高中:1 ~ 博士:5）+ 工作年限阈值 + 必备技能匹配（支持 all/any 模式）。全部通过得 40 分，任一不通过得 0 分</td>
   </tr>
   <tr>
     <td><strong>语义相似度</strong></td>
     <td>40 分</td>
-    <td>简历与岗位 JD 的向量余弦相似度 × 40，基于自训练语义模型（nomic-embed-text 微调版）</td>
+    <td>简历与岗位 JD 的向量余弦相似度 × 40，基于自训练 position-embed-model（nomic-embed-text 微调版）</td>
   </tr>
   <tr>
     <td><strong>技能加分</strong></td>
@@ -2410,42 +2520,111 @@ npm run dev
 </table>
 
 <div style="margin: 12px 0; padding: 8px 14px; background: #f0f9eb; border-left: 4px solid #67c23a; border-radius: 0 4px 4px 0;">
-<strong>综合得分计算：</strong> totalScore = hardRuleScore + similarityScore + skillBonus<br/>
+<strong>综合得分：</strong> totalScore = hardRuleScore + similarityScore + skillBonus<br/>
 <strong>推荐等级：</strong> ≥80 强烈推荐 | ≥60 一般推荐 | ≥40 勉强匹配 | &lt;40 不推荐
 </div>
+
+<h4>评分明细展开</h4>
+<p>每条结果卡片内嵌<strong>可展开的评分明细面板</strong>，逐项展示：</p>
+<ul>
+  <li><strong>硬性规则检查</strong>：学历要求 vs 实际（✓/✗ 图标 + 文字说明）、工作年限阈值检查、必备技能匹配/缺失清单（绿色已匹配 + 红色缺失标签）</li>
+  <li><strong>语义相似度</strong>：百分比 + 换算分数（相似度% × 0.4）</li>
+  <li><strong>技能加分</strong>：匹配的技能标签 + 加分合计</li>
+  <li><strong>综合得分</strong>：三项之和</li>
+</ul>
+
+<h4>多简历批量处理机制</h4>
+<table>
+  <tr><th>机制</th><th>说明</th></tr>
+  <tr><td>逐份筛选</td><td>多份简历按顺序逐份调用 <code>/api/rag/resume/screen</code>，每份简历的结果自动附加 <code>_resumeId</code> 和 <code>_resumeName</code> 用于分组</td></tr>
+  <tr><td>totalCompared 累加</td><td>多份简历的比较岗位总数使用 <code>+=</code> 累加，而非覆盖，确保提示语显示正确的总岗位数</td></tr>
+  <tr><td>结果合并排序</td><td>所有简历的结果合并后统一按"硬性规则通过优先 → 总分降序"重排，再按简历分组渲染</td></tr>
+  <tr><td>单份容错</td><td>某份简历筛选失败不影响其他简历，最终提示失败数量</td></tr>
+  <tr><td>竞态去重</td><td>三层防护：<code>processingUids</code>（uid 级）+ <code>pendingFileKeys</code>（文件名+大小内容级）+ <code>batchClearDone</code> 标志位（新批次首个文件清空旧数据），防止 Element Plus 拖拽模式重复触发导致数据混入</td></tr>
+</table>
 
 <h4>简历库管理</h4>
 <table>
   <tr><th>功能</th><th>说明</th></tr>
-  <tr><td>批量导入</td><td>支持一次上传最多 20 份简历文件，自动解析并入库</td></tr>
+  <tr><td>批量导入</td><td>支持一次上传最多 10 份简历文件，自动 LLM 解析并入库</td></tr>
   <tr><td>搜索过滤</td><td>按姓名、期望岗位、技能模糊搜索</td></tr>
-  <tr><td>字段编辑</td><td>人工修正 LLM 解析结果（学历/技能/项目等）</td></tr>
+  <tr><td>字段编辑</td><td>人工修正 LLM 解析结果（学历/技能/项目等 20+ 字段）</td></tr>
   <tr><td>批量删除</td><td>勾选多条简历一键删除</td></tr>
-  <tr><td>Excel 导出</td><td>导出简历库全部 20 个字段为 Excel 文件</td></tr>
+  <tr><td>Excel 导出</td><td>导出简历库全部结构化字段为 Excel 文件</td></tr>
 </table>
 
 <h4>筛选历史与导出</h4>
 <table>
   <tr><th>功能</th><th>说明</th></tr>
-  <tr><td>结果持久化</td><td>筛选结果可"保存到历史"，存入 sp_screening_results 表</td></tr>
+  <tr><td>保存到历史</td><td>筛选结果持久化到 <code>sp_screening_results</code> 表，多简历场景下每条结果携带各自的 <code>_resumeId</code></td></tr>
   <tr><td>历史查询</td><td>按简历/岗位筛选历史记录，分页展示</td></tr>
-  <tr><td>Excel 导出</td><td>筛选结果导出为 Excel（含硬性规则逐项明细 + 推荐等级条件着色）</td></tr>
+  <tr><td>Excel 导出</td><td>一键导出当前筛选结果为 Excel（自动先保存再导出，多简历时按 resumeIds 批量导出，含硬性规则逐项明细 + 推荐等级条件着色）</td></tr>
 </table>
 
 <h4>支持的简历格式</h4>
 <ul>
   <li><strong>PDF</strong>（.pdf） — 使用 pdf-parse 库提取文本</li>
-  <li><strong>Word</strong>（.docx） — 使用 mammoth 库提取文本</li>
+  <li><strong>Word</strong>（.docx / .doc） — 使用 mammoth 库提取文本</li>
   <li><strong>纯文本</strong>（.txt） — UTF-8 / GBK 自动编码检测</li>
-  <li>文件大小上限：10MB / 份</li>
+  <li>单文件上限：10MB，单次最多 10 个文件</li>
 </ul>
 
 <h4>AI 模型配置</h4>
 <ul>
-  <li><strong>嵌入模型</strong>：Ollama nomic-embed-text（或自训练微调版），768 维向量</li>
-  <li><strong>解析模型</strong>：路由到 taskType='resume-parse' 的 LLM（推荐 DeepSeek V4 Pro），需设置 maxTokens ≥ 16384 防止推理 token 耗尽</li>
+  <li><strong>嵌入模型</strong>：Ollama 本地部署的 <strong>position-embed-model</strong>（基于 nomic-embed-text 微调），768 维向量；如加载失败自动回退 nomic-embed-text</li>
+  <li><strong>解析模型</strong>：路由到 taskType='resume-parse' 的 LLM（推荐 DeepSeek V4 Pro），需设置 maxTokens ≥ 16384 防止推理 token 耗尽；简历文本截取前 4000 字符送入 LLM</li>
   <li><strong>相似度算子</strong>：pgvector <code><=></code> 余弦距离</li>
-</ul>`
+</ul>
+
+<h4>常见问题</h4>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q1：语义相似度是拿什么做的文本向量化？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;"><strong>三级回退策略：</strong>系统按优先级依次尝试三种文本来源生成向量，确保每次都尽可能实时计算而非使用陈旧预存值。</p>
+<p style="margin: 6px 0;"><strong>第一优先 — 结构化区分文本：</strong>从简历的 <strong>18 个结构化字段</strong> 中拼接最关键的区分维度，构建一段约 200~800 字的中文摘要文本，包含：</p>
+<ul style="margin: 6px 0; padding-left: 24px;">
+  <li><strong>期望岗位</strong>（desiredPosition）— 最核心的区分维度</li>
+  <li><strong>技能列表</strong>（skills[]）— 岗位方向的核心差异</li>
+  <li><strong>学历 + 专业 + 毕业院校</strong></li>
+  <li><strong>工作年限</strong></li>
+  <li><strong>项目经验</strong>（取前 3 个，含项目名/角色/技术栈）</li>
+  <li><strong>证书</strong>、<strong>期望城市</strong>、<strong>工作类型</strong></li>
+</ul>
+<p style="margin: 6px 0;">相比原始简历全文，这段结构化摘要<strong>聚焦岗位方向相关的关键差异字段</strong>，过滤掉冗余信息，让"Java 后端"和"销售经理"的向量产生更大的区分度。</p>
+<p style="margin: 6px 0;"><strong>第二优先 — 原始简历文本：</strong>如果简历缺少结构化字段（旧数据未解析），截取 rawText 前 2000 字符 <strong>实时调用嵌入模型</strong> 生成向量，保证每次筛选都重新计算语义相似度。</p>
+<p style="margin: 6px 0;"><strong>第三优先 — 预存向量兜底：</strong>仅当前两种来源都不可用时（既无结构化字段也无 rawText），才回退到数据库预存的 embedding 字段。</p>
+<p style="margin: 6px 0;"><strong>岗位侧：</strong>岗位 JD 的向量由 <code>buildJobText()</code> 函数拼接：职位名称 + 分类 L1/L2 + 关键技能 + 公司行业 + 公司名 + 工作城市 + 学历要求 + 月薪范围 + 工作模式 + 职位描述（前 500 字符）。</p>
+<p style="margin: 6px 0;"><strong>嵌入模型：</strong>使用 <strong>Ollama 本地部署的自训练模型</strong>（基于 nomic-embed-text 微调的 position-embed-model），输出 <strong>768 维浮点向量</strong>，余弦相似度 × 40 计入总分。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q2：内部岗位的向量化结果存在哪里？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+  <p style="margin: 6px 0;">内部岗位的向量存储在 <strong><code>sp_internal_jobs</code></strong> 表自身，由 <code>internalJobService.ts</code> 中的 <code>generateInternalJobEmbedding()</code> 函数负责生成和写入：</p>
+
+  <table style="margin: 8px 0; font-size: 13px; border-collapse: collapse;">
+    <tr style="background: #f5f7fa;"><th style="padding: 4px 10px; text-align: left; border: 1px solid #e4e7ed;">列名</th><th style="padding: 4px 10px; text-align: left; border: 1px solid #e4e7ed;">类型</th><th style="padding: 4px 10px; text-align: left; border: 1px solid #e4e7ed;">说明</th></tr>
+    <tr><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>embedding</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">pgvector(768)</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">768 维浮点向量，用于余弦相似度计算</td></tr>
+    <tr style="background: #f5f7fa;"><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>embedding_text</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">text</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">被向量化的原始文本（前 2000 字符），用于调试追溯</td></tr>
+  </table>
+
+  <p style="margin: 10px 0 4px;"><strong>向量化流程</strong></p>
+  <pre style="margin: 8px 0; padding: 10px; background: #2d2d2d; color: #e6e6e6; border-radius: 4px; font-size: 12px; line-height: 1.6;">
+岗位 title + description + requirement
+  → 用 \n\n 拼接成一段文本
+    → 调用 generateEmbedding() 生成 768 维向量
+      → UPDATE sp_internal_jobs SET embedding = '[0.12, -0.34, ...]'::vector</pre>
+
+  <p style="margin: 10px 0 4px;"><strong>触发时机</strong></p>
+  <p style="margin: 6px 0 0 16px;"><strong>创建岗位时</strong>：<code>createInternalJob()</code> INSERT 完成后异步调用 <code>generateInternalJobEmbedding()</code>，不阻塞接口响应。</p>
+  <p style="margin: 6px 0 0 16px;"><strong>更新岗位时</strong>：仅当 <code>description</code> 或 <code>requirement</code> 字段有变更时才重新生成向量，避免无关更新浪费调用。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>与简历向量的区别</strong></p>
+  <p style="margin: 6px 0 0 16px;">简历向量存储在 <code>sp_resumes</code> 表的 <code>embedding</code> 字段，但筛选匹配时 <strong>不使用预存向量</strong>，而是每次都实时调用模型重新生成（三级回退策略，见 Q1）。岗位向量则直接读取预存值，因为岗位由内部 HR 维护，更新频率远低于简历上传。</p>
+</div>`
   },
   'feat-prompts': {
     title: '提示词工程',
@@ -2528,7 +2707,109 @@ npm run dev
   <li>重启后端服务使修改生效（<code>npm run dev</code> 或 <code>pm2 restart</code>）</li>
   <li>如修改输出 JSON 格式，需同步更新对应 TS 类型定义和前端解析逻辑</li>
   <li>User Prompt 中的 <code>\${变量}</code> 为 TypeScript 模板字符串插值，动态拼接上下文数据</li>
-</ol>`
+</ol>
+
+<h4>常见问题</h4>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q1：编辑提示词时各个字段分别是什么意思？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+  <p style="margin: 6px 0;">提示词编辑对话框共有 <strong>6 个表单字段</strong>，外加 1 个隐含的分类归属：</p>
+
+  <p style="margin: 10px 0 4px;"><strong>1. 名称（name）</strong></p>
+  <p style="margin: 0 0 8px 16px;">单行文本输入框，最长 100 字符。给提示词起一个辨识度高的名字，例如"数据增强系统提示词"、"简历解析用户提示词"。必填。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>2. 类型（promptType）</strong></p>
+  <p style="margin: 0 0 8px 16px;">单选按钮，可选 <strong>System Prompt</strong> 或 <strong>User Prompt</strong>。System Prompt 设定 AI 的角色、行为边界、输出格式等，作为 system message 发送；User Prompt 作为 user message 发送，支持 <code>\${varName}</code> 模板变量占位符。必选。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>3. 启用（isActive）</strong></p>
+  <p style="margin: 0 0 8px 16px;">开关控件。同一分类下仅一个 System 和一个 User Prompt 可同时启用——启用新提示词时系统会自动停用同类型的旧提示词。可用于临时禁用某个提示词而不是删除它，方便 A/B 测试或回滚。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>4. 提示词内容（content）</strong></p>
+  <p style="margin: 0 0 8px 16px;">多行文本域（16 行高，等宽字体）。提示词的正文文本。对于 User Prompt 类型，可用 <code>\${变量名}</code> 语法嵌入占位符，例如 <code>\${resumeText}</code>，运行时会被替换为实际数据。必填。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>5. 模板变量（variables）</strong></p>
+  <p style="margin: 0 0 8px 16px;">多选下拉框，支持手动输入新变量名后回车添加。声明该 User Prompt 中使用了哪些占位变量，仅对 User Prompt 有意义。例如提示词内容中有 <code>\${resumeText}</code> 和 <code>\${jobRequirements}</code>，就在这里添加 resumeText 和 jobRequirements。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>6. 描述（description）</strong></p>
+  <p style="margin: 0 0 8px 16px;">单行文本，最长 255 字符。简要说明此提示词的用途、适用场景或注意事项，便于团队成员理解。可选填。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>隐含字段 — 分类（category）</strong></p>
+  <p style="margin: 0 0 8px 16px;">从当前路由路径自动提取，不在表单中显示。系统预定义了 5 个分类，对应左侧标签页：</p>
+  <table style="margin: 0 0 8px 16px; font-size: 13px;">
+    <tr><th style="padding: 2px 12px; text-align: left;">路由路径</th><th style="padding: 2px 12px; text-align: left;">分类标识</th><th style="padding: 2px 12px; text-align: left;">用途</th></tr>
+    <tr><td style="padding: 2px 12px;"><code>/system/prompts/enrichment</code></td><td style="padding: 2px 12px;">enrichment</td><td style="padding: 2px 12px;">数据增强</td></tr>
+    <tr><td style="padding: 2px 12px;"><code>/system/prompts/insights</code></td><td style="padding: 2px 12px;">insights</td><td style="padding: 2px 12px;">智能洞察</td></tr>
+    <tr><td style="padding: 2px 12px;"><code>/system/prompts/query</code></td><td style="padding: 2px 12px;">query</td><td style="padding: 2px 12px;">自然语言查询</td></tr>
+    <tr><td style="padding: 2px 12px;"><code>/system/prompts/resume-parse</code></td><td style="padding: 2px 12px;">resume-parse</td><td style="padding: 2px 12px;">简历解析</td></tr>
+    <tr><td style="padding: 2px 12px;"><code>/system/prompts/anti-crawl</code></td><td style="padding: 2px 12px;">anti-crawl</td><td style="padding: 2px 12px;">反爬检测</td></tr>
+  </table>
+  <p style="margin: 4px 0 0 16px;">切换左侧分类标签时，表格会自动加载对应分类下的提示词列表。新建提示词时，category 会自动设为当前选中的分类。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q2：提示词中的 <code>\${变量}</code> 模板变量是如何被替换的？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+  <p style="margin: 6px 0;">替换机制在 <code>promptResolver.ts</code> 中，核心分 <strong>4 步</strong>：</p>
+
+  <p style="margin: 10px 0 4px;"><strong>第1步：加载模板</strong></p>
+  <p style="margin: 0 0 8px 16px;">调用 <code>resolvePrompts(category, userPromptVars)</code>。先查 <code>sp_prompts</code> 表中该分类启用中的提示词（数据库优先），没有则回退到 <code>prompts.ts</code> 硬编码默认值。结果缓存在内存 60 秒。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>第2步：正则替换</strong></p>
+  <p style="margin: 0 0 8px 16px;">核心函数 <code>interpolateTemplate(template, vars)</code>：用正则 <code>/\$\{([^}]+)\}/g</code> 匹配所有 <code>\${...}</code> 占位符，然后按 <code>.</code> 拆分路径逐级取值，<strong>支持嵌套对象</strong>如 <code>\${job.companyName}</code>。未匹配到的变量替换为空字符串。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>第3步：调用方传入变量值</strong></p>
+  <p style="margin: 0 0 8px 16px;">各业务模块调用 <code>callLLMWithPrompts()</code> 时传入 <code>userPromptVars</code> 对象。以数据增强为例，<code>prompts.ts</code> 中定义了含 <code>\${job.companyName}</code>、<code>\${job.jobName}</code>、<code>\${job.salaryRange}</code> 等 14 个占位符的模板，调用方传入带 <code>job</code> 属性的对象，属性值来自数据库中原始招聘数据的字段。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>第4步：最终拼装发送</strong></p>
+  <p style="margin: 0 0 8px 16px;"><code>resolvePrompts()</code> 返回替换后的 <code>{ systemPrompt, userPrompt }</code>，再由 <code>callLLM()</code> 发给大模型。System Prompt 原样发送，User Prompt 中的 <code>\${...}</code> 已被替换为实际业务数据。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>流程图</strong></p>
+  <pre style="margin: 0 0 8px 16px; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; font-size: 12px; line-height: 1.6;">
+DB sp_prompts 表 → (优先) → promptResolver 60s 缓存 → interpolateTemplate() → LLM
+硬编码默认值     → (回退) →                      正则替换 \${xx}
+                                                      ↑
+                                            调用方传入 userPromptVars
+  </pre>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q3：System Prompt 和 User Prompt 有什么区别？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+
+  <p style="margin: 6px 0;"><strong>角色定位对比</strong></p>
+  <table style="margin: 0 0 12px 16px; font-size: 13px; border-collapse: collapse;">
+    <tr style="background: #f5f7fa;"><th style="padding: 4px 12px; text-align: left; border: 1px solid #e4e7ed;">维度</th><th style="padding: 4px 12px; text-align: left; border: 1px solid #e4e7ed;">System Prompt</th><th style="padding: 4px 12px; text-align: left; border: 1px solid #e4e7ed;">User Prompt</th></tr>
+    <tr><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">发送位置</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">作为 <code>system</code> role 发送</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">作为 <code>user</code> role 发送</td></tr>
+    <tr><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">作用</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">设定 AI 的<strong>角色、行为边界、输出格式</strong></td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">承载<strong>本次请求的具体任务和数据</strong></td></tr>
+    <tr><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">稳定性</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">相对固定，定义"你是谁"</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">每次调用动态变化，"这次做什么"</td></tr>
+    <tr><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">模板变量</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">通常不含 <code>\${}</code> 占位符</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">含 <code>\${varName}</code> 占位符，运行时替换</td></tr>
+    <tr><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">可见性</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">对最终用户不可见</td><td style="padding: 4px 12px; border: 1px solid #e4e7ed;">用户可感知（问答类场景）</td></tr>
+  </table>
+
+  <p style="margin: 10px 0 4px;"><strong>实际例子：数据增强场景</strong></p>
+  <p style="margin: 0 0 4px 16px;"><strong>System Prompt</strong> — 定义规则体系：</p>
+  <pre style="margin: 0 0 8px 16px; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; font-size: 12px; line-height: 1.6;">你是一个招聘数据标准化专家。你的任务是将原始的招聘信息转换为结构化数据。
+规则：
+1. 薪资标准化：将"10K-15K"转换为月薪数值...
+2. 职位分类：L1含技术/产品/运营...共15类
+请严格按照以下JSON格式输出，不要输出其他内容：
+{ "salary_monthly_min": ..., "job_category_l1": ... }</pre>
+  <p style="margin: 0 0 4px 16px;"><strong>User Prompt</strong> — 带入具体数据：</p>
+  <pre style="margin: 0 0 8px 16px; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; font-size: 12px; line-height: 1.6;">请分析以下职位信息并进行标准化：
+企业名称：\${job.companyName}    → 运行时替换为 "XX科技公司"
+职位名称：\${job.jobName}        → 运行时替换为 "Java开发工程师"
+薪资范围：\${job.salaryRange}    → 运行时替换为 "15K-25K"</pre>
+
+  <p style="margin: 10px 0 4px;"><strong>系统约束</strong></p>
+  <p style="margin: 0 0 8px 16px;">编辑表单中明确提示：<strong>同一分类下仅一个 System 和一个 User 可同时启用</strong>。运行时每个业务分类只有一对生效的提示词——一个 System 定义框架，一个 User 带入数据，两者配合完成一次 LLM 调用。</p>
+
+  <p style="margin: 10px 0 4px;"><strong>一句话总结</strong></p>
+  <p style="margin: 0 0 8px 16px;">System Prompt 管<strong>"怎么想"</strong>（角色+规则+格式），User Prompt 管<strong>"处理什么"</strong>（具体数据+本次指令）。</p>
+</div>`
   },
   'feat-aibot': {
     title: 'AI 问答机器人',
@@ -2833,6 +3114,42 @@ spawn('python', [
   <tr><td style="padding:3px 10px;">受数据集大小影响</td><td style="padding:3px 10px;">敏感（需要足够样本）</td><td style="padding:3px 10px;">相对鲁棒</td></tr>
 </table>
 <p style="margin: 6px 0;">两者互补：<strong>Pearson 高说明分数可信，Top-1 高说明排序准</strong>。实际使用需要足够的训练数据（建议 200 对以上）才能得到有参考价值的指标。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q14：模型训练用的是原始爬取字段还是数据增强后的字段？为什么？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+
+  <p style="margin: 6px 0;">训练数据源自 <code>trainingData.ts</code> 的 SQL 查询，<strong>以增强表为主，仅从原始表取 3 个标识性字段</strong>：</p>
+
+  <pre style="margin: 8px 0; padding: 10px; background: #2d2d2d; color: #e6e6e6; border-radius: 4px; font-size: 12px; line-height: 1.6;">
+SELECT
+  e.job_id, e.job_category_l1, e.job_category_l2,      -- 增强表
+  e.company_industry, e.key_skills, e.education_normalized, -- 增强表
+  e.salary_monthly_min, e.salary_monthly_max, e.work_mode,  -- 增强表
+  j.job_name, j.company_name, j.work_city               -- 原始表
+FROM sp_job_enrichments e
+LEFT JOIN sp_jobs j ON e.job_id = j.job_id AND e.task_id = j.task_id</pre>
+
+  <p style="margin: 10px 0 4px;"><strong>字段来源对照</strong></p>
+  <table style="margin: 8px 0; font-size: 13px; border-collapse: collapse;">
+    <tr style="background: #f5f7fa;"><th style="padding: 4px 10px; text-align: left; border: 1px solid #e4e7ed;">来源</th><th style="padding: 4px 10px; text-align: left; border: 1px solid #e4e7ed;">字段</th><th style="padding: 4px 10px; text-align: left; border: 1px solid #e4e7ed;">用途</th></tr>
+    <tr><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">增强表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>job_category_l1/l2</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">职位分类（正负样本分组依据）</td></tr>
+    <tr style="background: #f5f7fa;"><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">增强表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>company_industry</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">公司行业分类</td></tr>
+    <tr><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">增强表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>key_skills</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">AI 提取的关键技能</td></tr>
+    <tr style="background: #f5f7fa;"><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">增强表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>education_normalized</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">学历标准化</td></tr>
+    <tr><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">增强表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>salary_monthly_min/max</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">薪资标准化数值</td></tr>
+    <tr style="background: #f5f7fa;"><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">增强表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>work_mode</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">工作模式</td></tr>
+    <tr><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">原始表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>job_name</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">职位名称标识</td></tr>
+    <tr style="background: #f5f7fa;"><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">原始表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>company_name</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">公司名称标识</td></tr>
+    <tr><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">原始表</td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;"><code>work_city</code></td><td style="padding: 3px 10px; border: 1px solid #e4e7ed;">工作城市</td></tr>
+  </table>
+
+  <p style="margin: 10px 0 4px;"><strong>为什么必须用增强字段</strong></p>
+  <p style="margin: 6px 0 0 16px;"><strong>1. 正负样本分组依赖增强字段</strong>：正样本 = 同 L2 分类（如都是"Java开发"），负样本 = 不同 L1 分类（如"技术" vs "销售"）。原始爬取数据根本没有 L1/L2 分类标签，不增强就分不了组。</p>
+  <p style="margin: 6px 0 0 16px;"><strong>2. 原始字段格式不统一</strong>：薪资可能是 "10K-15K"、"1万-1.5万/月"、"面议"；技能可能混在职位描述里未提取。没有 AI 增强的标准化就无法生成可对比的训练文本。</p>
+  <p style="margin: 6px 0 0 16px;"><strong>3. buildJobText() 需要 10 个维度</strong>：该函数拼接的训练文本包含 职位名+分类+子分类+技能+行业+公司+城市+学历+薪资+工作模式，其中 7 个维度来自增强表，仅 3 个来自原始表。</p>
 </div>`
   },
   'feat-dashboard': {

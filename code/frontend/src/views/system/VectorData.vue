@@ -134,16 +134,16 @@
           </el-popconfirm>
         </div>
 
-        <el-table :data="docRecords" stripe v-loading="docLoading" row-key="id">
-          <el-table-column prop="sectionId" label="章节/文件ID" width="200" show-overflow-tooltip />
-          <el-table-column prop="sectionTitle" label="标题" width="200" show-overflow-tooltip />
-          <el-table-column label="来源类型" width="110">
+        <el-table :data="docRecords" stripe v-loading="docLoading" row-key="id" table-layout="auto">
+          <el-table-column prop="sectionId" label="章节/文件ID" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="sectionTitle" label="标题" min-width="140" show-overflow-tooltip />
+          <el-table-column label="来源类型" width="100">
             <template #default="{ row }">
               <el-tag :type="sourceTypeTag(row.sourceType)" size="small">{{ sourceTypeLabel(row.sourceType) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column prop="filePath" label="文件路径" width="200" show-overflow-tooltip />
-          <el-table-column prop="chunkIndex" label="片段索引" width="80" />
+          <el-table-column prop="filePath" label="文件路径" min-width="180" show-overflow-tooltip />
+          <el-table-column prop="chunkIndex" label="片段" width="70" align="center" />
           <el-table-column prop="createdAt" label="创建时间" width="170" />
           <el-table-column label="操作" width="80" fixed="right">
             <template #default="{ row }">

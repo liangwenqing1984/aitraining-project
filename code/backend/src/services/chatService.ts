@@ -23,7 +23,7 @@ export interface ChatResponse {
   message: ChatMessage;
 }
 
-const RAG_SYSTEM_PROMPT = `你是AI培训系统的智能助手，专门回答关于本系统的各类问题。
+const RAG_SYSTEM_PROMPT = `你是招聘职位智能采集与分析系统的智能助手，专门回答关于本系统的各类问题。
 
 ## 知识范围
 你可以根据以下类型的内容回答用户问题：
@@ -51,17 +51,15 @@ const RAG_SYSTEM_PROMPT = `你是AI培训系统的智能助手，专门回答关
 请根据以上参考内容回答用户问题。如果内容不足以回答问题，请说明。`;
 
 // 内存级关键词兜底匹配（不依赖 pgvector，确保总能找到文档）
-function fallbackSearch(query: string, topK: number = 5): DocSearchResult[] {
-  const lower = query.toLowerCase();
-  const scored: { section: typeof DOC_SECTIONS[0]; score: number }[] = [];
+async function fallbackSearch(query: string, topK: number = 5): Promise<DocSearchResult[]> {
+  const results: DocSearchResult[] = [];
 
-  // 提取关键词：中文2字以上词 + 英文词 + 中文拆分为2字片段
+  // 1. 硬编码帮助文档匹配（保持原有逻辑）
   const keywords: string[] = [];
   const chineseWords = query.match(/[一-龥]{2,}/g) || [];
   const englishWords = query.match(/[a-zA-Z]{2,}/g) || [];
   keywords.push(...chineseWords, ...englishWords, query);
 
-  // 中文长词拆分为2字片段，解决"数据库设计"无法匹配"数据库表结构"的问题
   for (const cw of chineseWords) {
     for (let i = 0; i <= cw.length - 2; i++) {
       const bigram = cw.substring(i, i + 2);
@@ -69,30 +67,71 @@ function fallbackSearch(query: string, topK: number = 5): DocSearchResult[] {
     }
   }
 
+  const scored: { section: typeof DOC_SECTIONS[0]; score: number }[] = [];
   for (const section of DOC_SECTIONS) {
     let score = 0;
     const titleLower = section.title.toLowerCase();
     const contentLower = section.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').toLowerCase();
-
     for (const kw of keywords) {
       const kwLower = kw.toLowerCase();
       if (titleLower.includes(kwLower)) score += 5;
       if (contentLower.includes(kwLower)) score += 1;
     }
-
     if (score > 0) scored.push({ section, score });
   }
-
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK).map(s => ({
-    sectionId: s.section.sectionId,
-    sectionTitle: s.section.title,
-    chunkIndex: 0,
-    textContent: s.section.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000),
-    similarity: Math.min(s.score / 20, 0.99),
-    sourceType: 'doc_section',
-    filePath: undefined,
-  }));
+  for (const s of scored.slice(0, topK)) {
+    results.push({
+      sectionId: s.section.sectionId,
+      sectionTitle: s.section.title,
+      chunkIndex: 0,
+      textContent: s.section.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().substring(0, 2000),
+      similarity: Math.min(s.score / 20, 0.99),
+      sourceType: 'doc_section',
+      filePath: undefined,
+    });
+  }
+
+  // 2. 数据库源码 ILIKE 匹配（搜索非 doc_section 类型的索引数据）
+  if (results.length < topK) {
+    try {
+      const dbKeywords = [...chineseWords, ...englishWords].filter(k => k.length >= 2);
+      if (dbKeywords.length > 0) {
+        const conditions = dbKeywords.map((_, i) =>
+          `(section_title ILIKE $${i + 1} OR text_content ILIKE $${i + 1})`
+        );
+        const params = dbKeywords.map(k => `%${k}%`);
+        const sql = `
+          SELECT section_id, section_title, chunk_index, text_content, source_type, file_path, 0.4 AS similarity
+          FROM sp_doc_embeddings
+          WHERE source_type != 'doc_section'
+            AND (${conditions.join(' OR ')})
+          ORDER BY section_id, chunk_index
+          LIMIT $${params.length + 1}
+        `;
+        params.push(String(topK - results.length));
+        const rows = await db.prepare(sql).all(...params) as any[];
+        for (const r of rows) {
+          const sid = r.sectionId || r.section_id;
+          if (!results.some(existing => existing.sectionId === sid)) {
+            results.push({
+              sectionId: sid,
+              sectionTitle: r.sectionTitle || r.section_title,
+              chunkIndex: r.chunkIndex || r.chunk_index || 0,
+              textContent: (r.textContent || r.text_content || '').substring(0, 2000),
+              similarity: 0.4,
+              sourceType: r.sourceType || 'backend_source',
+              filePath: r.filePath || undefined,
+            });
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Chat] 源码兜底搜索失败:', e.message);
+    }
+  }
+
+  return results;
 }
 
 export async function sendMessage(
@@ -102,14 +141,14 @@ export async function sendMessage(
   // 1. 语义搜索相关文档
   let docResults: DocSearchResult[] = [];
   try {
-    docResults = await searchDocs(question, 5, 0.3);
+    docResults = await searchDocs(question, 5, 0.2);
     console.log(`[Chat] 向量搜索返回 ${docResults.length} 条结果:`, docResults.map(d => d.sectionTitle));
   } catch (e: any) {
     console.warn('[Chat] 向量搜索失败:', e.message);
   }
 
   // 2. 内存关键词兜底（始终执行，与向量结果合并）
-  const fallbackResults = fallbackSearch(question, 5);
+  const fallbackResults = await fallbackSearch(question, 5);
   console.log(`[Chat] 内存匹配返回 ${fallbackResults.length} 条结果:`, fallbackResults.map(d => d.sectionTitle));
 
   // 合并去重：向量结果优先，内存结果补充

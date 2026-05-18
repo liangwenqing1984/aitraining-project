@@ -192,7 +192,7 @@ export const DOC_SECTIONS: DocSection[] = [
   {
     sectionId: 'database',
     title: '数据库表结构',
-    content: `<p>Schema: liangwenqing，共15张表。sp_tasks爬虫任务(id/name/source/config/status/record_count)，sp_jobs原始职位数据(task_id/job_id/data_source/company_name/job_name/work_city/salary_range/education/work_experience/raw_data JSONB)，sp_csv_files导出文件，sp_job_enrichments AI增强结果(salary_monthly_min/max/job_category_l1/l2/company_industry/key_skills JSONB/education_normalized/experience_years_min/max/benefits JSONB/work_mode)，sp_market_reports AI洞察报告，sp_llm_config AI模型配置(provider/model_name/api_key_encrypted AES-256-GCM/task_routing JSONB)，sp_job_embeddings RAG向量库(embedding vector(768)/IVFFlat索引)，sp_saved_queries NL查询历史。</p>`
+    content: `<p>Schema: liangwenqing，共23张表（15张业务表+5张RBAC表+3张关联表），时区 Asia/Shanghai。业务表：sp_tasks爬虫任务、sp_csv_files导出文件、sp_jobs原始职位(含raw_data JSONB)、sp_llm_config AI模型配置(AES-256-GCM加密)、sp_job_enrichments AI增强结果(薪资/分类/技能/学历/福利标准化)、sp_market_reports AI洞察报告(含ECharts图表配置)、sp_saved_queries NL查询历史、sp_job_embeddings RAG职位向量(vector(768)+IVFFlat索引)、sp_resumes简历解析(18个结构化字段+file_hash去重)、sp_internal_jobs内部岗位JD(含skill_match_mode all/any)、sp_screening_results筛选结果(硬性规则逐项+评分明细JSONB)、sp_prompts提示词模板(5场景×system+user各1条)、sp_doc_embeddings文档向量、sp_chat_sessions/sp_chat_messages问答对话、sp_training_jobs模型训练。RBAC表：sp_users/sp_roles/sp_permissions/sp_menus(自引用树)+3张关联表(sp_user_roles/sp_role_permissions/sp_role_menus)。</p>`
   },
   {
     sectionId: 'guide-crawl',
@@ -528,6 +528,27 @@ const DOC_KEYWORD_MAP: Record<string, string[]> = {
   'rbac': ['系统管理', 'RBAC', '用户', '角色', '权限', '菜单'],
   '提示词': ['提示词', 'prompt', 'System Prompt', 'ENRICHMENT', 'NL_QUERY', 'RESUME_PARSE'],
   'prompt': ['提示词', 'prompt', 'System Prompt', 'ENRICHMENT', 'NL_QUERY', 'RESUME_PARSE'],
+  // 源码相关
+  '源码': ['源代码', 'source', 'backend_source', 'frontend_source', '服务', '组件', '路由', '控制器'],
+  '源代码': ['源码', 'source', 'TypeScript', 'Vue', 'Express', '组件', '服务'],
+  '前端': ['frontend_source', 'Vue', 'Element Plus', '组件', '前端源代码'],
+  '后端': ['backend_source', 'Express', 'TypeScript', '后端源代码', '服务层'],
+  'vue': ['Vue', 'frontend_source', '组件', '前端'],
+  'typescript': ['TypeScript', 'backend_source', 'Express', '类型'],
+  'express': ['Express', 'backend_source', '路由', '中间件'],
+  '组件': ['Vue', 'frontend_source', 'Element Plus', 'el-'],
+  '服务': ['backend_source', 'Service', 'Express', '后端源代码'],
+  '路由': ['Express', '路由', 'backend_source', 'frontend_source', 'Router'],
+  '控制器': ['backend_source', 'Controller', 'Express', '路由'],
+  '代码': ['源码', '源代码', 'backend_source', 'frontend_source', 'TypeScript', 'Vue'],
+  '实现': ['源码', 'backend_source', 'Service', '函数', '方法'],
+  '数据库表': ['数据库', '表结构', 'sp_', '字段', 'PostgreSQL'],
+  'pgvector': ['pgvector', '向量', 'embedding', 'IVFFlat'],
+  '索引': ['索引', 'pgvector', 'IVFFlat', '向量', '数据库'],
+  '简历': ['简历', 'resume', 'parse', '筛选', '匹配'],
+  '筛选': ['简历', '筛选', 'screen', '匹配', '打分'],
+  '训练': ['训练', '微调', '模型', 'sentence-transformers', 'Ollama'],
+  '微调': ['微调', '训练', '模型', 'sentence-transformers'],
 };
 
 export async function searchDocs(

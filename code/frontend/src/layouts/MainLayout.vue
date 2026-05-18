@@ -249,13 +249,13 @@ const breadcrumbPath = computed(() => {
               <rect x="14" y="35" width="20" height="3" fill="#C4152D" rx="1.5"/>
             </svg>
           </div>
-          <span class="logo-text">高质量人才数据集</span>
+          <span class="logo-text">招聘职位智能采集与分析系统</span>
         </div>
 
         <el-menu
           mode="horizontal"
           :default-active="activeMenu"
-          :ellipsis="true"
+          :ellipsis="false"
           class="top-nav-menu"
           style="--el-menu-bg-color: #fff; background: #fff;"
           @select="handleMenuSelect"
@@ -389,7 +389,7 @@ const breadcrumbPath = computed(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-shrink: 0;
+  min-width: 0;
   margin-right: 24px;
 }
 
@@ -421,6 +421,9 @@ const breadcrumbPath = computed(() => {
   font-weight: 600;
   white-space: nowrap;
   letter-spacing: 0.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 /* ===== 水平导航菜单 ===== */
