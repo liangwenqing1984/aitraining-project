@@ -130,10 +130,10 @@ const highlights = [
 const steps = [
   { key: 'crawl', title: '多源数据采集', desc: '智联/51job 双源爬取，IP代理池自动切换，断点续传实时监控' },
   { key: 'enrich', title: 'AI 数据增强', desc: 'LLM 标准化薪资/技能/行业/学历等 8 个维度，自动提取结构化字段' },
-  { key: 'train', title: '语义模型训练', desc: '岗位领域 Embedding 微调，Pearson+Top-1 双指标评估，一键部署到 Ollama' },
   { key: 'analyze', title: '多维智能分析', desc: '7 维度图表可视化，AI 自动生成市场洞察报告' },
   { key: 'search', title: '语义搜索匹配', desc: '向量化语义搜索职位 + 上传简历智能匹配最优岗位' },
   { key: 'query', title: '自然语言查询', desc: '用中文提问直查数据库，AI 自动生成 SQL 并总结结果' },
+  { key: 'train', title: '语义模型训练', desc: '岗位领域 Embedding 微调，Pearson+Top-1 双指标评估，一键部署到 Ollama' },
   { key: 'chat', title: '知识库问答', desc: '文档向量索引 + RAG 多轮对话，问任何关于系统的问题' },
 ]
 
@@ -215,11 +215,13 @@ function goToDoc(section: string) {
         <div class="quick-entry">
           <span class="entry-label">快速入口：</span>
           <el-button type="primary" :icon="Monitor" @click="goTo('/crawler')">数据采集</el-button>
-          <el-button type="success" :icon="TrendCharts" @click="goTo('/system/training')">模型训练</el-button>
-          <el-button type="warning" :icon="DataAnalysis" @click="goTo('/analysis')">智能分析</el-button>
+          <el-button :icon="Cpu" style="color:#409eff;border-color:#409eff" @click="goTo('/system/enrichment')">AI 增强</el-button>
+          <el-button type="warning" :icon="DataAnalysis" @click="goTo('/daping')">智能分析</el-button>
           <el-button type="danger" :icon="ChatDotRound" @click="goTo('/query')">智能查询</el-button>
           <el-button :icon="Search" style="color:#9b59b6;border-color:#9b59b6" @click="goTo('/rag')">语义搜索</el-button>
-          <el-button :icon="MagicStick" style="color:#ff7043;border-color:#ff7043" @click="goTo('/aibot')">AI 问答</el-button>
+          <el-button type="success" :icon="TrendCharts" @click="goTo('/system/training')">模型训练</el-button>
+          <el-button :icon="Files" style="color:#26a69a;border-color:#26a69a" @click="goTo('/rag/resume')">人岗匹配</el-button>
+          <el-button :icon="MagicStick" style="color:#ff7043;border-color:#ff7043" @click="goTo('/docs')">AI系统帮助</el-button>
         </div>
       </el-card>
     </section>

@@ -900,7 +900,7 @@ onBeforeUnmount(() => {
 .dp-col {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   min-height: 0;
 }
 

@@ -539,7 +539,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 8px;
 }
 
 .stat-card {
@@ -597,7 +597,7 @@ onBeforeUnmount(() => {
 .section-divider {
   display: flex;
   align-items: center;
-  margin: 24px 0 16px;
+  margin: 0 0 12px;
   color: #909399;
   font-size: 13px;
 }

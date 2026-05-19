@@ -1006,70 +1006,97 @@ LIMIT 50;</code></pre>
   },
   'feat-llm-routing': {
     title: 'LLM 任务路由',
-    content: `<p>系统支持同时配置<strong>多个 AI 模型</strong>，不同任务类型自动选择对应模型执行。核心机制：每个 LLM 配置维护一个 <code>task_routing</code> JSONB 数组，声明该模型可处理哪些任务类型。</p>
+    content: `<p>系统支持同时配置<strong>多个 AI 模型</strong>，不同任务类型自动选择对应模型执行。核心机制：每个 LLM 配置维护一个 <code>task_routing</code> JSONB 数组，声明该模型可处理哪些任务类型。支持 <strong>5 个模型提供商，6 种任务类型</strong>。</p>
 
-<h3>四种任务类型</h3>
+<h3>六种任务类型</h3>
 <table>
   <tr><th>任务类型</th><th>标识</th><th>说明</th><th>推荐模型</th></tr>
-  <tr><td>数据增强</td><td><code>enrichment</code></td><td>逐条标准化职位数据（薪资/分类/技能）</td><td>Ollama qwen3:14b / DeepSeek</td></tr>
-  <tr><td>智能洞察</td><td><code>insights</code></td><td>聚合统计 + 生成 Markdown 分析报告</td><td>DeepSeek / GPT-4o</td></tr>
-  <tr><td>NL 查询</td><td><code>query</code></td><td>自然语言 → SQL 转换</td><td>DeepSeek / 智谱 GLM</td></tr>
-  <tr><td>反爬检测</td><td><code>anti-crawl</code></td><td>页面类型分类 + 选择器推荐</td><td>Ollama qwen3:4b</td></tr>
+  <tr><td>数据增强</td><td><code>enrichment</code></td><td>逐条标准化职位数据（薪资/分类/技能/学历/行业）</td><td>DeepSeek V4 Pro</td></tr>
+  <tr><td>智能洞察</td><td><code>insights</code></td><td>聚合统计 + 生成 Markdown 分析报告（含 ECharts 图表配置）</td><td>DeepSeek / GPT-4o</td></tr>
+  <tr><td>NL 查询</td><td><code>query</code></td><td>自然语言 → SQL 转换（Text-to-SQL）</td><td>DeepSeek / 智谱 GLM</td></tr>
+  <tr><td>反爬检测</td><td><code>anti-crawl</code></td><td>页面类型分类 + 反爬特征识别</td><td>Ollama qwen3:4b</td></tr>
+  <tr><td>向量化</td><td><code>embedding</code></td><td>文本 → 768 维向量（简历/岗位/文档）</td><td>Ollama nomic-embed-text / 自训练模型</td></tr>
+  <tr><td>简历解析</td><td><code>resume-parse</code></td><td>PDF/Word 简历 → 18 个结构化字段 JSON</td><td>DeepSeek V4 Pro</td></tr>
+</table>
+
+<h3>五个模型提供商</h3>
+<p>系统内置 <strong>2 个 Provider 类</strong>，覆盖 5 个模型提供方：</p>
+<table>
+  <tr><th>Provider 类</th><th>覆盖提供方</th><th>调用方式</th></tr>
+  <tr><td><code>CloudProvider</code></td><td>OpenAI / Anthropic / DeepSeek / 智谱</td><td>兼容 OpenAI 格式的 HTTP API</td></tr>
+  <tr><td><code>LocalProvider</code></td><td>Ollama</td><td>本地 Ollama REST API（<code>/api/generate</code>、<code>/api/embeddings</code>）</td></tr>
 </table>
 
 <h3>路由选择逻辑</h3>
-<p>当系统需要调用 LLM 时，通过 <code>getConfigForTask(taskType)</code> 方法获取对应配置：</p>
+<p>当系统需要调用 LLM 时，通过 <strong>两条路径</strong> 之一获取配置：</p>
 
-<ol>
-  <li><strong>刷新缓存</strong>：调用 <code>refreshConfigCache()</code> 从 <code>sp_llm_config</code> 表重新加载所有 active 配置</li>
-  <li><strong>精确匹配</strong>：遍历所有配置，检查 <code>task_routing</code> JSONB 数组是否包含当前 <code>taskType</code></li>
-  <li><strong>返回首个匹配</strong>：第一个匹配到的配置即为选中模型</li>
-  <li><strong>兜底策略</strong>：若无匹配，返回第一个 active 配置（保证系统始终有可用模型）</li>
-</ol>
+<h4>路径一：直接调用 <code>callLLM(systemPrompt, userPrompt, options)</code></h4>
+<p>适用于问答机器人等场景，直接传入拼接好的 prompt 文本。</p>
 
-<pre><code>// 核心代码（llm/index.ts）
-async getConfigForTask(taskType: string): Promise&lt;LLMConfig | null&gt; {
-  await this.refreshConfigCache();  // 60s 缓存自动刷新
-  for (const config of this.configs) {
-    if (config.isActive && config.taskRouting?.includes(taskType)) {
-      return config;  // 返回首个匹配
-    }
+<h4>路径二：提示词系统调用 <code>callLLMWithPrompts(category, userPromptVars, options)</code></h4>
+<p>适用于数据增强、简历解析等业务场景，自动从 DB <code>sp_prompts</code> 表拉取该分类的活跃提示词，并用 <code>interpolateTemplate()</code> 替换模板变量后发送。</p>
+
+<pre><code>// 核心路由代码（llm/index.ts）
+async getConfigForTask(taskType: LLMTaskType): Promise&lt;LLMConfig | null&gt; {
+  // 60s TTL 缓存检查，过期自动刷新
+  if (Date.now() - this.configCacheTime > 60000) {
+    await this.refreshConfigCache();
   }
-  return this.configs[0] || null;  // 兜底
+  // 第一匹配：taskRouting 包含当前 taskType
+  const config = this.configCache.find(c =>
+    c.isActive !== false && Array.isArray(c.taskRouting) && c.taskRouting.includes(taskType)
+  );
+  // 兜底：返回首个 active 配置
+  if (!config) {
+    return this.configCache.find(c => c.isActive !== false) || null;
+  }
+  return config;
 }</code></pre>
 
 <h3>60 秒缓存机制</h3>
 <ul>
-  <li>配置列表缓存在 <code>this.configs</code> 内存数组中</li>
-  <li>每次 <code>getConfigForTask()</code> 调用检查缓存时间戳，超过 60 秒自动刷新</li>
+  <li>配置列表缓存在 <code>configCache</code> 内存数组中（单例模式）</li>
+  <li>每次 <code>getConfigForTask()</code> 调用检查时间戳，超过 60 秒自动刷新</li>
   <li>目的：减少数据库查询频率（单次任务可能触发数十次 LLM 调用）</li>
-  <li>手动调用 <code>refreshConfigCache(true)</code> 可强制刷新</li>
+  <li>前端修改配置后通过 <code>POST /api/llm-config/refresh-cache</code> 强制刷新</li>
 </ul>
 
 <h3>路由示例</h3>
-<p>假设系统配置了两个模型：</p>
+<p>假设系统配置了三个模型：</p>
 <table>
-  <tr><th>模型</th><th>task_routing</th></tr>
-  <tr><td>DeepSeek v4-pro</td><td>["enrichment", "insights", "query"]</td></tr>
-  <tr><td>Ollama qwen3:4b</td><td>["anti-crawl"]</td></tr>
+  <tr><th>模型</th><th>provider</th><th>task_routing</th></tr>
+  <tr><td>DeepSeek V4 Pro</td><td>deepseek</td><td>["enrichment", "insights", "query", "resume-parse"]</td></tr>
+  <tr><td>Ollama qwen3:4b</td><td>ollama</td><td>["anti-crawl"]</td></tr>
+  <tr><td>position-embed-model</td><td>ollama</td><td>["embedding"]</td></tr>
 </table>
 
-<p>当爬虫触发反爬检测时，<code>getConfigForTask("anti-crawl")</code> 会匹配到 Ollama qwen3:4b（低延迟本地推理）；<br>
-当用户发起 NL 查询时，<code>getConfigForTask("query")</code> 会匹配到 DeepSeek v4-pro（强 SQL 生成能力）。</p>
+<p>当爬虫触发反爬检测时，<code>getConfigForTask("anti-crawl")</code> → Ollama qwen3:4b（低延迟本地推理）；<br>
+当用户上传简历时，<code>getConfigForTask("resume-parse")</code> → DeepSeek V4 Pro（强结构化提取能力）；<br>
+当生成语义向量时，<code>getConfigForTask("embedding")</code> → position-embed-model（领域微调 Embedding）。</p>
 
 <h3>完整调用链</h3>
-<pre><code>用户操作 / 爬虫事件
+<pre><code>用户操作 / 爬虫事件 / 定时任务
         ↓
-任务类型确定 (enrichment|insights|query|anti-crawl)
+确定 taskType (enrichment|insights|query|anti-crawl|embedding|resume-parse)
+        ↓
+    ┌─ 路径一：callLLM(systemPrompt, userPrompt, options)
+    │   └─ 问答机器人等直接拼装 prompt 的场景
+    │
+    └─ 路径二：callLLMWithPrompts(category, userPromptVars, options)
+        └─ 数据增强/简历解析等 DB 提示词场景
+            └─ resolvePrompts(category, userPromptVars)
+                ├─ 查询 sp_prompts (category + isActive=true)
+                │   ├─ 有 → 使用 DB 存储的提示词
+                │   └─ 无 → 回退 prompts.ts 硬编码默认值
+                └─ interpolateTemplate(userPrompt, userPromptVars)
+                    └─ 正则 \${varName} 替换为实际数据
         ↓
 llmService.getConfigForTask(taskType)
-        ↓
-  ┌─ refreshConfigCache() → 检查 60s 缓存
-  │   └─ 过期 → 查询 sp_llm_config WHERE is_active = true
-  │   └─ 未过期 → 使用内存缓存
-  ├─ 遍历 configs，匹配 taskRouting JSONB 数组
-  ├─ 匹配命中 → 返回对应 API Key + Base URL
-  └─ 无匹配 → 兜底返回首个 active 配置
+        ├─ 检查 configCache 时间戳 (60s TTL)
+        ├─ 过期 → refreshConfigCache() 查 sp_llm_config
+        ├─ 遍历 configs，匹配 taskRouting JSONB 数组
+        ├─ 命中 → 返回对应 API Key + Base URL
+        └─ 未命中 → 兜底返回首个 active 配置
         ↓
 初始化 Provider (CloudProvider / LocalProvider)
         ↓
@@ -1078,9 +1105,10 @@ llmService.getConfigForTask(taskType)
 <h3>API Key 加密存储</h3>
 <ul>
   <li>所有 API Key 使用 <strong>AES-256-GCM</strong> 加密后存入 <code>api_key_encrypted</code> 字段</li>
-  <li>格式检测：系统自动识别明文/密文（<code>isEncrypted()</code> 正则校验 Base64:Base64 格式）</li>
-  <li>存量明文 Key 在首次使用时自动升级为密文</li>
-  <li>加密密钥从环境变量 <code>ENCRYPTION_KEY</code> 读取，无则使用内置默认密钥</li>
+  <li>加密格式：<code>hex_iv:hex_auth_tag:hex_ciphertext</code>（共三段，冒号分隔）</li>
+  <li>格式检测：<code>isEncrypted()</code> 正则校验 <code>/^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/</code> 判断明文/密文</li>
+  <li>存量明文 Key 在首次使用时自动兼容（<code>decrypt()</code> 返回原值）</li>
+  <li>加密密钥从环境变量 <code>LLM_ENCRYPTION_KEY</code> 读取，无则使用内置默认密钥</li>
 </ul>`
   },
   'feat-embedding': {
@@ -1338,7 +1366,36 @@ LIMIT $4;</code></pre>
   <li><strong>夹角越小（cos → 1）</strong>→ 语义越相近</li>
   <li><strong>夹角越大（cos → 0）</strong>→ 语义越无关</li>
   <li>pgvector 的 <code>&lt;=&gt;</code> 运算符算的是余弦距离（= 1 - 余弦相似度），所以 <code>ORDER BY embedding &lt;=&gt; query_vector</code> 按相似度从高到低排序</li>
-</ul>`
+</ul>
+
+<h4>Q: pgvector 在本系统中的作用是什么？向量数据存在哪里？</h4>
+<p><strong>pgvector</strong> 是 PostgreSQL 的向量扩展插件，本系统所有向量数据的<strong>存储和相似度检索</strong>都依赖它。统一使用 <strong>768 维向量 + 余弦相似度（cosine_ops）</strong>，共 4 张向量表支撑 3 大应用场景：</p>
+
+<h4>四张向量表</h4>
+<table>
+  <tr><th>表名</th><th>向量列</th><th>存储内容</th><th>使用场景</th></tr>
+  <tr><td><code>sp_job_embeddings</code></td><td><code>embedding vector(768)</code></td><td>职位增强后的自然语言文本向量</td><td>RAG 语义搜索</td></tr>
+  <tr><td><code>sp_resumes</code></td><td><code>embedding vector(768)</code></td><td>简历结构化关键字段向量</td><td>简历人岗匹配</td></tr>
+  <tr><td><code>sp_internal_jobs</code></td><td><code>embedding vector(768)</code></td><td>内部岗位（标题+描述+要求）向量</td><td>简历人岗匹配</td></tr>
+  <tr><td><code>sp_doc_embeddings</code></td><td><code>embedding vector(768)</code></td><td>帮助文档/源代码/诊断文档分块向量</td><td>AI 问答 RAG</td></tr>
+</table>
+
+<h4>三大应用场景</h4>
+<p><strong>1. RAG 语义搜索</strong>（<code>sp_job_embeddings</code>）</p>
+<pre><code>职位文本 → nomic-embed-text → 768维向量 → IVFFlat 余弦索引
+  → 用户输入 → 同样向量化 → cosine 相似度排序 → 返回最相关职位</code></pre>
+<p><strong>2. 简历人岗匹配</strong>（<code>sp_resumes</code> + <code>sp_internal_jobs</code>）</p>
+<pre><code>简历向量 ↔ 岗位向量 → 余弦相似度 × 0.4 → 语义匹配分（满分40）
+  + 硬性规则分(40) + 技能加分(20) = 总分100</code></pre>
+<p><strong>3. AI 问答 RAG</strong>（<code>sp_doc_embeddings</code>）</p>
+<pre><code>用户提问 → 向量语义搜索 sp_doc_embeddings → Top6 相关文档片段
+  → 注入 System Prompt 上下文 → LLM 生成回答 + 引用来源</code></pre>
+
+<h4>索引加速</h4>
+<p>系统使用 <strong>IVFFlat 索引</strong>（100 lists, vector_cosine_ops），比全量 KNN 暴力搜索快 <strong>10-100 倍</strong>。pgvector 的 <code>&lt;=&gt;</code> 运算符计算余弦距离（1 - 余弦相似度），值越小表示向量越接近。</p>
+
+<h4>降级策略</h4>
+<p>向量搜索和匹配功能均内置了<strong>多层降级</strong>：vector embedding 生成失败 → 回退预存向量 → 关键词兜底 → 纯规则匹配。即使 pgvector 不可用，核心匹配功能仍可通过关键词和硬性规则继续工作（AI 问答的内存关键词匹配始终作为兜底）。</p>`
   },
   'feat-proxy': {
     title: 'IP 代理池',
