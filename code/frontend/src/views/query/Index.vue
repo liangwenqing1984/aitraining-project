@@ -390,9 +390,9 @@ onMounted(() => {
   background: #e8f4ff; color: #409EFF;
 }
 .message.user .message-avatar { background: #409EFF; color: white; }
-.message-body { max-width: 75%; }
+.message-body { max-width: 75%; min-width: 0; }
 .message-text { line-height: 1.6; white-space: pre-wrap; }
-.message-table { margin-top: 12px; }
+.message-table { margin-top: 12px; overflow-x: auto; max-width: 100%; }
 .table-footer { text-align: center; color: #909399; font-size: 12px; margin-top: 8px; }
 .message-sql { margin-top: 8px; padding: 8px 12px; background: #f5f7fa; border-radius: 4px; }
 

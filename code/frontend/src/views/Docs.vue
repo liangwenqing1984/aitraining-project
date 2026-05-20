@@ -3174,7 +3174,7 @@ spawn('python', [
 </div>
 
 <div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
-  Q14：模型训练用的是原始爬取字段还是数据增强后的字段？为什么？
+  Q16：模型训练用的是原始爬取字段还是数据增强后的字段？为什么？
 </div>
 <div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
 
@@ -3207,6 +3207,37 @@ LEFT JOIN sp_jobs j ON e.job_id = j.job_id AND e.task_id = j.task_id</pre>
   <p style="margin: 6px 0 0 16px;"><strong>1. 正负样本分组依赖增强字段</strong>：正样本 = 同 L2 分类（如都是"Java开发"），负样本 = 不同 L1 分类（如"技术" vs "销售"）。原始爬取数据根本没有 L1/L2 分类标签，不增强就分不了组。</p>
   <p style="margin: 6px 0 0 16px;"><strong>2. 原始字段格式不统一</strong>：薪资可能是 "10K-15K"、"1万-1.5万/月"、"面议"；技能可能混在职位描述里未提取。没有 AI 增强的标准化就无法生成可对比的训练文本。</p>
   <p style="margin: 6px 0 0 16px;"><strong>3. buildJobText() 需要 10 个维度</strong>：该函数拼接的训练文本包含 职位名+分类+子分类+技能+行业+公司+城市+学历+薪资+工作模式，其中 7 个维度来自增强表，仅 3 个来自原始表。</p>
+</div>
+
+<div style="margin: 20px 0 8px; padding: 8px 12px; background: linear-gradient(135deg, #ecf5ff, #d9ecff); border-left: 4px solid #409eff; border-radius: 0 4px 4px 0; font-weight: 600; font-size: 14px; color: #303133;">
+  Q17：为什么训练完成的模型文件 500+MB，部署到 Ollama 后只有 200+MB？
+</div>
+<div style="margin: 0 0 16px 12px; padding: 0 8px; border-left: 2px solid #e4e7ed; color: #606266; font-size: 13px; line-height: 1.8;">
+<p style="margin: 6px 0;">这是<strong>正常现象</strong>，两个数字代表不同含义：</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">磁盘 500+MB — 完整训练产物</h5>
+<p style="margin: 6px 0;"><code>data/models/model_{id}/</code> 目录包含训练过程的所有文件：</p>
+<table style="margin: 10px 0;">
+  <tr style="background:#f5f7fa;"><th style="padding:4px 10px;text-align:left;">文件/目录</th><th style="padding:4px 10px;text-align:left;">说明</th></tr>
+  <tr><td style="padding:3px 10px;"><code>model.safetensors</code></td><td style="padding:3px 10px;">FP32 全精度模型权重（~500MB+）</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;"><code>optimizer.pt</code></td><td style="padding:3px 10px;">优化器状态（Adam 动量等，仅训练需要）</td></tr>
+  <tr><td style="padding:3px 10px;"><code>scheduler.pt</code></td><td style="padding:3px 10px;">学习率调度器状态</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;"><code>tokenizer.json</code> + <code>vocab.txt</code></td><td style="padding:3px 10px;">分词器文件</td></tr>
+  <tr><td style="padding:3px 10px;"><code>1_Pooling/</code>、<code>2_Dense/</code></td><td style="padding:3px 10px;">sentence-transformers 模块子目录</td></tr>
+  <tr style="background:#f5f7fa;"><td style="padding:3px 10px;">中间检查点</td><td style="padding:3px 10px;">训练过程中的 snapshot</td></tr>
+</table>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">Ollama 200+MB — 纯推理格式</h5>
+<p style="margin: 6px 0;">部署到 Ollama 时发生两件事：</p>
+<p style="margin: 6px 0 0 16px;"><strong>1. 格式转换</strong>：PyTorch/SafeTensors → GGUF（Ollama 原生格式），丢掉优化器状态、调度器、检查点等训练专用文件，保留纯权重。</p>
+<p style="margin: 6px 0 0 16px;"><strong>2. 自动量化压缩</strong>：FP32（32位浮点）→ Q4_K_M 或 Q4_0（4位整数），体积约缩到 <strong>1/2</strong>。例如 522.6MB 的 FP32 模型量化后约 270-280MB。</p>
+
+<h5 style="margin: 12px 0 6px; color: #409eff; font-size: 13px;">结论</h5>
+<pre style="margin: 8px 0; padding: 10px; background: #2d2d2d; color: #e6e6e6; border-radius: 4px; font-size: 12px; line-height: 1.6;">
+522.6MB (磁盘)  = 训练完整产物（含优化器状态、检查点、全精度权重）
+  274MB (Ollama) = 纯推理模型（GGUF格式 + 4bit量化，仅权重）
+</pre>
+<p style="margin: 6px 0;">两者精度差异在 embedding 场景下通常很小（余弦相似度下降 &lt;0.5%），不影响实际使用。训练产物保留在磁盘可以随时重新部署或以不同精度量化。</p>
 </div>`
   },
   'feat-dashboard': {
