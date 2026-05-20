@@ -365,7 +365,7 @@ onMounted(() => {
 .history-delete { opacity: 0; transition: opacity 0.15s; flex-shrink: 0; }
 .history-item:hover .history-delete { opacity: 1; }
 
-.chat-panel { flex: 1; display: flex; flex-direction: column; }
+.chat-panel { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat-header {
   padding: 12px 20px; border-bottom: 1px solid #e4e7ed;
   display: flex; align-items: baseline; gap: 12px;
@@ -373,7 +373,7 @@ onMounted(() => {
 .chat-header h3 { margin: 0; font-size: 16px; }
 .chat-subtitle { font-size: 12px; color: #909399; }
 
-.chat-messages { flex: 1; overflow-y: auto; padding: 20px; }
+.chat-messages { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 20px; }
 
 .welcome-area { text-align: center; padding: 60px 20px; }
 .welcome-area h2 { margin: 16px 0 8px; font-size: 20px; }
@@ -390,7 +390,7 @@ onMounted(() => {
   background: #e8f4ff; color: #409EFF;
 }
 .message.user .message-avatar { background: #409EFF; color: white; }
-.message-body { max-width: 75%; min-width: 0; }
+.message-body { max-width: 75%; min-width: 0; overflow: hidden; }
 .message-text { line-height: 1.6; white-space: pre-wrap; }
 .message-table { margin-top: 12px; overflow-x: auto; max-width: 100%; }
 .table-footer { text-align: center; color: #909399; font-size: 12px; margin-top: 8px; }
