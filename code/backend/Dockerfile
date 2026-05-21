@@ -8,9 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
-# Python ML 依赖（CPU 版 torch 减小镜像体积）
+# Python ML 依赖（torch 用 CPU 版减小镜像体积，--index-url 只对 torch 生效）
 RUN pip3 install --no-cache-dir --break-system-packages \
-    torch --index-url https://download.pytorch.org/whl/cpu \
+    torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip3 install --no-cache-dir --break-system-packages \
     sentence-transformers \
     huggingface_hub
 
