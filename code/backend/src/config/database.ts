@@ -12,17 +12,18 @@ types.setTypeParser(1184, (value: string) => {
   return value.replace(/\.\d+.*$/, '');
 });
 
-// PostgreSQL连接配置
+// PostgreSQL 连接配置 — 优先使用环境变量（Docker），否则回退到默认值
 const pool = new Pool({
-  host: '10.1.1.113',
-  port: 7300,
-  database: 'training_exercises',
-  user: 'liangwenqing',
-  password: 'liangwenqing',
-  max: 50, // 🔧 增加连接池最大连接数，从20提升到50，支持高并发爬虫任务
-  idleTimeoutMillis: 30000, // 空闲连接超时时间
-  connectionTimeoutMillis: 5000, // 🔧 增加连接超时时间，从2秒提升到5秒
+  host: process.env.DB_HOST || '192.168.137.20',
+  port: parseInt(process.env.DB_PORT || '5432', 10),
+  database: process.env.DB_NAME || 'training_exercises',
+  user: process.env.DB_USER || 'liangwenqing',
+  password: process.env.DB_PASSWORD || 'liangwenqing',
+  max: 50,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
+
 
 // 🔧 添加连接池监控日志 + 北京时区设置
 pool.on('connect', (client) => {

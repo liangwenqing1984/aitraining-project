@@ -1,0 +1,14 @@
+node_modules
+dist
+.cache
+.tsx
+*.tsbuildinfo
+data/csv
+data/backups
+data/training
+data/models
+.env
+debug-*.js
+extract-*.js
+Dockerfile
+.dockerignore
