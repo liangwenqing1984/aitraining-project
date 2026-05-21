@@ -16,10 +16,10 @@ async function extractCityCodes() {
   console.log('🚀 开始提取智联招聘城市代码...\n');
   
   // 使用项目中已安装的Chrome路径
-  const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
+  const CHROME_PATH = require('./chrome-path');
   
   const browser = await puppeteer.launch({
-    executablePath: chromePath,
+    executablePath: CHROME_PATH,
     headless: true,
     args: [
       '--no-sandbox',

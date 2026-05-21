@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Chrome路径
-const CHROME_PATH = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
+const CHROME_PATH = require('./chrome-path');
 
 async function extractCityCodes() {
   console.log('🚀 开始从JavaScript和API中提取城市代码...\n');

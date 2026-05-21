@@ -5,11 +5,11 @@ const path = require('path');
 async function debugCrawl() {
   console.log('开始详细调试爬取...\n');
   
-  const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
+  const CHROME_PATH = require('./chrome-path');
   
   // 使用非无头模式，可以看到浏览器窗口
   const browser = await puppeteer.launch({
-    executablePath: chromePath,
+    executablePath: CHROME_PATH,
     headless: false,  // 设置为 false 可以看到浏览器
     slowMo: 500,      // 减慢操作速度，便于观察
     args: [

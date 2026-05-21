@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 import { db } from '../config/database';
+import { CHROME_PATH } from '../config/chromePath';
 import { ApiResponse } from '../types';
 import { generateAllInsights, getAllInsightsHistory, getInsightsReport } from '../services/llm/insights';
 
@@ -256,7 +257,7 @@ ${sectionsHtml}
 
     try {
       await new Promise<void>((resolve, reject) => {
-        const chromePath = 'C:\\Users\\Administrator\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe';
+        const chromePath = CHROME_PATH;
         execFile(chromePath, [
           '--headless',
           '--disable-gpu',

@@ -8,6 +8,29 @@ import fs from 'fs';
 // 跟踪运行中的训练进程，支持停止操作
 const runningProcesses = new Map<number, ChildProcess>();
 
+// 自动探测可用的 Python 命令
+let _pythonCmd: string | null = null;
+function getPythonCmd(): string {
+  if (_pythonCmd) return _pythonCmd;
+  if (process.platform === 'win32') {
+    _pythonCmd = 'python';
+    return _pythonCmd;
+  }
+  // Linux: try python3 first, then python
+  for (const cmd of ['python3', 'python']) {
+    try {
+      const result = require('child_process').spawnSync(cmd, ['--version'], { stdio: 'pipe' });
+      if (result.status === 0) {
+        _pythonCmd = cmd;
+        console.log(`[Training] Python 命令探测: ${cmd}`);
+        return _pythonCmd;
+      }
+    } catch {}
+  }
+  _pythonCmd = 'python3'; // fallback
+  return _pythonCmd;
+}
+
 /**
  * POST /api/training/dataset/build
  */
@@ -115,7 +138,7 @@ async function runPythonTraining(
   fs.mkdirSync(modelOutputDir, { recursive: true });
 
   // 检查 Python 是否可用
-  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  const pythonCmd = getPythonCmd();
   const scriptPath = path.resolve(__dirname, '../../scripts/train_embedding.py');
 
   const args = [
@@ -454,7 +477,7 @@ export async function evaluateModel(req: Request, res: Response) {
       return;
     }
 
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+    const pythonCmd = getPythonCmd();
     const scriptPath = path.resolve(__dirname, '../../scripts/evaluate_model.py');
     const args = [scriptPath, '--model', modelPath, '--dataset', datasetPath];
 

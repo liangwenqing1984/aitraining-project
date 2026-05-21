@@ -1,10 +1,11 @@
 // 诊断脚本v2：用 Puppeteer 拦截 51job SPA详情页 (we.51job.com) 的 API 请求
 import puppeteer from 'puppeteer';
 import * as fs from 'fs';
+import { CHROME_PATH, getUserDataDir } from '../config/chromePath';
 
 async function main() {
-  const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
-  const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\job51_detail_sniff_${Date.now()}`;
+  const chromePath = CHROME_PATH;
+  const userDataDir = getUserDataDir('job51_detail_sniff');
 
   const browser = await puppeteer.launch({
     executablePath: chromePath,

@@ -1,10 +1,11 @@
 // 诊断脚本：用 Puppeteer 拦截智联详情页的 API 请求，逆向出职位详情 API 端点
 import puppeteer from 'puppeteer';
 import * as fs from 'fs';
+import { CHROME_PATH, getUserDataDir } from '../config/chromePath';
 
 async function main() {
-  const chromePath = 'C:\\Users\\Administrator\\.cache\\puppeteer\\chrome\\win64-131.0.6778.204\\chrome-win64\\chrome.exe';
-  const userDataDir = `C:\\Users\\Administrator\\.cache\\puppeteer\\tmp\\zhilian_api_sniff_${Date.now()}`;
+  const chromePath = CHROME_PATH;
+  const userDataDir = getUserDataDir('zhilian_api_sniff');
 
   const browser = await puppeteer.launch({
     executablePath: chromePath,

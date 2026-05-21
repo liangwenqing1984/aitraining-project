@@ -1798,9 +1798,16 @@ def freeProxy01():
                                                       ↓
                                               浏览器 --proxy-server=...</code></pre>
 <h5>Redis 启动方式</h5>
-<p>Redis 在 <code>start-dev.bat</code> 或 <code>start-proxy-pool.bat</code> 中自动启动：</p>
+<p>Redis 在启动脚本中自动启动：</p>
+<p><strong>Windows</strong>（<code>start-dev.bat</code>）：</p>
 <pre><code>start "Redis-Server" /MIN "C:\Program Files\Redis\redis-server.exe" "C:\Program Files\Redis\redis.windows.conf"</code></pre>
-<p>配置文件 <code>redis.windows.conf</code> 中设定了密码 <code>requirepass pwd</code>。</p>
+<p><strong>Linux</strong>（<code>start-dev.sh</code>）：</p>
+<pre><code># 方式一：使用系统服务
+sudo systemctl start redis
+
+# 方式二：手动启动
+redis-server --daemonize yes</code></pre>
+<p>配置文件（Windows: <code>redis.windows.conf</code>，Linux: <code>/etc/redis/redis.conf</code>）中设定了密码 <code>requirepass pwd</code>。</p>
 <h5>如果 Redis 不可用</h5>
 <ul>
   <li>代理池 API（端口 5010）无法启动 → <code>ProxyPool.isAvailable()</code> 返回 <code>false</code></li>
