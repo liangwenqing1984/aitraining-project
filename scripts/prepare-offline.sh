@@ -74,7 +74,7 @@ else
     pip3 download -d /wheels \
       torch sentence-transformers huggingface_hub \
       --index-url https://download.pytorch.org/whl/cpu \
-      --extra-index-url https://pypi.org/simple
+      --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
   echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
 fi
 
