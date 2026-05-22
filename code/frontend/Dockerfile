@@ -1,9 +1,9 @@
-FROM node:20-bookworm
+FROM aitrain-base:latest
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm install --legacy-peer-deps
+RUN npm install --legacy-peer-deps && npm cache clean --force
 
 COPY . .
 

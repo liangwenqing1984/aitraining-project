@@ -1,0 +1,29 @@
+# 基础镜像：预装 Chromium + Docker CLI
+# 构建: docker build -t aitrain-base:latest -f Dockerfile.base .
+FROM node:20-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-sandbox \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Docker CLI：先尝试 COPY 本地二进制，没有就在线下载
+COPY docker-bin/ /tmp/docker-bin/
+
+RUN if [ -f /tmp/docker-bin/docker ]; then \
+      cp /tmp/docker-bin/docker /usr/local/bin/docker \
+      && chmod +x /usr/local/bin/docker \
+      && echo "Docker CLI 已从本地加载"; \
+    else \
+      echo "在线下载 Docker CLI..."; \
+      curl -fsSLo /tmp/docker.tgz https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz \
+      && tar xzf /tmp/docker.tgz -C /usr/local/bin --strip-components=1 docker/docker \
+      && rm /tmp/docker.tgz \
+      && chmod +x /usr/local/bin/docker; \
+    fi \
+    && rm -rf /tmp/docker-bin
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
+    CHROME_PATH=/usr/bin/chromium

@@ -100,8 +100,16 @@ code/backend/test-*.js
 # 调试文件
 debug/
 
-# 代理池外部源码
-code/proxy-pool/repo/
+# 离线依赖目录（内容不提交，只保留 .gitkeep 占位）
+code/proxy-pool/repo/*
+!code/proxy-pool/repo/.gitkeep
+code/proxy-pool/wheels/*
+!code/proxy-pool/wheels/.gitkeep
+code/training/wheels/*
+!code/training/wheels/.gitkeep
+# docker 离线二进制
+docker-bin/*
+!docker-bin/.gitkeep
 
 # Claude配置
 .claude/
