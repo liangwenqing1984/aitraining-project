@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm install && npm cache clean --force
 
 # Copy source
 COPY tsconfig.json ./
@@ -31,8 +31,13 @@ COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY chrome-path.js ./
 
-# Build TypeScript
-RUN npm run build
+# Build TypeScript，编译后删除源码和开发依赖
+RUN npm run build \
+    && rm -rf src/ tsconfig.json \
+    && npm prune --production
+
+# 清理 pip/tmp 缓存
+RUN pip3 cache purge 2>/dev/null; rm -rf /root/.cache /tmp/*
 
 EXPOSE 3004
 
