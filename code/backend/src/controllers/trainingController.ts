@@ -1,35 +1,15 @@
 import { Request, Response } from 'express';
 import { db } from '../config/database';
 import { buildTrainingDataset, listDatasets, previewDataset } from '../services/llm/trainingData';
-import { ChildProcess, spawn } from 'child_process';
+import { ChildProcess, spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
+// 训练容器名（由 docker-compose 注入 TRAINER_CONTAINER 环境变量）
+const TRAINER = process.env.TRAINER_CONTAINER || 'aitrain-trainer';
+
 // 跟踪运行中的训练进程，支持停止操作
 const runningProcesses = new Map<number, ChildProcess>();
-
-// 自动探测可用的 Python 命令
-let _pythonCmd: string | null = null;
-function getPythonCmd(): string {
-  if (_pythonCmd) return _pythonCmd;
-  if (process.platform === 'win32') {
-    _pythonCmd = 'python';
-    return _pythonCmd;
-  }
-  // Linux: try python3 first, then python
-  for (const cmd of ['python3', 'python']) {
-    try {
-      const result = require('child_process').spawnSync(cmd, ['--version'], { stdio: 'pipe' });
-      if (result.status === 0) {
-        _pythonCmd = cmd;
-        console.log(`[Training] Python 命令探测: ${cmd}`);
-        return _pythonCmd;
-      }
-    } catch {}
-  }
-  _pythonCmd = 'python3'; // fallback
-  return _pythonCmd;
-}
 
 /**
  * POST /api/training/dataset/build
@@ -137,9 +117,8 @@ async function runPythonTraining(
   const modelOutputDir = path.resolve(__dirname, '../../data/models', `model_${jobId}`);
   fs.mkdirSync(modelOutputDir, { recursive: true });
 
-  // 检查 Python 是否可用
-  const pythonCmd = getPythonCmd();
-  const scriptPath = path.resolve(__dirname, '../../scripts/train_embedding.py');
+  // 训练脚本在 trainer 容器的 /scripts 下，数据通过共享卷 backend_data 传递
+  const scriptPath = '/scripts/train_embedding.py';
 
   const args = [
     scriptPath,
@@ -151,19 +130,14 @@ async function runPythonTraining(
     '--lr', String(params.learningRate),
   ];
 
-  console.log(`[Training] 启动 Python: ${pythonCmd} ${args.join(' ')}`);
+  console.log(`[Training] docker exec ${TRAINER} python3 ${args.join(' ')}`);
 
-  const env = {
-    ...process.env,
-    PYTHONUNBUFFERED: '1',
-    PYTHONIOENCODING: 'utf-8',
-    HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com',
-    HF_HUB_ENABLE_HF_XET: '0',
-  };
-
-  const child = spawn(pythonCmd, args, {
+  const child = spawn('docker', [
+    'exec', '-i', TRAINER,
+    'python3',
+    ...args,
+  ], {
     cwd: path.resolve(__dirname, '../..'),
-    env,
   });
 
   runningProcesses.set(jobId, child);
@@ -352,16 +326,10 @@ export async function stopTraining(req: Request, res: Response) {
       return res.status(404).json({ success: false, error: '该任务未在运行或已结束' });
     }
 
-    const pid = child.pid;
-    if (pid) {
-      try {
-        if (process.platform === 'win32') {
-          spawn('taskkill', ['/PID', String(pid), '/T', '/F']);
-        } else {
-          process.kill(-pid, 'SIGTERM');
-        }
-      } catch {}
-    }
+    // 通过 docker exec 终止训练容器内的 Python 进程
+    try {
+      execSync(`docker exec ${TRAINER} pkill -f train_embedding.py`, { timeout: 5000 });
+    } catch {}
 
     child.kill('SIGTERM');
     runningProcesses.delete(id);
@@ -477,21 +445,17 @@ export async function evaluateModel(req: Request, res: Response) {
       return;
     }
 
-    const pythonCmd = getPythonCmd();
-    const scriptPath = path.resolve(__dirname, '../../scripts/evaluate_model.py');
+    const scriptPath = '/scripts/evaluate_model.py';
     const args = [scriptPath, '--model', modelPath, '--dataset', datasetPath];
 
-    console.log(`[Training] 启动评估: ${pythonCmd} ${args.join(' ')}`);
+    console.log(`[Training] docker exec ${TRAINER} python3 ${args.join(' ')}`);
 
-    const child = spawn(pythonCmd, args, {
+    const child = spawn('docker', [
+      'exec', '-i', TRAINER,
+      'python3',
+      ...args,
+    ], {
       cwd: path.resolve(__dirname, '../..'),
-      env: {
-        ...process.env,
-        PYTHONUNBUFFERED: '1',
-        PYTHONIOENCODING: 'utf-8',
-        HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com',
-        HF_HUB_ENABLE_HF_XET: '0',
-      },
     });
 
     let stdout = '';

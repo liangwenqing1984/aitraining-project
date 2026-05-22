@@ -36,6 +36,20 @@ services:
       timeout: 5s
       retries: 5
 
+  # ==================== ML 训练容器（Python + torch，按需调用） ====================
+  trainer:
+    build:
+      context: ./code/training
+      dockerfile: Dockerfile
+    container_name: aitrain-trainer
+    restart: unless-stopped
+    volumes:
+      - backend_data:/app/data
+      - ./code/backend/scripts:/scripts:ro
+    environment:
+      HF_ENDPOINT: https://hf-mirror.com
+      HF_HUB_ENABLE_HF_XET: "0"
+
   # ==================== 后端 API 服务 ====================
   backend:
     build:
@@ -56,8 +70,10 @@ services:
       REDIS_PORT: "6379"
       REDIS_PASSWORD: pwd
       CHROME_PATH: /usr/bin/chromium
+      TRAINER_CONTAINER: aitrain-trainer
     volumes:
       - backend_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy
