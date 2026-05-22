@@ -52,7 +52,7 @@ if [ -f "$REPO_DIR/requirements.txt" ]; then
       -v "$REPO_DIR:/repo:ro" \
       -v "$WHEELS_DIR:/wheels" \
       python:3.11-slim-bookworm \
-      pip3 download -d /wheels -r /repo/requirements.txt
+      pip3 download --timeout 300 -d /wheels -r /repo/requirements.txt
     echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
   fi
 else
@@ -71,10 +71,10 @@ else
   docker run --rm \
     -v "$WHEELS_DIR:/wheels" \
     python:3.11-slim-bookworm \
-    pip3 download -d /wheels \
+    pip3 download --timeout 300 -d /wheels \
       torch sentence-transformers huggingface_hub \
       --index-url https://download.pytorch.org/whl/cpu \
-      --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
+      --extra-index-url https://pypi.org/simple
   echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
 fi
 
