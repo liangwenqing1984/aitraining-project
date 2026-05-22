@@ -36,6 +36,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # ==================== IP 代理池（jhao104/proxy_pool + Redis） ====================
+  proxy-pool:
+    build:
+      context: ./code/proxy-pool
+      dockerfile: Dockerfile
+    container_name: aitrain-proxy-pool
+    restart: unless-stopped
+    ports:
+      - "5010:5010"
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: pwd
+      REDIS_DB: "1"
+    depends_on:
+      redis:
+        condition: service_healthy
+
   # ==================== ML 训练容器（Python + torch，按需调用） ====================
   trainer:
     build:
@@ -71,6 +89,7 @@ services:
       REDIS_PASSWORD: pwd
       CHROME_PATH: /usr/bin/chromium
       TRAINER_CONTAINER: aitrain-trainer
+      PROXY_POOL_URL: http://proxy-pool:5010
     volumes:
       - backend_data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock

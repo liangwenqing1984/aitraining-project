@@ -100,5 +100,8 @@ code/backend/test-*.js
 # 调试文件
 debug/
 
+# 代理池外部源码
+code/proxy-pool/repo/
+
 # Claude配置
 .claude/

@@ -1,8 +1,14 @@
 # 开发模式：挂载源码目录，代码变更热重载，无需重新构建镜像
 # 首次使用需先构建开发镜像: docker compose -f docker-compose.yml -f docker-compose.dev.yml build backend
+# 代理池开发需先克隆: git clone https://github.com/jhao104/proxy_pool.git code/proxy-pool/repo
 # 启动: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 
 services:
+  # ==================== 代理池：挂载源码，修改后需手动 restart 容器 ====================
+  proxy-pool:
+    volumes:
+      - ./code/proxy-pool/repo:/app
+
   # ==================== 后端：tsx watch 热重载 ====================
   backend:
     build:
