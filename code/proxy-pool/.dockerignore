@@ -1,6 +1,5 @@
 Dockerfile
 .dockerignore
-entrypoint.sh
 __pycache__
 *.pyc
 .git

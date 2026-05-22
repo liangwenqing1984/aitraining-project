@@ -71,10 +71,13 @@ else
   docker run --rm \
     -v "$WHEELS_DIR:/wheels" \
     python:3.11-slim-bookworm \
-    bash -c "pip3 download --timeout 300 -d /wheels \
-      torch sentence-transformers huggingface_hub \
-      --index-url https://download.pytorch.org/whl/cpu \
-      --extra-index-url https://pypi.org/simple \
+    bash -c "\
+      pip3 download --timeout 300 -d /wheels torch \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --trusted-host download.pytorch.org \
+      && pip3 download --timeout 300 -d /wheels sentence-transformers huggingface_hub \
+        --index-url https://pypi.org/simple \
+        --trusted-host pypi.org --trusted-host files.pythonhosted.org \
       && rm -f /wheels/nvidia_*.whl /wheels/cuda_*.whl /wheels/cublas*.whl"
   echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
 fi
