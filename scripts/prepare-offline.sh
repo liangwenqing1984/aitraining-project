@@ -1,13 +1,14 @@
 #!/bin/bash
 # ============================================================================
 # 离线部署准备脚本 — 在有网环境运行一次，下载全部离线依赖
+# 依赖：docker（用容器下载 pip wheels，不依赖宿主机 Python/SSL）
 # ============================================================================
 set -e
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 echo "项目目录: $PROJECT_DIR"
 
-# ---- Docker CLI 二进制 ----
+# ---- Docker CLI 静态二进制 ----
 echo ""
 echo "[1/5] 下载 Docker CLI 静态二进制..."
 DOCKER_VERSION="27.5.1"
@@ -36,25 +37,29 @@ else
   echo "  完成: code/proxy-pool/repo/"
 fi
 
-# ---- 代理池 pip wheels ----
+# ---- 代理池 pip wheels（通过 Docker 容器下载，无需宿主机 Python） ----
 echo ""
 echo "[3/5] 下载代理池 Python 依赖 wheels..."
 WHEELS_DIR="$PROJECT_DIR/code/proxy-pool/wheels"
-REQ_FILE="$PROJECT_DIR/code/proxy-pool/repo/requirements.txt"
+REPO_DIR="$PROJECT_DIR/code/proxy-pool/repo"
 
-if [ -f "$REQ_FILE" ]; then
+if [ -f "$REPO_DIR/requirements.txt" ]; then
   EXISTING=$(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l)
   if [ "$EXISTING" -gt 2 ]; then
     echo "  wheels 已存在 ($EXISTING 个)，跳过"
   else
-    pip3 download -d "$WHEELS_DIR" -r "$REQ_FILE"
-    echo "  完成"
+    docker run --rm \
+      -v "$REPO_DIR:/repo:ro" \
+      -v "$WHEELS_DIR:/wheels" \
+      python:3.11-slim-bookworm \
+      pip3 download -d /wheels -r /repo/requirements.txt
+    echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
   fi
 else
   echo "  请先运行 [2/5] 下载代理池源码"
 fi
 
-# ---- 训练器 pip wheels (torch + sentence-transformers) ----
+# ---- 训练器 pip wheels（torch + sentence-transformers，通过 Docker 容器下载） ----
 echo ""
 echo "[4/5] 下载训练器 ML 依赖 wheels (torch CPU + sentence-transformers)..."
 WHEELS_DIR="$PROJECT_DIR/code/training/wheels"
@@ -63,11 +68,14 @@ EXISTING=$(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l)
 if [ "$EXISTING" -gt 5 ]; then
   echo "  wheels 已存在 ($EXISTING 个)，跳过"
 else
-  pip3 download -d "$WHEELS_DIR" \
-    torch sentence-transformers huggingface_hub \
-    --index-url https://download.pytorch.org/whl/cpu \
-    --extra-index-url https://pypi.org/simple
-  echo "  完成"
+  docker run --rm \
+    -v "$WHEELS_DIR:/wheels" \
+    python:3.11-slim-bookworm \
+    pip3 download -d /wheels \
+      torch sentence-transformers huggingface_hub \
+      --index-url https://download.pytorch.org/whl/cpu \
+      --extra-index-url https://pypi.org/simple
+  echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
 fi
 
 # ---- HuggingFace 预训练模型 ----
