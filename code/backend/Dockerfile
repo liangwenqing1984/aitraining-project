@@ -29,11 +29,18 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 COPY chrome-path.js ./
 
-# Build TypeScript，编译后删除源码和开发依赖
-RUN npm run build \
-    && rm -rf src/ tsconfig.json \
-    && npm prune --production
+# 生产模式：编译 → 删源码 → 清开发依赖；开发模式：保留源码和 tsx
+ARG NODE_ENV=production
+RUN if [ "$NODE_ENV" != "development" ]; then \
+      npm run build \
+      && rm -rf src/ tsconfig.json \
+      && npm prune --production; \
+    fi
 
 EXPOSE 3004
 
-CMD ["node", "dist/index.js"]
+CMD if [ "$NODE_ENV" = "development" ]; then \
+      npx tsx watch src/index.ts; \
+    else \
+      node dist/index.js; \
+    fi

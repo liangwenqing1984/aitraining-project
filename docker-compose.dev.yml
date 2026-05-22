@@ -1,0 +1,26 @@
+# 开发模式：挂载源码目录，代码变更热重载，无需重新构建镜像
+# 首次使用需先构建开发镜像: docker compose -f docker-compose.yml -f docker-compose.dev.yml build backend
+# 启动: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+services:
+  # ==================== 后端：tsx watch 热重载 ====================
+  backend:
+    build:
+      args:
+        NODE_ENV: development
+    volumes:
+      # 挂载源码和脚本，代码变更自动重启（覆盖镜像内的 COPY）
+      - ./code/backend/src:/app/src
+      - ./code/backend/scripts:/app/scripts
+      - ./code/backend/chrome-path.js:/app/chrome-path.js
+      - backend_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  # ==================== 前端：Vite HMR 热更新 ====================
+  frontend:
+    volumes:
+      # 挂载源码，Vite 的 HMR 自动推送变更到浏览器
+      - ./code/frontend/src:/app/src
+      - ./code/frontend/index.html:/app/index.html
+      - ./code/frontend/vite.config.ts:/app/vite.config.ts
+      - ./code/frontend/tsconfig.json:/app/tsconfig.json
