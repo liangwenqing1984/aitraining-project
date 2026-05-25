@@ -77,6 +77,7 @@ const menuGroups = [
   { id: 'tech-stack', label: '技术栈', icon: Setting },
   { id: 'architecture', label: '系统架构', icon: Connection },
   { id: 'quickstart', label: '快速开始', icon: Promotion },
+  { id: 'docker-deploy', label: 'Docker 环境部署', icon: Setting },
   {
     id: 'api', label: 'API 概览', icon: List,
     children: [
@@ -1944,6 +1945,133 @@ npm run dev
   <li>在「任务路由」中勾选需要使用的任务类型</li>
   <li>点击「测试连接」验证</li>
 </ol>`
+  },
+
+  // ========== Docker 环境部署 ==========
+  'docker-deploy': {
+    title: 'Docker 环境部署',
+    content: `<h3>服务概览</h3>
+<p>系统共 6 个 Docker 服务，通过 docker compose 统一编排：</p>
+<table>
+  <tr><th>服务</th><th>镜像</th><th>端口</th><th>说明</th></tr>
+  <tr><td>postgres</td><td>pgvector/pgvector:pg17</td><td>5432</td><td>PostgreSQL 17 + pgvector 向量扩展</td></tr>
+  <tr><td>redis</td><td>redis:7-alpine</td><td>6379</td><td>Redis 缓存和 IP 代理池存储</td></tr>
+  <tr><td>proxy-pool</td><td>aitrain-proxy-pool:latest</td><td>5010</td><td>IP 代理池，自动采集/验证/调度代理</td></tr>
+  <tr><td>trainer</td><td>aitrain-trainer:latest</td><td>-</td><td>ML 训练容器（torch + sentence-transformers）</td></tr>
+  <tr><td>backend</td><td>aitrain-backend:latest</td><td>3004</td><td>后端 API 服务</td></tr>
+  <tr><td>frontend</td><td>aitrain-frontend:latest</td><td>3000</td><td>前端 Vue3 管理界面</td></tr>
+</table>
+
+<h3>镜像层级</h3>
+<pre><code>aitrain-base (node:20-bookworm + Chromium + Docker CLI)
+├── aitrain-backend  (Express API + Puppeteer 爬虫)
+├── aitrain-frontend (Vue3 + Element Plus + Vite)
+aitrain-trainer      (python:3.11-slim + torch CPU + sentence-transformers)
+aitrain-proxy-pool   (python:3.11-slim + jhao104/proxy_pool)</code></pre>
+
+<h3>在线环境部署</h3>
+<pre><code># 1. 构建基础镜像
+docker build -t aitrain-base:latest -f Dockerfile.base .
+
+# 2. 构建并启动所有服务
+docker compose -f docker-compose.yml up -d
+
+# 3. 查看运行状态
+docker compose ps
+
+# 4. 查看日志
+docker compose logs -f backend</code></pre>
+
+<h3>离线环境部署</h3>
+<p><strong>联网机（准备阶段）：</strong></p>
+<pre><code># 1. 下载离线依赖（Docker CLI、代理池源码、pip wheels）
+bash ./scripts/prepare-offline.sh
+
+# 2. 构建所有镜像
+docker compose build
+
+# 3. 导出镜像为 tar 包
+docker save -o aitrain-images.tar \\
+  aitrain-base:latest \\
+  aitrain-backend:latest \\
+  aitrain-frontend:latest \\
+  aitrain-proxy-pool:latest \\
+  aitrain-trainer:latest
+
+# 4. 拷贝到离线机
+scp aitrain-images.tar docker-compose.offline.yml 离线机:/部署目录/
+scp -r code/ 离线机:/部署目录/</code></pre>
+
+<p><strong>离线机（部署阶段）：</strong></p>
+<pre><code># 1. 加载镜像
+docker load -i aitrain-images.tar
+
+# 2. 启动服务（使用离线 compose 文件）
+docker compose -f docker-compose.offline.yml up -d
+
+# 3. 验证
+curl http://localhost:3004/api/health
+curl http://localhost:3000</code></pre>
+
+<h3>开发模式</h3>
+<p>挂载源码目录，代码变更自动热重载，无需重新构建镜像：</p>
+<pre><code># 首次需先构建镜像
+docker compose build
+
+# 启动开发模式（合并 dev compose 覆盖）
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d</code></pre>
+<p>开发模式下各服务行为：</p>
+<ul>
+  <li><strong>后端</strong>：tsx watch 监听 src/ 变更自动重启</li>
+  <li><strong>前端</strong>：Vite HMR 热更新，浏览器即时生效</li>
+  <li><strong>代理池</strong>：挂载 repo/ 源码，修改后手动 restart</li>
+</ul>
+
+<h3>常用命令</h3>
+<table>
+  <tr><th>命令</th><th>说明</th></tr>
+  <tr><td><code>docker compose ps</code></td><td>查看所有服务运行状态</td></tr>
+  <tr><td><code>docker compose logs -f &lt;服务名&gt;</code></td><td>查看指定服务日志</td></tr>
+  <tr><td><code>docker compose restart &lt;服务名&gt;</code></td><td>重启指定服务</td></tr>
+  <tr><td><code>docker compose down</code></td><td>停止并删除所有容器</td></tr>
+  <tr><td><code>docker compose build &lt;服务名&gt;</code></td><td>重新构建指定镜像</td></tr>
+  <tr><td><code>docker exec -it aitrain-backend bash</code></td><td>进入后端容器调试</td></tr>
+</table>
+
+<h3>配置文件说明</h3>
+<table>
+  <tr><th>文件</th><th>用途</th></tr>
+  <tr><td><code>docker-compose.yml</code></td><td>在线部署，使用 build 从源码构建</td></tr>
+  <tr><td><code>docker-compose.offline.yml</code></td><td>离线部署，使用 image 加载已构建镜像</td></tr>
+  <tr><td><code>docker-compose.dev.yml</code></td><td>开发模式覆盖，挂载源码热重载</td></tr>
+  <tr><td><code>Dockerfile.base</code></td><td>基础镜像，预装 Chromium + Docker CLI</td></tr>
+  <tr><td><code>scripts/prepare-offline.sh</code></td><td>离线依赖准备脚本</td></tr>
+</table>
+
+<h3>环境变量</h3>
+<table>
+  <tr><th>变量</th><th>默认值</th><th>说明</th></tr>
+  <tr><td><code>DB_HOST</code></td><td>postgres</td><td>PostgreSQL 主机名</td></tr>
+  <tr><td><code>DB_USER</code></td><td>liangwenqing</td><td>数据库用户名</td></tr>
+  <tr><td><code>DB_PASSWORD</code></td><td>liangwenqing</td><td>数据库密码</td></tr>
+  <tr><td><code>DB_NAME</code></td><td>training_exercises</td><td>数据库名</td></tr>
+  <tr><td><code>REDIS_HOST</code></td><td>redis</td><td>Redis 主机名</td></tr>
+  <tr><td><code>REDIS_PASSWORD</code></td><td>pwd</td><td>Redis 密码</td></tr>
+  <tr><td><code>CHROME_PATH</code></td><td>/usr/bin/chromium</td><td>Chromium 可执行文件路径</td></tr>
+  <tr><td><code>TRAINER_CONTAINER</code></td><td>aitrain-trainer</td><td>训练容器名称</td></tr>
+  <tr><td><code>PROXY_POOL_URL</code></td><td>http://proxy-pool:5010</td><td>IP 代理池地址</td></tr>
+  <tr><td><code>HF_HUB_OFFLINE</code></td><td>1</td><td>离线模式不访问 HuggingFace（离线部署时设置）</td></tr>
+  <tr><td><code>TRANSFORMERS_OFFLINE</code></td><td>1</td><td>离线模式不访问 HuggingFace（离线部署时设置）</td></tr>
+</table>
+
+<h3>注意事项</h3>
+<ul>
+  <li>首次构建 \`aitrain-trainer\` 镜像时如果 wheels 目录为空，会自动在线下载 torch (~800MB)，耗时较长</li>
+  <li>离线部署前务必在有网环境运行 \`prepare-offline.sh\` 预下载所有依赖</li>
+  <li>基础镜像 \`aitrain-base\` 包含约 300MB Chromium，构建需几分钟</li>
+  <li>修改前端代码后无需重建镜像，\`docker restart aitrain-frontend\` 即可</li>
+  <li>修改代理池源码后 \`docker restart aitrain-proxy-pool\` 即可生效</li>
+</ul>`
   },
 
   // ========== API 概览 ==========
