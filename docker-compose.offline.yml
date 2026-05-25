@@ -101,8 +101,6 @@ services:
       - ./code/backend/chrome-path.js:/app/chrome-path.js
       - ./code/backend/data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
-    # 开发模式：tsx watch 热重载（需镜像构建时 NODE_ENV=development）
-    command: if [ "${NODE_ENV:-production}" = "development" ]; then npx tsx watch src/index.ts; else node dist/index.js; fi
     depends_on:
       postgres:
         condition: service_healthy
