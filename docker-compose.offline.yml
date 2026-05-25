@@ -67,7 +67,7 @@ services:
     container_name: aitrain-trainer
     restart: unless-stopped
     volumes:
-      - backend_data:/app/data
+      - ./code/backend/data:/app/data
       - ./code/backend/scripts:/scripts:ro
     environment:
       HF_ENDPOINT: https://hf-mirror.com
@@ -95,8 +95,14 @@ services:
       TRAINER_CONTAINER: aitrain-trainer
       PROXY_POOL_URL: http://proxy-pool:5010
     volumes:
-      - backend_data:/app/data
+      # 挂载源码，修改后 docker restart aitrain-backend 即可生效（镜像需用 dev 模式构建）
+      - ./code/backend/src:/app/src
+      - ./code/backend/scripts:/app/scripts
+      - ./code/backend/chrome-path.js:/app/chrome-path.js
+      - ./code/backend/data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
+    # 开发模式：tsx watch 热重载（需镜像构建时 NODE_ENV=development）
+    command: if [ "${NODE_ENV:-production}" = "development" ]; then npx tsx watch src/index.ts; else node dist/index.js; fi
     depends_on:
       postgres:
         condition: service_healthy
@@ -123,4 +129,3 @@ services:
 
 volumes:
   pgdata:
-  backend_data:
