@@ -75,7 +75,7 @@ else
       pip3 download --timeout 300 -d /wheels torch \
         --index-url https://download.pytorch.org/whl/cpu \
         --trusted-host download.pytorch.org \
-      && pip3 download --timeout 300 -d /wheels sentence-transformers huggingface_hub einops datasets \
+      && pip3 download --timeout 300 -d /wheels sentence-transformers huggingface_hub einops datasets accelerate \
         --index-url https://pypi.org/simple \
         --trusted-host pypi.org --trusted-host files.pythonhosted.org \
       && for f in /wheels/torch-*.whl; do case \"\$f\" in *+cpu*) ;; *) rm -f \"\$f\" ;; esac; done \

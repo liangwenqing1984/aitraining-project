@@ -82,13 +82,29 @@ def main():
     eval_pairs = pairs[split_idx:]
     print(f"Train: {len(train_pairs)} pairs, Eval: {len(eval_pairs)} pairs")
 
-    # Import sentence-transformers (lazy import — only needed when training)
-    try:
-        from sentence_transformers import SentenceTransformer, InputExample, losses, evaluation
-        from torch.utils.data import DataLoader
-    except ImportError as e:
-        print(f"ERROR: sentence-transformers not installed. Run: pip install sentence-transformers torch", file=sys.stderr)
+    # 预检所有训练依赖，一次性报告缺失的包，避免训练中途中断
+    required_packages = {
+        "torch": "torch",
+        "sentence_transformers": "sentence-transformers",
+        "transformers": "transformers",
+        "huggingface_hub": "huggingface-hub",
+        "datasets": "datasets",
+        "einops": "einops",
+        "accelerate": "accelerate",
+    }
+    missing = []
+    for module, pkg in required_packages.items():
+        try:
+            __import__(module)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        print(f"ERROR: 缺少以下 Python 包，请安装后重试:", file=sys.stderr)
+        print(f"  pip install {' '.join(missing)}", file=sys.stderr)
         sys.exit(1)
+
+    from sentence_transformers import SentenceTransformer, InputExample, losses, evaluation
+    from torch.utils.data import DataLoader
 
     print(f"Loading base model: {args.base_model}")
     hf_endpoint = os.environ.get("HF_ENDPOINT", "")
