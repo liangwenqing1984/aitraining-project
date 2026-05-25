@@ -23,11 +23,16 @@ import promptRoutes from './routes/promptRoutes';
 // 中间件
 import { errorHandler } from './middleware/errorHandler';
 
+// CORS 允许的源（通过环境变量 CORS_ORIGIN 配置，逗号分隔多个）
+const corsOrigin = (process.env.CORS_ORIGIN || 'http://localhost:3000,http://localhost:3002,http://127.0.0.1:3000')
+  .split(',')
+  .map(s => s.trim());
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: ['http://localhost:3000', 'http://localhost:3002', 'http://127.0.0.1:3000'],
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
     credentials: true
   }
@@ -35,7 +40,7 @@ const io = new Server(httpServer, {
 
 // 中间件
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3002', 'http://127.0.0.1:3000'],
+  origin: corsOrigin,
   credentials: true
 }));
 // 🔧 优化：增加请求体大小限制（默认100kb -> 1mb），支持大量关键词和企业名称
