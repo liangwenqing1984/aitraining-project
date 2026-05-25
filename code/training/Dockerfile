@@ -8,12 +8,12 @@ COPY wheels/ /wheels/
 RUN if ls /wheels/*.whl >/dev/null 2>&1; then \
       echo "离线安装 ML 依赖..."; \
       pip3 install --no-cache-dir --no-index --find-links=/wheels/ \
-        torch sentence-transformers huggingface_hub einops \
+        torch sentence-transformers huggingface_hub einops datasets \
       && rm -rf /wheels; \
     else \
       echo "在线安装 ML 依赖..."; \
       pip3 install --no-cache-dir \
-        torch sentence-transformers huggingface_hub einops \
+        torch sentence-transformers huggingface_hub einops datasets \
         --index-url https://download.pytorch.org/whl/cpu \
         --extra-index-url https://pypi.org/simple; \
     fi
