@@ -2071,7 +2071,28 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d</code></pre
   <li>基础镜像 \`aitrain-base\` 包含约 300MB Chromium，构建需几分钟</li>
   <li>修改前端代码后无需重建镜像，\`docker restart aitrain-frontend\` 即可</li>
   <li>修改代理池源码后 \`docker restart aitrain-proxy-pool\` 即可生效</li>
-</ul>`
+</ul>
+
+<h3>系统诊断</h3>
+<p>后端提供 <code>/api/diagnostics</code> 端点，一键检查所有服务连通性：</p>
+<pre><code># 完整检查（DB + Redis + Ollama + Trainer + 代理池 + 磁盘）
+curl http://localhost:3004/api/diagnostics
+
+# 快速检查（仅 DB + 系统信息）
+curl http://localhost:3004/api/diagnostics?quick=1</code></pre>
+<p>返回样例：</p>
+<pre><code>{
+  "ok": true,
+  "results": {
+    "system":    { "hostname": "...", "platform": "linux", "cpus": 8, ... },
+    "database":  { "ok": true, "latency": 2 },
+    "trainer":   { "container": "aitrain-trainer", "status": "running", "ok": true },
+    "ollama":    { "ok": true, "url": "http://192.168.10.42:11434", "modelCount": 3 },
+    "proxyPool": { "ok": true, "url": "http://proxy-pool:5010", "latency": 5 },
+    "disk":      { "mount": "/app/data", "totalGB": 100, "freeGB": 45, "ok": true }
+  }
+}</code></pre>
+<p>详细故障排查请查阅项目 <code>docs/deployment/troubleshooting.md</code></p>`
   },
 
   // ========== API 概览 ==========

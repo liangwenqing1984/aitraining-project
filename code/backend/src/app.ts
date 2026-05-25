@@ -18,6 +18,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import regionRoutes from './routes/regionRoutes';
 import trainingRoutes from './routes/trainingRoutes';
 import internalJobRoutes from './routes/internalJobRoutes';
+import { getDiagnostics } from './controllers/diagnosticsController';
 import promptRoutes from './routes/promptRoutes';
 
 // 中间件
@@ -66,10 +67,13 @@ app.use('/api/training', trainingRoutes);
 app.use('/api', systemRoutes);
 app.use('/api', chatRoutes);
 
-// 健康检查
+// 健康检查（简单）
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'Server is running' });
 });
+
+// 综合诊断（完整系统检查）
+app.get('/api/diagnostics', getDiagnostics);
 
 // 错误处理
 app.use(errorHandler);
