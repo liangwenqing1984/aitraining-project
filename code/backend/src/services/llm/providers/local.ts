@@ -9,7 +9,7 @@ export class LocalProvider {
     userPrompt: string,
     options: LLMCallOptions
   ): Promise<LLMCallResult> {
-    const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    const baseUrl = (options as any).baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     const url = `${baseUrl}/api/generate`;
 
     // Ollama doesn't have native system prompt, so we combine them
@@ -101,7 +101,7 @@ export class LocalProvider {
   }
 
   async healthCheck(_apiKey?: string, _baseUrl?: string, _modelName?: string): Promise<{ ok: boolean; models: string[]; latency: number; error?: string }> {
-    const baseUrl = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+    const baseUrl = _baseUrl || process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
     const start = Date.now();
 
     try {

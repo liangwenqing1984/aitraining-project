@@ -69,6 +69,7 @@ services:
     environment:
       HF_ENDPOINT: https://hf-mirror.com
       HF_HUB_ENABLE_HF_XET: "0"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
 
   # ==================== 后端 API 服务 ====================
   backend:
@@ -92,6 +93,7 @@ services:
       REDIS_PASSWORD: pwd
       CHROME_PATH: /usr/bin/chromium
       CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:3000,http://localhost:3002,http://127.0.0.1:3000}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
       TRAINER_CONTAINER: aitrain-trainer
       PROXY_POOL_URL: http://proxy-pool:5010
     volumes:
