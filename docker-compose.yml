@@ -66,9 +66,11 @@ services:
     volumes:
       - backend_data:/app/data
       - ./code/backend/scripts:/scripts:ro
+      - ./code/training/hf_cache:/hf_cache
     environment:
       HF_ENDPOINT: https://hf-mirror.com
       HF_HUB_ENABLE_HF_XET: "0"
+      HF_HOME: /hf_cache
       OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
 
   # ==================== 后端 API 服务 ====================

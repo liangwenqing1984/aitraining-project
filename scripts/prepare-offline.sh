@@ -88,12 +88,29 @@ else
   echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
 fi
 
-# ---- HuggingFace 预训练模型 ----
+# ---- HuggingFace 预训练模型（通过 Docker 容器下载，存入训练镜像构建目录） ----
 echo ""
-echo "[5/5] 预下载 HuggingFace 模型（可选，训练时按需下载）..."
-echo "  如需预下载常用模型，请运行:"
-echo "    python3 scripts/download-hf-models.py --model nomic-ai/nomic-embed-text-v1.5"
-echo "    python3 scripts/download-hf-models.py --model BAAI/bge-small-zh-v1.5"
+echo "[5/5] 预下载 HuggingFace 预训练模型到训练镜像..."
+HF_CACHE_DIR="$PROJECT_DIR/code/training/hf_cache"
+SCRIPT_DIR="$PROJECT_DIR/scripts"
+
+# 检查缓存目录是否有内容（HF_HOME 标准布局）
+if [ -d "$HF_CACHE_DIR/hub" ] && [ "$(ls -A "$HF_CACHE_DIR/hub" 2>/dev/null)" ]; then
+  echo "  模型缓存已存在，跳过"
+else
+  # 用 HF_HOME 指定缓存路径，保持标准目录结构，方便 SentenceTransformer 读取
+  docker run --rm \
+    -e HF_HOME=/hf_cache \
+    -v "$HF_CACHE_DIR:/hf_cache" \
+    -v "$SCRIPT_DIR/download-hf-models.py:/download-hf-models.py:ro" \
+    python:3.11-slim-bookworm \
+    bash -c "\
+      pip3 install --no-cache-dir --timeout 300 huggingface_hub \
+        --index-url https://pypi.org/simple \
+        --trusted-host pypi.org --trusted-host files.pythonhosted.org \
+      && python3 /download-hf-models.py --all"
+  echo "  完成: $(du -sh "$HF_CACHE_DIR" 2>/dev/null | cut -f1) 模型文件"
+fi
 
 echo ""
 echo "=========================================="
