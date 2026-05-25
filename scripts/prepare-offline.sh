@@ -102,6 +102,7 @@ else
     -v "$SCRIPT_DIR/download-hf-models.py:/download-hf-models.py:ro" \
     python:3.11-slim-bookworm \
     bash -c "\
+      pip3 cache purge 2>/dev/null; \
       pip3 install --no-cache-dir --timeout 300 huggingface_hub \
         --index-url https://pypi.org/simple \
         --trusted-host pypi.org --trusted-host files.pythonhosted.org \
