@@ -68,23 +68,20 @@ EXISTING=$(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l)
 if [ "$EXISTING" -gt 5 ]; then
   echo "  wheels 已存在 ($EXISTING 个)，跳过"
 else
+  # 单次下载，CPU 索引为主源，PyPI 为备用——避免先拉 GPU 包再删
   docker run --rm \
     -v "$WHEELS_DIR:/wheels" \
     python:3.11-slim-bookworm \
     bash -c "\
-      pip3 download --timeout 300 -d /wheels torch \
+      pip3 download --timeout 300 -d /wheels \
+        torch sentence-transformers huggingface_hub einops datasets accelerate \
         --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple \
         --trusted-host download.pytorch.org \
-      && pip3 download --timeout 300 -d /wheels sentence-transformers huggingface_hub einops datasets accelerate \
-        --index-url https://pypi.org/simple \
         --trusted-host pypi.org --trusted-host files.pythonhosted.org \
       && for f in /wheels/torch-*.whl; do case \"\$f\" in *+cpu*) ;; *) rm -f \"\$f\" ;; esac; done \
       && rm -f /wheels/nvidia_*.whl /wheels/cuda_*.whl /wheels/cublas*.whl \
-      && rm -f /wheels/cusparse*.whl /wheels/cufft*.whl /wheels/curand*.whl \
-      && rm -f /wheels/cusolver*.whl /wheels/cuda-*.whl /wheels/nvidia-*.whl \
-      && rm -f /wheels/triton*.whl /wheels/nvjitlink*.whl /wheels/nvtx*.whl \
-      && rm -f /wheels/nccl*.whl /wheels/nvshmem*.whl /wheels/cufile*.whl \
-      && rm -f /wheels/cuda_*.whl"
+      && rm -f /wheels/triton*.whl /wheels/nccl*.whl /wheels/cuda_*.whl"
   echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
 fi
 
