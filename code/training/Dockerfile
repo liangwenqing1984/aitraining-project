@@ -7,12 +7,12 @@ COPY wheels/ /wheels/
 
 RUN if ls /wheels/*.whl >/dev/null 2>&1; then \
       echo "离线安装 ML 依赖..."; \
-      pip3 install --no-cache-dir --no-index --find-links=/wheels/ \
+      pip3 install --no-cache-dir --timeout 300 --no-index --find-links=/wheels/ \
         torch sentence-transformers huggingface_hub einops datasets accelerate \
       && rm -rf /wheels; \
     else \
       echo "在线安装 ML 依赖..."; \
-      pip3 install --no-cache-dir \
+      pip3 install --no-cache-dir --timeout 300 \
         torch sentence-transformers huggingface_hub einops datasets accelerate \
         --index-url https://download.pytorch.org/whl/cpu \
         --extra-index-url https://pypi.org/simple; \
