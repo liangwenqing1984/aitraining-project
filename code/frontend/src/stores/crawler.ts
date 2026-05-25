@@ -83,7 +83,8 @@ export const useCrawlerStore = defineStore('crawler', () => {
 
     console.log('[WebSocket] 🚀 正在建立连接...')
     
-    socket.value = io('http://localhost:3004', {
+    socket.value = io(window.location.origin, {
+      path: '/socket.io',
       transports: ['websocket'],
       reconnection: true,           // 🔧 启用自动重连
       reconnectionDelay: 1000,      // 初始重连延迟1秒

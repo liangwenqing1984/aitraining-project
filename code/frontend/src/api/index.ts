@@ -3,7 +3,7 @@ import { getAuthHeader, refreshAccessToken, logout } from '@/utils/auth'
 import { ElMessage } from 'element-plus'
 
 const api = axios.create({
-  baseURL: 'http://localhost:3004/api',
+  baseURL: '/api',
   timeout: 30000,
   withCredentials: true // 重要：允许携带Cookie
 })

@@ -126,7 +126,7 @@ onMounted(async () => {
   loading.value = true
   try {
     // 从后端获取任务详情
-    const response = await fetch(`http://localhost:3004/api/tasks/${taskId}`)
+    const response = await fetch(`/api/tasks/${taskId}`)
     if (!response.ok) {
       throw new Error(`获取任务详情失败: HTTP ${response.status} ${response.statusText}`)
     }

@@ -15,9 +15,14 @@ export default defineConfig({
     // 代理配置：将 /api/* 请求转发到后端服务器
     proxy: {
       '/api': {
-        target: process.env.VITE_API_TARGET || 'http://localhost:3004',  // 后端服务地址（Docker 下自动切换）
+        target: process.env.VITE_API_TARGET || 'http://localhost:3004',
         changeOrigin: true,
-        rewrite: (path) => path  // 保持路径不变
+        rewrite: (path) => path
+      },
+      '/socket.io': {
+        target: process.env.VITE_API_TARGET || 'http://localhost:3004',
+        ws: true,
+        changeOrigin: true
       }
     }
   }
