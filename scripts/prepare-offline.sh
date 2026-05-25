@@ -78,7 +78,13 @@ else
       && pip3 download --timeout 300 -d /wheels sentence-transformers huggingface_hub \
         --index-url https://pypi.org/simple \
         --trusted-host pypi.org --trusted-host files.pythonhosted.org \
-      && rm -f /wheels/nvidia_*.whl /wheels/cuda_*.whl /wheels/cublas*.whl"
+      && for f in /wheels/torch-*.whl; do case \"\$f\" in *+cpu*) ;; *) rm -f \"\$f\" ;; esac; done \
+      && rm -f /wheels/nvidia_*.whl /wheels/cuda_*.whl /wheels/cublas*.whl \
+      && rm -f /wheels/cusparse*.whl /wheels/cufft*.whl /wheels/curand*.whl \
+      && rm -f /wheels/cusolver*.whl /wheels/cuda-*.whl /wheels/nvidia-*.whl \
+      && rm -f /wheels/triton*.whl /wheels/nvjitlink*.whl /wheels/nvtx*.whl \
+      && rm -f /wheels/nccl*.whl /wheels/nvshmem*.whl /wheels/cufile*.whl \
+      && rm -f /wheels/cuda_*.whl"
   echo "  完成: $(ls "$WHEELS_DIR"/*.whl 2>/dev/null | wc -l) 个 wheels"
 fi
 

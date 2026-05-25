@@ -3,6 +3,7 @@ FROM aitrain-base:latest
 WORKDIR /app
 
 # 安装依赖（离线环境需保证 package.json 未变，使用预构建的镜像缓存）
+ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json* ./
 RUN npm install && npm cache clean --force
 
