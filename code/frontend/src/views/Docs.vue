@@ -2073,6 +2073,41 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d</code></pre
   <li>修改代理池源码后 \`docker restart aitrain-proxy-pool\` 即可生效</li>
 </ul>
 
+<h3>常见问题</h3>
+
+<h4>Q1：离线训练报错 "Cannot find the requested files in the disk cache"</h4>
+<p><strong>完整错误信息：</strong></p>
+<pre><code>OSError: We couldn't connect to 'https://hf-mirror.com' to load the files,
+and couldn't find them in the cached files.</code></pre>
+<p><strong>原因：</strong>模型 <code>nomic-embed-text-v1.5</code> 使用了自定义神经网络结构，不在标准 transformers 库中，需要额外加载<strong>动态模块代码</strong>（Python 文件）。这些代码和数据权重是分开存储的：</p>
+<ul>
+  <li>模型权重文件 → 缓存到 <code>/hf_cache/hub/models--*/snapshots/</code> ← <code>snapshot_download</code> 负责</li>
+  <li>动态模块代码 → 缓存到 <code>/hf_cache/modules/</code> ← 只有触发 <code>trust_remote_code=True</code> 加载模型时才会缓存</li>
+</ul>
+<p>如果离线下载时只装了 <code>huggingface_hub</code>（未装 <code>transformers</code>），动态模块不会缓存，离线训练就会报这个错。</p>
+<p><strong>解决：</strong>在有网环境重新运行 <code>prepare-offline.sh</code> 第 5 步（已修复，自动缓存动态模块），将 <code>code/training/hf_cache/</code> 整个目录拷贝到离线机覆盖原有目录。</p>
+
+<h4>Q2：容器重建后训练数据集丢失</h4>
+<p><strong>原因：</strong>在线版 compose 使用 Docker 命名卷 <code>backend_data</code> 存储数据，离线版使用 bind mount <code>./code/backend/data</code>。切换 compose 文件时数据不会自动迁移。</p>
+<p><strong>解决：</strong></p>
+<pre><code># 查找旧数据卷
+docker volume ls | grep backend_data
+
+# 从旧卷拷到宿主机目录
+docker run --rm \
+  -v aitraining-project_backend_data:/old \
+  -v "$(pwd)/code/backend/data:/new" \
+  alpine cp -a /old/. /new/</code></pre>
+
+<h4>Q3：训练时缺少 Python 包（einops / datasets / accelerate）</h4>
+<p><strong>症状：</strong><code>ImportError: No module named 'einops'</code> 或 <code>Please install datasets</code></p>
+<p><strong>解决：</strong>启动脚本已内置依赖预检（一次性检查 7 个包），缺什么会直接提示安装命令。重建镜像即可永久解决（Dockerfile 已包含所有依赖）。</p>
+
+<h4>Q4：PyPI 下载超时或 JSON 解析错误</h4>
+<p><strong>症状：</strong><code>Read timed out</code> 或 <code>JSONDecodeError</code></p>
+<p><strong>原因：</strong>国内网络连接 PyPI 不稳定。</p>
+<p><strong>解决：</strong>重试构建命令 <code>docker compose build trainer</code>，Dockerfile 已设置 <code>--timeout 300</code>（5 分钟超时），大文件下载不会轻易断开。</p>
+
 <h3>系统诊断</h3>
 <p>后端提供 <code>/api/diagnostics</code> 端点，一键检查所有服务连通性：</p>
 <pre><code># 完整检查（DB + Redis + Ollama + Trainer + 代理池 + 磁盘）
