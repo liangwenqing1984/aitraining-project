@@ -26,6 +26,19 @@ COMMON_MODELS = [
 ]
 
 
+def cache_transformers_modules(model_name: str):
+    """触发 transformers 缓存 config + trust_remote_code 动态模块文件"""
+    try:
+        from transformers import AutoConfig
+        print(f"  缓存 transformers 模块: {model_name}")
+        AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+        print(f"  ✓ 动态模块已缓存")
+    except ImportError:
+        print(f"  ⚠ transformers 未安装，跳过模块缓存（离线训练前请确保模块已缓存）")
+    except Exception as e:
+        print(f"  ⚠ 模块缓存失败: {e}")
+
+
 def download_model(model_name: str, cache_dir: str = None):
     """下载模型及其依赖文件到本地缓存"""
     from huggingface_hub import snapshot_download
@@ -41,6 +54,9 @@ def download_model(model_name: str, cache_dir: str = None):
             cache_dir=cache_dir,
         )
         print(f"   → {local_path}")
+
+        # 缓存 transformers 动态模块（trust_remote_code 需要）
+        cache_transformers_modules(model_name)
 
         # 同时使用 sentence-transformers 验证下载完整性
         try:
