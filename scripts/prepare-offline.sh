@@ -91,9 +91,10 @@ echo "[5/5] 预下载 HuggingFace 预训练模型到训练镜像..."
 HF_CACHE_DIR="$PROJECT_DIR/code/training/hf_cache"
 SCRIPT_DIR="$PROJECT_DIR/scripts"
 
-# 检查缓存目录是否有内容（HF_HOME 标准布局）
-if [ -d "$HF_CACHE_DIR/hub" ] && [ "$(ls -A "$HF_CACHE_DIR/hub" 2>/dev/null)" ]; then
-  echo "  模型缓存已存在，跳过"
+# 检查缓存目录是否有完整内容（hub 权重 + modules 动态模块，缺一不可）
+if [ -d "$HF_CACHE_DIR/hub" ] && [ "$(ls -A "$HF_CACHE_DIR/hub" 2>/dev/null)" ] \
+   && [ -d "$HF_CACHE_DIR/modules" ] && [ "$(ls -A "$HF_CACHE_DIR/modules" 2>/dev/null)" ]; then
+  echo "  模型缓存完整（hub + modules），跳过"
 else
   # 用 HF_HOME 指定缓存路径，保持标准目录结构，方便 SentenceTransformer 读取
   docker run --rm \
