@@ -27,16 +27,26 @@ COMMON_MODELS = [
 
 
 def cache_transformers_modules(model_name: str):
-    """触发 transformers 缓存 config + trust_remote_code 动态模块文件"""
+    """触发 transformers 缓存 config + trust_remote_code 动态模块文件（含重试）"""
     try:
         from transformers import AutoConfig
-        print(f"  缓存 transformers 模块: {model_name}")
-        AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-        print(f"  ✓ 动态模块已缓存")
     except ImportError:
         print(f"  ⚠ transformers 未安装，跳过模块缓存（离线训练前请确保模块已缓存）")
-    except Exception as e:
-        print(f"  ⚠ 模块缓存失败: {e}")
+        return
+
+    import time
+    for attempt in range(1, 4):
+        try:
+            print(f"  缓存 transformers 模块: {model_name} (第 {attempt} 次)...")
+            AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+            print(f"  ✓ 动态模块已缓存")
+            return
+        except Exception as e:
+            if attempt < 3:
+                print(f"  ⚠ 模块缓存失败: {e}，2 秒后重试...")
+                time.sleep(2)
+            else:
+                print(f"  ⚠ 模块缓存失败: {e}（已重试 3 次）")
 
 
 def download_model(model_name: str, cache_dir: str = None):
