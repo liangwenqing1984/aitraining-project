@@ -27,20 +27,31 @@ COMMON_MODELS = [
 
 
 def cache_transformers_modules(model_name: str):
-    """触发 transformers 缓存 config + trust_remote_code 动态模块文件（含重试）"""
-    try:
-        from transformers import AutoConfig
-    except ImportError:
-        print(f"  ⚠ transformers 未安装，跳过模块缓存（离线训练前请确保模块已缓存）")
-        return
-
+    """用子进程隔离缓存动态模块，避免 snapshot_download 关闭 HTTP session 的影响"""
+    import subprocess
     import time
+
+    # 子进程每次都是全新 Python 解释器，HTTP session 完全隔离
+    script = f'''
+from transformers import AutoConfig
+AutoConfig.from_pretrained("{model_name}", trust_remote_code=True)
+print("OK")
+'''
     for attempt in range(1, 4):
         try:
             print(f"  缓存 transformers 模块: {model_name} (第 {attempt} 次)...")
-            AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-            print(f"  ✓ 动态模块已缓存")
-            return
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                capture_output=True, text=True,
+                timeout=120,
+                env={**os.environ}
+            )
+            if result.returncode == 0:
+                print(f"  ✓ 动态模块已缓存")
+                return
+            else:
+                err = result.stderr.strip() or result.stdout.strip()
+                raise RuntimeError(err.split("\n")[-1] if "\n" in err else err)
         except Exception as e:
             if attempt < 3:
                 print(f"  ⚠ 模块缓存失败: {e}，2 秒后重试...")
