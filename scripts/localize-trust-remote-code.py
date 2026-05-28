@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-本地化 trust_remote_code 模型——下载外部依赖的 Python 模块，修改 auto_map 为本地引用
+本地化 trust_remote_code 模型——确保动态 .py 模块文件存在于本地模型目录
+
+支持两种 auto_map 格式:
+  1. repo_id--module_file     → 从外部仓库下载，转换 auto_map 为本地引用
+  2. module_file.ClassName    → 已是本地引用，检查文件是否存在，不存在则从源仓库下载
 
 用法:
   python3 scripts/localize-trust-remote-code.py --dir <模型目录>
-  python3 scripts/localize-trust-remote-code.py --all  # 处理 local_models/ 下所有模型
+  python3 scripts/localize-trust-remote-code.py --all --output /local_models
 """
 
 import argparse
@@ -14,8 +18,16 @@ import sys
 import urllib.request
 
 
+KNOWN_DEPENDENCIES = {
+    # nomic-embed-text-v1.5 的 Python 模块在 nomic-bert-2048 仓库
+    "nomic-ai--nomic-embed-text-v1.5": {
+        "configuration_hf_nomic_bert": "nomic-ai/nomic-bert-2048",
+        "modeling_hf_nomic_bert": "nomic-ai/nomic-bert-2048",
+    },
+}
+
+
 def download_file(url: str, output_path: str) -> bool:
-    """用 urllib 下载文件（stdlib，无需额外依赖）"""
     if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
         return True
     try:
@@ -31,8 +43,7 @@ def download_file(url: str, output_path: str) -> bool:
         return False
 
 
-def fix_auto_map(model_dir: str) -> bool:
-    """修改 config.json 的 auto_map，将外部 repo 引用改为本地文件引用"""
+def fix_auto_map(model_dir: str, model_name: str = "") -> bool:
     config_path = os.path.join(model_dir, "config.json")
     if not os.path.exists(config_path):
         return False
@@ -44,77 +55,84 @@ def fix_auto_map(model_dir: str) -> bool:
     if not auto_map:
         return False
 
-    repo_files = {}  # repo_id -> set(filenames)
-    for value in auto_map.values():
-        if "--" in str(value):
-            repo_id, filename = str(value).split("--", 1)
-            repo_files.setdefault(repo_id, set()).add(filename)
-
-    if not repo_files:
-        return False
-
-    print(f"  需本地化 {len(repo_files)} 个外部依赖: {list(repo_files.keys())}")
-
     endpoint = os.environ.get("HF_ENDPOINT", "https://hf-mirror.com")
+    deps = KNOWN_DEPENDENCIES.get(model_name, {})
+    modified = False
 
-    for repo_id, filenames in repo_files.items():
-        for fname in filenames:
-            py_file = fname if fname.endswith(".py") else fname + ".py"
+    for key, value in list(auto_map.items()):
+        if "--" in str(value):
+            # 格式: repo_id--module_file → 下载后改为本地引用
+            repo_id, module_name = str(value).split("--", 1)
+            py_file = module_name if module_name.endswith(".py") else module_name + ".py"
             url = f"{endpoint}/{repo_id}/resolve/main/{py_file}"
             output = os.path.join(model_dir, py_file)
-            print(f"  [下载] {repo_id}/{py_file} ...")
+            print(f"  [下载] {py_file} (来自 {repo_id})")
             if download_file(url, output):
                 print(f"    -> {os.path.getsize(output)/1024:.1f} KB")
-            else:
-                print(f"    跳过")
+            auto_map[key] = module_name  # 本地引用，不加 .py
+            modified = True
+        else:
+            # 格式: module_file.ClassName → 已是本地引用，检查文件是否存在
+            module_name = str(value).split(".")[0]
+            py_file = module_name if module_name.endswith(".py") else module_name + ".py"
+            file_path = os.path.join(model_dir, py_file)
+            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+                continue  # 文件已存在，跳过
 
-    # 修改 auto_map: "repo--file" → "file"
-    for key, value in auto_map.items():
-        if "--" in str(value):
-            _, filename = str(value).split("--", 1)
-            auto_map[key] = filename
-            print(f"  auto_map: {key} = {filename}")
+            # 从已知依赖仓库下载
+            src_repo = deps.get(module_name, "")
+            if not src_repo:
+                # 回退: 尝试从自身 repo 下载
+                src_repo = model_name.replace("--", "/") if model_name else ""
+            if not src_repo:
+                print(f"  [警告] {py_file} 不存在且无法确定来源仓库")
+                continue
 
-    config["auto_map"] = auto_map
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    print(f"  ✓ config.json 已本地化")
-    return True
+            url = f"{endpoint}/{src_repo}/resolve/main/{py_file}"
+            output = os.path.join(model_dir, py_file)
+            print(f"  [下载] {py_file} (来自 {src_repo})")
+            if download_file(url, output):
+                print(f"    -> {os.path.getsize(output)/1024:.1f} KB")
+                modified = True
+
+    if modified:
+        config["auto_map"] = auto_map
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        print(f"  ✓ auto_map 已更新")
+
+    return modified
 
 
 def main():
     parser = argparse.ArgumentParser(description="本地化 trust_remote_code 模型依赖")
     parser.add_argument("--dir", help="模型目录路径")
-    parser.add_argument("--output", default="code/training/local_models", help="local_models 根目录 (默认: code/training/local_models)")
+    parser.add_argument("--output", default="code/training/local_models", help="local_models 根目录")
     parser.add_argument("--all", action="store_true", help="处理输出目录下所有模型")
     args = parser.parse_args()
 
     if args.all:
-        local_dir = args.output
-        if not os.path.isdir(local_dir):
-            print(f"目录不存在: {local_dir}")
+        if not os.path.isdir(args.output):
+            print(f"目录不存在: {args.output}")
             sys.exit(1)
         models = [
-            os.path.join(local_dir, d)
-            for d in sorted(os.listdir(local_dir))
-            if os.path.isdir(os.path.join(local_dir, d))
+            (d, os.path.join(args.output, d))
+            for d in sorted(os.listdir(args.output))
+            if os.path.isdir(os.path.join(args.output, d))
         ]
     elif args.dir:
-        models = [args.dir]
+        models = [(os.path.basename(args.dir), args.dir)]
     else:
-        print("用法: --dir <模型目录> 或 --all")
+        print("用法: --dir <模型目录> 或 --all [--output <目录>]")
         sys.exit(1)
 
     count = 0
-    for model_dir in models:
-        name = os.path.basename(model_dir)
+    for name, model_dir in models:
         print(f"\n===== {name} =====")
-        if fix_auto_map(model_dir):
+        if fix_auto_map(model_dir, model_name=name):
             count += 1
 
     print(f"\n本地化完成: {count} 个模型已处理")
-    if count == 0:
-        print("(无需要本地化的模型)")
 
 
 if __name__ == "__main__":
