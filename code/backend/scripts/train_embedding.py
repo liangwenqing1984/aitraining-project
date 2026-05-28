@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 语义模型训练脚本 — 使用 sentence-transformers 对 Embedding 模型进行岗位领域微调
 
@@ -184,6 +184,10 @@ def main():
 
     print(f"Starting training: {args.epochs} epochs, batch_size={args.batch_size}, lr={args.lr}")
     print("PROGRESS:20")
+
+    # 切到输出目录，避免 trainer 在只读 /scripts 下创建 checkpoints
+    os.makedirs(args.output, exist_ok=True)
+    os.chdir(args.output)
 
     warmup_steps = int(len(train_dataloader) * args.epochs * 0.1)
 
