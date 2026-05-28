@@ -85,11 +85,12 @@ def fix_auto_map(model_dir: str) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="本地化 trust_remote_code 模型依赖")
     parser.add_argument("--dir", help="模型目录路径")
-    parser.add_argument("--all", action="store_true", help="处理 local_models/ 下所有模型")
+    parser.add_argument("--output", default="code/training/local_models", help="local_models 根目录 (默认: code/training/local_models)")
+    parser.add_argument("--all", action="store_true", help="处理输出目录下所有模型")
     args = parser.parse_args()
 
     if args.all:
-        local_dir = "code/training/local_models"
+        local_dir = args.output
         if not os.path.isdir(local_dir):
             print(f"目录不存在: {local_dir}")
             sys.exit(1)
