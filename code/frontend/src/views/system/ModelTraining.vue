@@ -372,12 +372,22 @@ const logJobId = ref<number | null>(null)
 let pollingTimer: ReturnType<typeof setInterval> | null = null
 let logRefreshTimer: ReturnType<typeof setInterval> | null = null
 
-async function loadTrainingJobs() {
+async function loadTrainingJobs(updateInPlace = false) {
   loadingJobs.value = true
   try {
     const res: any = await listTrainingJobs({ page: jobPage.value, pageSize: jobPageSize.value })
     if (res.success) {
-      trainingJobs.value = res.data.list
+      if (updateInPlace && trainingJobs.value.length > 0) {
+        // 原地更新，避免整个 table DOM 重绘导致按钮点不上
+        const newList: any[] = res.data.list
+        const newMap = new Map(newList.map((j: any) => [j.id, j]))
+        for (const existing of trainingJobs.value) {
+          const updated = newMap.get((existing as any).id)
+          if (updated) Object.assign(existing, updated)
+        }
+      } else {
+        trainingJobs.value = res.data.list
+      }
       jobTotal.value = res.data.total
     }
   } catch {} finally {
@@ -419,7 +429,7 @@ function startPolling() {
   pollingTimer = setInterval(async () => {
     const hasRunning = trainingJobs.value.some(j => j.status === 'running')
     if (!hasRunning) { stopPolling(); return }
-    await loadTrainingJobs()
+    await loadTrainingJobs(true)
   }, 3000)
 }
 
