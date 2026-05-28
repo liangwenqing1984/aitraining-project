@@ -112,11 +112,23 @@ def main():
         print(f"HuggingFace endpoint: {hf_endpoint}")
     print("PROGRESS:5")
 
-    # Pre-download model files (skip ONNX — not needed for training, causes timeout)
-    # SentenceTransformer internally calls snapshot_download which will try ALL files;
-    # we pre-download with ignore_patterns so the cache is complete for the files we need.
+    # HF 模型 ID → 本地预下载路径（离线部署用 wget 下载到 local_models/）
+    HF_TO_LOCAL = {
+        "nomic-ai/nomic-embed-text-v1.5": "/local_models/nomic-ai--nomic-embed-text-v1.5",
+        "BAAI/bge-small-zh-v1.5": "/local_models/BAAI--bge-small-zh-v1.5",
+        "BAAI/bge-base-zh-v1.5": "/local_models/BAAI--bge-base-zh-v1.5",
+        "sentence-transformers/all-MiniLM-L6-v2": "/local_models/sentence-transformers--all-MiniLM-L6-v2",
+    }
+
     model_path = args.base_model
-    if not os.path.isdir(args.base_model) and not args.local_files_only:
+    local_candidate = HF_TO_LOCAL.get(args.base_model, "")
+    if local_candidate and os.path.isdir(local_candidate):
+        print(f"Using pre-downloaded local model: {local_candidate}")
+        model_path = local_candidate
+    elif os.path.isdir(args.base_model):
+        print(f"Using local model path: {args.base_model}")
+        model_path = args.base_model
+    elif not args.local_files_only:
         try:
             from huggingface_hub import snapshot_download
             print("Pre-downloading model (skipping ONNX files)...")
@@ -127,10 +139,6 @@ def main():
             print(f"Model cached at: {model_path}")
         except Exception as e:
             print(f"WARNING: Pre-download failed ({e}), will try direct load...", file=sys.stderr)
-
-    if os.path.isdir(args.base_model):
-        print(f"Using local model path: {args.base_model}")
-        model_path = args.base_model
 
     model_kwargs = {}
     if args.local_files_only:

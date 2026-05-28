@@ -70,6 +70,7 @@ services:
       - ./code/backend/data:/app/data
       - ./code/backend/scripts:/scripts:ro
       - ./code/training/hf_cache:/hf_cache
+      - ./code/training/local_models:/local_models:ro
     environment:
       HF_ENDPOINT: https://hf-mirror.com
       HF_HUB_ENABLE_HF_XET: "0"
