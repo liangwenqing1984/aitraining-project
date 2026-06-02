@@ -111,8 +111,23 @@ else
   echo "  完成: $(du -sh "$HF_CACHE_DIR" 2>/dev/null | cut -f1) 模型文件"
 fi
 
+# ---- Ollama 镜像 ----
+echo ""
+echo "[6/6] 拉取 Ollama Docker 镜像..."
+OLLAMA_IMAGE="ollama/ollama:latest"
+OLLAMA_TAR="$PROJECT_DIR/docker-bin/ollama.tar"
+
+if [ -f "$OLLAMA_TAR" ]; then
+  echo "  ollama.tar 已存在，跳过"
+else
+  docker pull "$OLLAMA_IMAGE"
+  docker save -o "$OLLAMA_TAR" "$OLLAMA_IMAGE"
+  echo "  完成: docker-bin/ollama.tar"
+fi
+
 echo ""
 echo "=========================================="
 echo "  离线依赖准备完成！"
+echo "  离线机加载: docker load -i docker-bin/ollama.tar"
 echo "  将整个项目目录拷贝到离线环境即可。"
 echo "=========================================="
