@@ -52,52 +52,82 @@ def load_training_data(dataset_path: str):
 
 
 def prepare_model_config(model_dir: str):
-    """修复模型的 config.json，使 auto_map 指向本地文件而非 HF 远程模块。
+    """确保 trust_remote_code 依赖的 .py 模块文件存在于模型目录中。
 
-    已训练模型的 config.json 中 auto_map 引用了原始 nomic-ai/nomic-bert-2048
-    动态模块，与本地 configuration_hf_nomic_bert.py 的类不匹配，导致 ValueError。
-    此函数将 modeling 文件从 HF 缓存复制到模型目录并改写 auto_map 为本地引用。
+    从多个可能的位置查找并拷贝：
+    1. /local_models/ (wget 预下载的本地模型)
+    2. /hf_cache/modules/ (HF 模块缓存)
+    3. ~/.cache/huggingface/modules/ (默认缓存)
     """
     config_path = os.path.join(model_dir, "config.json")
+    if not os.path.exists(config_path):
+        return
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
 
     auto_map = config.get("auto_map", {})
     if not auto_map:
-        return  # 无需处理
+        return
 
-    # 检查是否有指向远程模块的条目 (格式: repo_id--file.Class)
-    has_remote = any("--" in v for v in auto_map.values())
-    if not has_remote:
-        return  # 已经都是本地引用
-
-    # 查找 HF 缓存中的 modeling_hf_nomic_bert.py
-    import glob as _glob
-    cache_base = os.path.expanduser("~/.cache/huggingface/modules/transformers_modules")
-    modeling_file = "modeling_hf_nomic_bert.py"
-    candidates = _glob.glob(os.path.join(cache_base, "**", modeling_file), recursive=True)
-
-    if candidates:
-        src = candidates[0]
-        dst = os.path.join(model_dir, modeling_file)
-        if not os.path.exists(dst):
-            import shutil
-            shutil.copy2(src, dst)
-            print(f"Copied {modeling_file} from cache to model directory")
-
-    # 改写 auto_map：去掉 "repo_id--" 前缀，指向本地文件
-    new_auto_map = {}
-    for key, value in auto_map.items():
-        if "--" in value:
-            _, cls_path = value.split("--", 1)
-            new_auto_map[key] = cls_path
+    # 提取所有需要的模块文件名（不含 .py）
+    needed_modules = set()
+    has_remote = False
+    for value in auto_map.values():
+        if "--" in str(value):
+            has_remote = True
+            module_name = str(value).split("--", 1)[1].split(".")[0]
         else:
-            new_auto_map[key] = value
+            module_name = str(value).split(".")[0]
+        needed_modules.add(module_name)
 
-    config["auto_map"] = new_auto_map
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
-    print(f"Fixed auto_map in config.json: {new_auto_map}")
+    if not needed_modules:
+        return
+
+    # 搜索路径（按优先级）
+    import shutil
+    search_dirs = [
+        os.path.join("/local_models/nomic-ai--nomic-embed-text-v1.5"),
+        os.path.join("/local_models/BAAI--bge-small-zh-v1.5"),
+        os.path.join("/local_models/BAAI--bge-base-zh-v1.5"),
+        os.path.join("/local_models/sentence-transformers--all-MiniLM-L6-v2"),
+        "/hf_cache/modules",
+        os.path.expanduser("~/.cache/huggingface/modules"),
+    ]
+
+    for module_name in sorted(needed_modules):
+        py_file = module_name if module_name.endswith(".py") else module_name + ".py"
+        dst = os.path.join(model_dir, py_file)
+        if os.path.exists(dst) and os.path.getsize(dst) > 0:
+            continue
+
+        import glob as _glob
+        found = False
+        for search_dir in search_dirs:
+            if not os.path.isdir(search_dir):
+                continue
+            candidates = _glob.glob(os.path.join(search_dir, "**", py_file), recursive=True)
+            if candidates:
+                src = candidates[0]
+                shutil.copy2(src, dst)
+                print(f"Copied {py_file} from {search_dir}")
+                found = True
+                break
+        if not found:
+            print(f"WARNING: Could not find {py_file} in any cache directory")
+
+    # 改写 auto_map：去掉 "repo_id--" 前缀
+    if has_remote:
+        new_auto_map = {}
+        for key, value in auto_map.items():
+            if "--" in value:
+                _, cls_path = value.split("--", 1)
+                new_auto_map[key] = cls_path
+            else:
+                new_auto_map[key] = value
+        config["auto_map"] = new_auto_map
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        print(f"Fixed auto_map in config.json")
 
 
 def main():
@@ -111,7 +141,7 @@ def main():
         print(f"ERROR: Dataset file not found: {args.dataset}", file=sys.stderr)
         sys.exit(1)
 
-    # 修复可能存在的 remote auto_map 引用问题
+    # 确保 trust_remote_code 模块文件存在
     prepare_model_config(args.model)
 
     print(f"Loading training data from {args.dataset}...")
@@ -145,11 +175,10 @@ def main():
     metrics = {}
 
     # Pearson (cosine similarity) evaluation
-    # 同时使用正样本（score=1.0）和负样本（score=0.0）产生方差，使 Pearson 可计算
     print("Running embedding similarity evaluation...")
-    eval_sentences1 = []   # anchors
-    eval_sentences2 = []   # texts
-    eval_scores = []        # similarity labels
+    eval_sentences1 = []
+    eval_sentences2 = []
+    eval_scores = []
     for anchor, positive, negative in eval_pairs:
         eval_sentences1.append(anchor)
         eval_sentences2.append(positive)

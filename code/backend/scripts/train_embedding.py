@@ -244,6 +244,20 @@ def main():
     model.save(args.output)
     print(f"Model saved to {args.output}")
 
+    # 拷贝 trust_remote_code 依赖的 .py 文件到输出目录（评估/部署时需要）
+    import shutil
+    py_copied = 0
+    if model_path != args.output:
+        for fn in os.listdir(model_path):
+            if fn.endswith('.py'):
+                src = os.path.join(model_path, fn)
+                dst = os.path.join(args.output, fn)
+                if not os.path.exists(dst):
+                    shutil.copy2(src, dst)
+                    py_copied += 1
+    if py_copied > 0:
+        print(f"Copied {py_copied} trust_remote_code module files")
+
     # Generate Ollama Modelfile
     # 将 HuggingFace 模型 ID 映射为 Ollama 可识别的模型名称
     HF_TO_OLLAMA = {
