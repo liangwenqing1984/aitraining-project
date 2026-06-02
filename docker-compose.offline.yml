@@ -8,6 +8,23 @@
 # ============================================================================
 
 services:
+  # ==================== Ollama ====================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: aitrain-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: "0.0.0.0"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   # ==================== PostgreSQL 17 + pgvector ====================
   postgres:
     image: pgvector/pgvector:pg17
@@ -77,7 +94,7 @@ services:
       HF_HOME: /hf_cache
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
-      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://ollama:11434}"
 
   # ==================== 后端 API 服务 ====================
   backend:
@@ -98,7 +115,7 @@ services:
       REDIS_PASSWORD: pwd
       CHROME_PATH: /usr/bin/chromium
       CORS_ORIGIN: "${CORS_ORIGIN:-http://localhost:3000,http://localhost:3002,http://127.0.0.1:3000}"
-      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://ollama:11434}"
       TRAINER_CONTAINER: aitrain-trainer
       PROXY_POOL_URL: http://proxy-pool:5010
     volumes:
@@ -134,3 +151,4 @@ services:
 
 volumes:
   pgdata:
+  ollama_data:
