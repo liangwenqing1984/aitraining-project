@@ -64,7 +64,7 @@ services:
     container_name: aitrain-trainer
     restart: unless-stopped
     volumes:
-      - backend_data:/app/data
+      - ./code/backend/data:/app/data
       - ./code/backend/scripts:/scripts:ro
       - ./code/training/hf_cache:/hf_cache
       - ./code/training/local_models:/local_models:ro
@@ -100,7 +100,7 @@ services:
       TRAINER_CONTAINER: aitrain-trainer
       PROXY_POOL_URL: http://proxy-pool:5010
     volumes:
-      - backend_data:/app/data
+      - ./code/backend/data:/app/data
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
